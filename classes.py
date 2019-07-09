@@ -4,8 +4,8 @@ import mysql.connector
 from os import PathLike
 from email import encoders
 import mysql.connector.cursor
-from typing import List, Union
 from pymongo import MongoClient
+from typing import Any, List, Union
 from urllib.parse import quote_plus
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
@@ -19,7 +19,8 @@ from common.secrets import b64decode, es_pass, mail_pass, mongo_pass, sql_pass
 class ElasticSearch(Elasticsearch):
     """Client for ElasticSearch"""
 
-    def __init__(self, dev: bool = True):
+    def __init__(self, dev: bool = True, es_index: str = None):
+        self.es_index = es_index
         if dev:
             host = '136.144.173.2'
         else:
@@ -27,6 +28,9 @@ class ElasticSearch(Elasticsearch):
         super(ElasticSearch, self).__init__([{
             'host': host, 'port': 9201,
             'http_auth': ("psaalbrink@matrixiangroup.com", b64decode(es_pass).decode())}])
+
+    def find(self, query: Union[dict, List[dict]] = None):
+        return self.search(index=self.es_index, size=10_000, body=query)
 
 
 class EmailClient:
@@ -166,3 +170,12 @@ class MySQLClient:
         table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
+
+    def row(self, query: str = None) -> List[Any]:
+        """Fetch a table from MySQL"""
+        self.connect()
+        if query is not None:
+            self.cursor.execute(query)
+        row = list(self.fetchall()[0])
+        self.disconnect()
+        return row
