@@ -135,9 +135,9 @@ class MySQLClient:
         'database': 'mx_traineeship_peter',
         'raise_on_warnings': True,
         'client_flags': [mysql.connector.ClientFlag.SSL],
-        'ssl_ca': pathlib.Path.home() / 'Python/common/certificates/server-ca.pem',
-        'ssl_cert': pathlib.Path.home() / 'Python/common/certificates/client-cert.pem',
-        'ssl_key': pathlib.Path.home() / 'Python/common/certificates/client-key.pem'}
+        'ssl_ca': str(pathlib.Path.home() / 'Python/common/certificates/server-ca.pem'),
+        'ssl_cert': str(pathlib.Path.home() / 'Python/common/certificates/client-cert.pem'),
+        'ssl_key': str(pathlib.Path.home() / 'Python/common/certificates/client-key.pem')}
     cnx = cursor = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
@@ -249,7 +249,10 @@ class MySQLClient:
             query += f"OFFSET {offset} "
         self.connect()
         self.cursor.execute(query)
-        result = [list(row) for row in self.fetchall()]
+        if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
+            result = [value[0] for value in self.fetchall()]
+        else:
+            result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
 
