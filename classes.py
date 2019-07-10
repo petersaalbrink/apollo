@@ -20,17 +20,30 @@ class ElasticSearch(Elasticsearch):
     """Client for ElasticSearch"""
 
     def __init__(self, dev: bool = True, es_index: str = None):
-        self.es_index = es_index
         if dev:
+            if es_index is None:
+                es_index = 'dev_peter.person_data_20190606'
             host = '136.144.173.2'
         else:
+            if es_index is None:
+                es_index = 'production_realestate.realestate'
             host = '37.97.169.90'
+        self.es_index = es_index
         super(ElasticSearch, self).__init__([{
             'host': host, 'port': 9201,
             'http_auth': ("psaalbrink@matrixiangroup.com", b64decode(es_pass).decode())}])
 
     def find(self, query: Union[dict, List[dict]] = None):
         return self.search(index=self.es_index, size=10_000, body=query)
+
+    def simple(self, field: str = None, query: Union[str, int] = None, **kwargs):
+        if kwargs:
+            if len(kwargs) == 1:
+                return self.find({"query": {"bool": {"must": [{"match": kwargs}]}}})
+            else:
+                keys = [{"match": {k: v}} for k, v in kwargs.items()]
+                return self.find({"query": {"bool": {"must": keys}}})
+        return self.find({"query": {"bool": {"must": [{"match": {field: query}}]}}})
 
 
 class EmailClient:
@@ -154,7 +167,7 @@ class MySQLClient:
         return self.cursor.fetchall()
 
     def column(self, query: str = None) -> List[str]:
-        """Fetch a column from MySQL"""
+        """Fetch one column from MySQL"""
         self.connect()
         if query is not None:
             self.cursor.execute(query)
@@ -172,10 +185,70 @@ class MySQLClient:
         return table
 
     def row(self, query: str = None) -> List[Any]:
-        """Fetch a table from MySQL"""
+        """Fetch one row from MySQL"""
         self.connect()
         if query is not None:
             self.cursor.execute(query)
         row = list(self.fetchall()[0])
         self.disconnect()
         return row
+
+    def query(self, table: str, field: str = None, value: Union[str, int] = None,
+              limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
+              select_fields: Union[list, str] = None, **kwargs) -> List[list]:
+        """Build and perform a MySQL query, and returns a data array.
+
+        Examples:
+            sql = MySQLClient()
+            table = "mx_traineeship_peter.company_data"
+
+            # Simple WHERE query:
+            sql.query(table=table, field="postcode", value="1014AK")  # is the same as:
+            sql.query(table=table, postcode="1014AK")
+
+            # Filter on more fields:
+            sql.query(table=table, postcode="1014AK", huisnummer=104, plaatsnaam="Amsterdam")
+
+            # NOT filter values using '!':
+            sql.query(table=table, postcode="1014AK", huisnummer=104, KvKnummer="!NULL")
+            sql.query(table=table, postcode="1014AK", huisnummer="!102")
+
+            # Using LIMIT and OFFSET:
+            sql.query(table=table, postcode="1014AK", limit=10, offset=1)  # is the same as:
+            sql.query(table=table, postcode="1014AK", limit=(1, 10))
+
+            # Optionally SELECT specific fields:
+            sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
+            sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
+            """
+        if select_fields is None:
+            query = f"SELECT * FROM {table} "
+        elif isinstance(select_fields, list):
+            query = f"SELECT {','.join(select_fields)} FROM {table} "
+        else:
+            query = f"SELECT {select_fields} FROM {table} "
+        if not all([field is None, value is None]):
+            if isinstance(value, str):
+                query += f"WHERE {field} = '{value}' "
+            elif isinstance(value, int):
+                query += f"WHERE {field} = {value} "
+        if kwargs:
+            keys = " AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
+                f"{k} IS NOT NULL " if v == "!NULL" else (
+                    f"{k} != '{v[1:]}' " if v.startswith('!') else f"{k} = '{v}' "))) for k, v in kwargs.items()])
+            if "WHERE" in query:
+                query += f"AND {keys}"
+            else:
+                query += f"WHERE {keys}"
+        if limit is not None:
+            if isinstance(limit, (int, str)):
+                query += f"LIMIT {limit} "
+            elif isinstance(limit, (list, tuple)):
+                query += f"LIMIT {limit[0]}, {limit[1]} "
+        if offset is not None:
+            query += f"OFFSET {offset} "
+        self.connect()
+        self.cursor.execute(query)
+        result = [list(row) for row in self.fetchall()]
+        self.disconnect()
+        return result
