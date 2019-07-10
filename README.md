@@ -8,9 +8,11 @@ These are classes for MySQL, MongoDB, ElasticSearch, and an EmailClient.
 Format for `secrets.py`:  
 
 `from base64 import b64decode`  
-`mongo_pass = b""`  
-`sql_pass = b""`  
-`es_pass = b""`  
-`mail_pass = b""`  
+`mongo = ("devpsaalbrink", b"")`  
+`sql = ("trainee_peter", b"")`  
+`es = ("psaalbrink@matrixiangroup.com", b"")`  
+`mail_pass = b"TmtUZ01wbThvVDNjSzk1NA=="`  
+from base64 import b64decode
+
 
 © _Matrixian Group, created by Peter Saalbrink._
