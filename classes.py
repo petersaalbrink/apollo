@@ -13,7 +13,7 @@ from pymongo.database import Database
 from pymongo.database import Collection
 from elasticsearch import Elasticsearch
 from email.mime.multipart import MIMEMultipart
-from common.secrets import b64decode, es_pass, mail_pass, mongo_pass, sql_pass
+from common.secrets import b64decode, es, mail_pass, mongo, sql
 
 
 class ElasticSearch(Elasticsearch):
@@ -31,7 +31,7 @@ class ElasticSearch(Elasticsearch):
         self.es_index = es_index
         super(ElasticSearch, self).__init__([{
             'host': host, 'port': 9201,
-            'http_auth': ("psaalbrink@matrixiangroup.com", b64decode(es_pass).decode())}])
+            'http_auth': (es[0], b64decode(es[1]).decode())}])
 
     def find(self, query: Union[dict, List[dict]] = None):
         return self.search(index=self.es_index, size=10_000, body=query)
@@ -115,8 +115,8 @@ class MongoDB:
             coll = MongoDB('dev_peter', 'person_data_20190606')
             coll = MongoDB()['dev_peter']['person_data_20190606']
         """
-        user = 'devpsaalbrink'
-        password = b64decode(mongo_pass).decode()
+        user = mongo[0]
+        password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
         mongo_client = MongoClient(f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
         if database is not None:
@@ -129,8 +129,8 @@ class MongoDB:
 class MySQLClient:
     """Client for MySQL"""
     config = {
-        'user': 'trainee_peter',
-        'password': b64decode(sql_pass).decode(),
+        'user': sql[0],
+        'password': b64decode(sql[1]).decode(),
         'host': '104.199.69.152',
         'database': 'mx_traineeship_peter',
         'raise_on_warnings': True,
@@ -252,3 +252,6 @@ class MySQLClient:
         result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
+
+
+del b64decode, es, mail_pass, mongo, sql

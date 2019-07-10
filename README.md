@@ -12,7 +12,7 @@ Format for `secrets.py`:
 `sql = ("trainee_peter", b"")`  
 `es = ("psaalbrink@matrixiangroup.com", b"")`  
 `mail_pass = b"TmtUZ01wbThvVDNjSzk1NA=="`  
-from base64 import b64decode
+
 
 
 © _Matrixian Group, created by Peter Saalbrink._
