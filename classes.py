@@ -130,6 +130,10 @@ class MongoDB:
         return mongo_client
 
 
+class Query(str):
+    pass
+
+
 class MySQLClient:
     """Client for MySQL
 
@@ -246,7 +250,7 @@ class MySQLClient:
     @staticmethod
     def build(table: str, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              select_fields: Union[list, str] = None, **kwargs) -> str:
+              select_fields: Union[list, str] = None, **kwargs) -> Query:
         """Build a MySQL query"""
         if select_fields is None:
             query = f"SELECT * FROM {table} "
@@ -274,7 +278,7 @@ class MySQLClient:
                 query += f"LIMIT {limit[0]}, {limit[1]} "
         if offset is not None:
             query += f"OFFSET {offset} "
-        return query
+        return Query(query)
 
     def query(self, table: str, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
@@ -304,15 +308,22 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
+        if type(table) == str:
+            query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
+        elif type(table) == Query:
+            query = table
+        else:
+            raise ValueError(f"Query error: '{table}'")
         self.connect()
-        self.cursor.execute(query)
+        self.execute(query)
         if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
             result = [value[0] for value in self.fetchall()]
+        elif limit == 1:
+            result = list(self.fetchall()[0])
         else:
             result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
 
-# TODO: sql class method for creating
-# TODO: sql class method for updating
+# TODO: sql class method for creating table
+# TODO: sql class method for updating table
