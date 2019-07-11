@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
 from elasticsearch import Elasticsearch
+from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 
 
@@ -34,8 +35,8 @@ class ElasticSearch(Elasticsearch):
             'host': host, 'port': 9201,
             'http_auth': (es[0], b64decode(es[1]).decode())}])
 
-    def find(self, query: Union[dict, List[dict]] = None):
-        return self.search(index=self.es_index, size=10_000, body=query)
+    def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs):
+        return self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)
 
     def simple(self, field: str = None, query: Union[str, int] = None, **kwargs):
         if kwargs:
@@ -202,6 +203,79 @@ class MySQLClient:
         self.disconnect()
         return row
 
+    def chunk(self, query: str = None, size: int = None, *args, **kwargs) -> List[list]:
+        """Returns a generator for downloading a table in chunks
+
+        Example:
+            from common.classes import MySQLClient
+            sql = MySQLClient()
+            query = sql.build(
+                table="mx_traineeship_peter.client_data",
+                Province="Noord-Holland",
+                select_fields=['id', 'City']
+            )
+            for i, row in enumerate(sql.chunk(query=query, size=10)):
+                print(row)
+        """
+        if size == 0:
+            raise ValueError("Chunk size must be > 0")
+        elif size == 1:
+            for i in range(0, 100_000_000, size):
+                q = query + f" LIMIT {i}, {size}"
+                try:
+                    row = self.row(q, *args, **kwargs)
+                except IndexError:
+                    break
+                yield row
+        else:
+            for i in range(0, 100_000_000, size):
+                q = query + f" LIMIT {i}, {size}"
+                table = self.table(q, *args, **kwargs)
+                if len(table) == 0:
+                    break
+                yield table
+
+    def create_sql_table(self, query: str):
+        self.connect()
+        try:
+            self.execute(query)
+        except DatabaseError:
+            pass
+        self.disconnect()
+
+    @staticmethod
+    def build(table: str, field: str = None, value: Union[str, int] = None,
+              limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
+              select_fields: Union[list, str] = None, **kwargs) -> str:
+        """Build a MySQL query"""
+        if select_fields is None:
+            query = f"SELECT * FROM {table} "
+        elif isinstance(select_fields, list):
+            query = f"SELECT {','.join(select_fields)} FROM {table} "
+        else:
+            query = f"SELECT {select_fields} FROM {table} "
+        if not all([field is None, value is None]):
+            if isinstance(value, str):
+                query += f"WHERE {field} = '{value}' "
+            elif isinstance(value, int):
+                query += f"WHERE {field} = {value} "
+        if kwargs:
+            keys = " AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
+                f"{k} IS NOT NULL " if v == "!NULL" else (
+                    f"{k} != '{v[1:]}' " if v.startswith('!') else f"{k} = '{v}' "))) for k, v in kwargs.items()])
+            if "WHERE" in query:
+                query += f"AND {keys}"
+            else:
+                query += f"WHERE {keys}"
+        if limit is not None:
+            if isinstance(limit, (int, str)):
+                query += f"LIMIT {limit} "
+            elif isinstance(limit, (list, tuple)):
+                query += f"LIMIT {limit[0]}, {limit[1]} "
+        if offset is not None:
+            query += f"OFFSET {offset} "
+        return query
+
     def query(self, table: str, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               select_fields: Union[list, str] = None, **kwargs) -> List[list]:
@@ -230,32 +304,7 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if select_fields is None:
-            query = f"SELECT * FROM {table} "
-        elif isinstance(select_fields, list):
-            query = f"SELECT {','.join(select_fields)} FROM {table} "
-        else:
-            query = f"SELECT {select_fields} FROM {table} "
-        if not all([field is None, value is None]):
-            if isinstance(value, str):
-                query += f"WHERE {field} = '{value}' "
-            elif isinstance(value, int):
-                query += f"WHERE {field} = {value} "
-        if kwargs:
-            keys = " AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
-                f"{k} IS NOT NULL " if v == "!NULL" else (
-                    f"{k} != '{v[1:]}' " if v.startswith('!') else f"{k} = '{v}' "))) for k, v in kwargs.items()])
-            if "WHERE" in query:
-                query += f"AND {keys}"
-            else:
-                query += f"WHERE {keys}"
-        if limit is not None:
-            if isinstance(limit, (int, str)):
-                query += f"LIMIT {limit} "
-            elif isinstance(limit, (list, tuple)):
-                query += f"LIMIT {limit[0]}, {limit[1]} "
-        if offset is not None:
-            query += f"OFFSET {offset} "
+        query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
         self.connect()
         self.cursor.execute(query)
         if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
@@ -264,3 +313,6 @@ class MySQLClient:
             result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
+
+# TODO: sql class method for creating
+# TODO: sql class method for updating
