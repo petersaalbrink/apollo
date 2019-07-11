@@ -3,6 +3,7 @@ import smtplib
 import mysql.connector
 from os import PathLike
 from email import encoders
+from base64 import b64decode
 import mysql.connector.cursor
 from pymongo import MongoClient
 from typing import Any, List, Union
@@ -13,13 +14,13 @@ from pymongo.database import Database
 from pymongo.database import Collection
 from elasticsearch import Elasticsearch
 from email.mime.multipart import MIMEMultipart
-from common.secrets import b64decode, es, mail_pass, mongo, sql
 
 
 class ElasticSearch(Elasticsearch):
     """Client for ElasticSearch"""
 
     def __init__(self, dev: bool = True, es_index: str = None):
+        from common.secrets import es
         if dev:
             if es_index is None:
                 es_index = 'dev_peter.person_data_20190606'
@@ -48,6 +49,7 @@ class ElasticSearch(Elasticsearch):
 
 class EmailClient:
     """Client for sending plain text emails and attachments."""
+    from common.secrets import mail_pass
 
     def __init__(self,
                  smtp_server='smtp.gmail.com:587',
@@ -115,6 +117,7 @@ class MongoDB:
             coll = MongoDB('dev_peter', 'person_data_20190606')
             coll = MongoDB()['dev_peter']['person_data_20190606']
         """
+        from common.secrets import mongo
         user = mongo[0]
         password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
@@ -127,7 +130,13 @@ class MongoDB:
 
 
 class MySQLClient:
-    """Client for MySQL"""
+    """Client for MySQL
+
+    Example:
+        sql = MySQLClient()
+        data = sql.query(table="pc_data_final", postcode="1014AK")
+    """
+    from common.secrets import sql
     config = {
         'user': sql[0],
         'password': b64decode(sql[1]).decode(),
@@ -155,40 +164,40 @@ class MySQLClient:
         self.cursor.close()
         self.cnx.close()
 
-    def execute(self, query: str):
-        self.cursor.execute(query)
+    def execute(self, query: str, *args, **kwargs):
+        self.cursor.execute(query, *args, **kwargs)
 
-    def executemany(self, query: str, data: list):
+    def executemany(self, query: str, data: list, *args, **kwargs):
         self.connect()
-        self.cursor.executemany(query, data)
+        self.cursor.executemany(query, data, *args, **kwargs)
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
         return self.cursor.fetchall()
 
-    def column(self, query: str = None) -> List[str]:
+    def column(self, query: str = None, *args, **kwargs) -> List[str]:
         """Fetch one column from MySQL"""
         self.connect()
         if query is not None:
-            self.cursor.execute(query)
+            self.cursor.execute(query, *args, **kwargs)
         column = [value[0] for value in self.fetchall()]
         self.disconnect()
         return column
 
-    def table(self, query: str = None) -> List[list]:
+    def table(self, query: str = None, *args, **kwargs) -> List[list]:
         """Fetch a table from MySQL"""
         self.connect()
         if query is not None:
-            self.cursor.execute(query)
+            self.cursor.execute(query, *args, **kwargs)
         table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
 
-    def row(self, query: str = None) -> List[Any]:
+    def row(self, query: str = None, *args, **kwargs) -> List[Any]:
         """Fetch one row from MySQL"""
         self.connect()
         if query is not None:
-            self.cursor.execute(query)
+            self.cursor.execute(query, *args, **kwargs)
         row = list(self.fetchall()[0])
         self.disconnect()
         return row
@@ -255,6 +264,3 @@ class MySQLClient:
             result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
-
-
-del b64decode, es, mail_pass, mongo, sql
