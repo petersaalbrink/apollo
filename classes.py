@@ -2,6 +2,7 @@ import pathlib
 import smtplib
 import mysql.connector
 from os import PathLike
+from warnings import warn
 from email import encoders
 from base64 import b64decode
 import mysql.connector.cursor
@@ -12,7 +13,7 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, ElasticsearchException
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 
@@ -36,7 +37,13 @@ class ElasticSearch(Elasticsearch):
             'http_auth': (es[0], b64decode(es[1]).decode())}])
 
     def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs):
-        return self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)
+        while True:
+            try:
+                result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)
+                break
+            except ElasticsearchException:
+                pass
+        return result
 
     def simple(self, field: str = None, query: Union[str, int] = None, **kwargs):
         if kwargs:
@@ -131,6 +138,10 @@ class MongoDB:
 
 
 class Query(str):
+    pass
+
+
+class ConnectionWarning(Warning):
     pass
 
 
@@ -234,7 +245,12 @@ class MySQLClient:
         else:
             for i in range(0, 100_000_000, size):
                 q = query + f" LIMIT {i}, {size}"
-                table = self.table(q, *args, **kwargs)
+                while True:
+                    try:
+                        table = self.table(q, *args, **kwargs)
+                        break
+                    except DatabaseError:
+                        warn("Retrying", ConnectionWarning)
                 if len(table) == 0:
                     break
                 yield table
