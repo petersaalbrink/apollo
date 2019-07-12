@@ -41,7 +41,7 @@ class ElasticSearch(Elasticsearch):
             try:
                 result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)
                 break
-            except ElasticsearchException:
+            except (ElasticsearchException, OSError):
                 pass
         return result
 
@@ -152,18 +152,37 @@ class MySQLClient:
         sql = MySQLClient()
         data = sql.query(table="pc_data_final", postcode="1014AK")
     """
-    from common.secrets import sql
-    config = {
-        'user': sql[0],
-        'password': b64decode(sql[1]).decode(),
-        'host': '104.199.69.152',
-        'database': 'mx_traineeship_peter',
-        'raise_on_warnings': True,
-        'client_flags': [mysql.connector.ClientFlag.SSL],
-        'ssl_ca': str(pathlib.Path.home() / 'Python/common/certificates/server-ca.pem'),
-        'ssl_cert': str(pathlib.Path.home() / 'Python/common/certificates/client-cert.pem'),
-        'ssl_key': str(pathlib.Path.home() / 'Python/common/certificates/client-key.pem')}
-    cnx = cursor = None
+    def __init__(self, database: str = None, table: str = None):
+        """Client for MySQL
+
+        Example:
+            sql = MySQLClient()
+            data = sql.query(table="pc_data_final", postcode="1014AK")
+        """
+        from common.secrets import sql
+        if database is not None:
+            if "." in database:
+                table = database.split(".")[1]
+                database = database.split(".")[0]
+        else:
+            database = "mx_traineeship_peter"
+        if table is not None:
+            if "." in table:
+                table = table.split(".")[1]
+                database = table.split(".")[0]
+        self.database = database
+        self.table_name = table
+        self.config = {
+            'user': sql[0],
+            'password': b64decode(sql[1]).decode(),
+            'host': '104.199.69.152',
+            'database': self.database,
+            'raise_on_warnings': True,
+            'client_flags': [mysql.connector.ClientFlag.SSL],
+            'ssl_ca': str(pathlib.Path.home() / 'Python/common/certificates/server-ca.pem'),
+            'ssl_cert': str(pathlib.Path.home() / 'Python/common/certificates/client-cert.pem'),
+            'ssl_key': str(pathlib.Path.home() / 'Python/common/certificates/client-key.pem')}
+        self.cnx = self.cursor = self.iter = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -180,10 +199,10 @@ class MySQLClient:
         self.cursor.close()
         self.cnx.close()
 
-    def execute(self, query: str, *args, **kwargs):
+    def execute(self, query: Union[str, Query], *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
 
-    def executemany(self, query: str, data: list, *args, **kwargs):
+    def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
         self.disconnect()
@@ -191,34 +210,41 @@ class MySQLClient:
     def fetchall(self) -> List[tuple]:
         return self.cursor.fetchall()
 
-    def column(self, query: str = None, *args, **kwargs) -> List[str]:
+    def column(self, query: Union[str, Query] = None, *args, **kwargs) -> List[str]:
         """Fetch one column from MySQL"""
         self.connect()
-        if query is not None:
-            self.cursor.execute(query, *args, **kwargs)
+        if query is None:
+            query = f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}"
+        self.execute(query, *args, **kwargs)
         column = [value[0] for value in self.fetchall()]
         self.disconnect()
         return column
 
-    def table(self, query: str = None, *args, **kwargs) -> List[list]:
+    def table(self, query: Union[str, Query] = None, *args, **kwargs) -> List[list]:
         """Fetch a table from MySQL"""
         self.connect()
-        if query is not None:
-            self.cursor.execute(query, *args, **kwargs)
+        if query is None:
+            query = self.build()
+        self.cursor.execute(query, *args, **kwargs)
         table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
 
-    def row(self, query: str = None, *args, **kwargs) -> List[Any]:
+    def row(self, query: Union[str, Query] = None, *args, **kwargs) -> List[Any]:
         """Fetch one row from MySQL"""
         self.connect()
-        if query is not None:
-            self.cursor.execute(query, *args, **kwargs)
+        if query is None:
+            query = self.build(limit=1, offset=self.iter)
+            if self.iter is None:
+                self.iter = 1
+            else:
+                self.iter += 1
+        self.cursor.execute(query, *args, **kwargs)
         row = list(self.fetchall()[0])
         self.disconnect()
         return row
 
-    def chunk(self, query: str = None, size: int = None, *args, **kwargs) -> List[list]:
+    def chunk(self, query: Union[str, Query] = None, size: int = None, *args, **kwargs) -> List[list]:
         """Returns a generator for downloading a table in chunks
 
         Example:
@@ -232,6 +258,8 @@ class MySQLClient:
             for i, row in enumerate(sql.chunk(query=query, size=10)):
                 print(row)
         """
+        if query is None:
+            query = self.build()
         if size == 0:
             raise ValueError("Chunk size must be > 0")
         elif size == 1:
@@ -255,23 +283,26 @@ class MySQLClient:
                     break
                 yield table
 
-    def create_sql_table(self, query: str):
+    def create_sql_table(self, query: Union[str, Query] = None):
         self.connect()
+        if query is None:
+            query = self.build()
         try:
             self.execute(query)
         except DatabaseError:
             pass
         self.disconnect()
 
-    @staticmethod
-    def build(table: str, field: str = None, value: Union[str, int] = None,
+    def build(self, table: str = None, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               select_fields: Union[list, str] = None, **kwargs) -> Query:
         """Build a MySQL query"""
+        if table is None:
+            table = f"{self.database}.{self.table_name}"
         if select_fields is None:
             query = f"SELECT * FROM {table} "
         elif isinstance(select_fields, list):
-            query = f"SELECT {','.join(select_fields)} FROM {table} "
+            query = f"SELECT {', '.join(select_fields)} FROM {table} "
         else:
             query = f"SELECT {select_fields} FROM {table} "
         if not all([field is None, value is None]):
@@ -280,7 +311,7 @@ class MySQLClient:
             elif isinstance(value, int):
                 query += f"WHERE {field} = {value} "
         if kwargs:
-            keys = " AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
+            keys = "AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
                 f"{k} IS NOT NULL " if v == "!NULL" else (
                     f"{k} != '{v[1:]}' " if v.startswith('!') else f"{k} = '{v}' "))) for k, v in kwargs.items()])
             if "WHERE" in query:
@@ -324,10 +355,10 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if type(table) == str:
-            query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
-        elif type(table) == Query:
+        if type(table) == Query or table.startswith("SELECT"):
             query = table
+        elif type(table) == str:
+            query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
         else:
             raise ValueError(f"Query error: '{table}'")
         self.connect()
