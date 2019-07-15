@@ -22,6 +22,7 @@ class ElasticSearch(Elasticsearch):
     """Client for ElasticSearch"""
 
     def __init__(self, dev: bool = True, es_index: str = None):
+        """Client for ElasticSearch"""
         from common.secrets import es
         if dev:
             if es_index is None:
@@ -36,7 +37,10 @@ class ElasticSearch(Elasticsearch):
             'host': host, 'port': 9201,
             'http_auth': (es[0], b64decode(es[1]).decode())}])
 
-    def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs):
+    def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs) -> List[dict]:
+        """Perform an ElasticSearch query, and return the hits.
+
+        Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors."""
         while True:
             try:
                 result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)["hits"]["hits"]
@@ -45,13 +49,31 @@ class ElasticSearch(Elasticsearch):
                 pass
         return result
 
-    def simple(self, field: str = None, query: Union[str, int] = None, **kwargs):
+    def simple(self, field: str = None, query: Union[str, int] = None, **kwargs) -> List[dict]:
+        """Perform a simple ElasticSearch query, and return the hits.
+
+        Uses .find() method instead of regular .search()
+        Substitute period . for nested fields with underscore _
+
+        Examples:
+            from common.classes import ElasticSearch
+            es = ElasticSearch()
+            results = es.simple(field="lastname", query="Saalbrink")
+
+            # Add multiple search fields:
+            results = es.simple(lastname="Saalbrink", address_postalCode="1014AK")
+            # This results in the query:
+            {"query": {"bool": {"must": [{"match": {"lastname": "Saalbrink"}},
+                                         {"match": {"address.postalCode": "1014AK"}}]}}}
+        """
         if kwargs:
+            for k in kwargs:
+                if "_" in k and not k.startswith("_"):
+                    kwargs[k.replace("_", ".")] = kwargs.pop(k)
             if len(kwargs) == 1:
                 return self.find({"query": {"bool": {"must": [{"match": kwargs}]}}})
             else:
-                keys = [{"match": {k: v}} for k, v in kwargs.items()]
-                return self.find({"query": {"bool": {"must": keys}}})
+                return self.find({"query": {"bool": {"must": [{"match": {k: v}} for k, v in kwargs.items()]}}})
         return self.find({"query": {"bool": {"must": [{"match": {field: query}}]}}})
 
 
@@ -225,7 +247,7 @@ class MySQLClient:
         self.connect()
         if query is None:
             query = self.build()
-        self.cursor.execute(query, *args, **kwargs)
+        self.execute(query, *args, **kwargs)
         table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
@@ -239,7 +261,7 @@ class MySQLClient:
                 self.iter = 1
             else:
                 self.iter += 1
-        self.cursor.execute(query, *args, **kwargs)
+        self.execute(query, *args, **kwargs)
         row = list(self.fetchall()[0])
         self.disconnect()
         return row
