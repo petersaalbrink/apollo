@@ -39,7 +39,7 @@ class ElasticSearch(Elasticsearch):
     def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs):
         while True:
             try:
-                result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)
+                result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)["hits"]["hits"]
                 break
             except (ElasticsearchException, OSError):
                 pass
