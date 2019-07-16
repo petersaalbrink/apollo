@@ -55,7 +55,7 @@ class ElasticSearch(Elasticsearch):
                 pass
         return result
 
-    def simple(self, field: str = None, query: Union[str, int] = None, **kwargs) -> List[dict]:
+    def query(self, field: str = None, query: Union[str, int] = None, **kwargs) -> List[dict]:
         """Perform a simple ElasticSearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
@@ -73,13 +73,17 @@ class ElasticSearch(Elasticsearch):
                                          {"match": {"address.postalCode": "1014AK"}}]}}}
         """
         if kwargs:
+            sort = kwargs.pop("sort", None)
+            args = {}
             for k in kwargs:
                 if "_" in k and not k.startswith("_"):
-                    kwargs[k.replace("_", ".")] = kwargs.pop(k)
-            if len(kwargs) == 1:
-                return self.find({"query": {"bool": {"must": [{"match": kwargs}]}}})
+                    args[k.replace("_", ".")] = kwargs[k]
+            if len(args) == 1:
+                q = {"query": {"bool": {"must": [{"match": args}]}}}
+                return self.find(q)
             else:
-                return self.find({"query": {"bool": {"must": [{"match": {k: v}} for k, v in kwargs.items()]}}})
+                q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
+                return self.find(q, sort=sort)
         return self.find({"query": {"bool": {"must": [{"match": {field: query}}]}}})
 
 
