@@ -13,9 +13,9 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
-from elasticsearch import Elasticsearch, ElasticsearchException
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
+from elasticsearch import Elasticsearch, ElasticsearchException
 
 
 class ElasticSearch(Elasticsearch):
@@ -25,13 +25,13 @@ class ElasticSearch(Elasticsearch):
         """Client for ElasticSearch"""
         from common.secrets import es
         if dev:
+            host = '136.144.173.2'
             if es_index is None:
                 es_index = 'dev_peter.person_data_20190606'
-            host = '136.144.173.2'
         else:
+            host = '37.97.169.90'
             if es_index is None:
                 es_index = 'production_realestate.realestate'
-            host = '37.97.169.90'
         self.es_index = es_index
         super(ElasticSearch, self).__init__([{
             'host': host, 'port': 9201,
@@ -194,6 +194,14 @@ class MySQLClient:
                 database = table.split(".")[0]
         self.database = database
         self.table_name = table
+        try:
+            ssl_ca = next(pathlib.Path.cwd().rglob("common/certificates/server-ca.pem"))
+            ssl_key = next(pathlib.Path.cwd().rglob("common/certificates/client-key.pem"))
+            ssl_cert = next(pathlib.Path.cwd().rglob("common/certificates/client-cert.pem"))
+        except StopIteration:
+            ssl_ca = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/server-ca.pem"))
+            ssl_key = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/client-key.pem"))
+            ssl_cert = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/client-cert.pem"))
         self.config = {
             'user': sql[0],
             'password': b64decode(sql[1]).decode(),
@@ -201,9 +209,9 @@ class MySQLClient:
             'database': self.database,
             'raise_on_warnings': True,
             'client_flags': [mysql.connector.ClientFlag.SSL],
-            'ssl_ca': str(pathlib.Path.home() / 'Python/common/certificates/server-ca.pem'),
-            'ssl_cert': str(pathlib.Path.home() / 'Python/common/certificates/client-cert.pem'),
-            'ssl_key': str(pathlib.Path.home() / 'Python/common/certificates/client-key.pem')}
+            'ssl_ca': str(ssl_ca),
+            'ssl_cert': str(ssl_cert),
+            'ssl_key': str(ssl_key)}
         self.cnx = self.cursor = self.iter = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
@@ -282,10 +290,10 @@ class MySQLClient:
         """
         if query is None:
             query = self.build()
-        if size == 0:
+        if size <= 0:
             raise ValueError("Chunk size must be > 0")
         elif size == 1:
-            for i in range(0, 100_000_000, size):
+            for i in range(0, 1_000_000_000, size):
                 q = query + f" LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
@@ -293,7 +301,7 @@ class MySQLClient:
                     break
                 yield row
         else:
-            for i in range(0, 100_000_000, size):
+            for i in range(0, 1_000_000_000, size):
                 q = query + f" LIMIT {i}, {size}"
                 while True:
                     try:
@@ -315,16 +323,19 @@ class MySQLClient:
             pass
         self.disconnect()
 
-    def build(self, table: str = None, field: str = None, value: Union[str, int] = None,
+    def build(self, table: str = None, select_fields: Union[list, str] = None,
+              field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              select_fields: Union[list, str] = None, **kwargs) -> Query:
+              **kwargs) -> Query:
         """Build a MySQL query"""
         if table is None:
             table = f"{self.database}.{self.table_name}"
+        elif "." not in table:
+            table = f"{self.database}.{table}"
         if select_fields is None:
             query = f"SELECT * FROM {table} "
         elif isinstance(select_fields, list):
-            query = f"SELECT {', '.join(select_fields)} FROM {table} "
+            query = f"SELECT `{'`, `'.join(select_fields)}` FROM {table} "
         else:
             query = f"SELECT {select_fields} FROM {table} "
         if not all([field is None, value is None]):
