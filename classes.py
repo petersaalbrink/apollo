@@ -25,17 +25,23 @@ class ElasticSearch(Elasticsearch):
         """Client for ElasticSearch"""
         from common.secrets import es
         if dev:
-            host = '136.144.173.2'
+            self.host = '136.144.173.2'
             if es_index is None:
                 es_index = 'dev_peter.person_data_20190606'
         else:
-            host = '37.97.169.90'
+            self.host = '37.97.169.90'
             if es_index is None:
                 es_index = 'production_realestate.realestate'
         self.es_index = es_index
-        super(ElasticSearch, self).__init__([{
-            'host': host, 'port': 9201,
-            'http_auth': (es[0], b64decode(es[1]).decode())}])
+        self.port = 9201
+        config = [{'host': self.host, 'port': self.port, 'http_auth': (es[0], b64decode(es[1]).decode())}]
+        super().__init__(config)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(host='{self.host}', port='{self.port}', index='{self.es_index}')"
+
+    def __str__(self):
+        return f"http://{self.host}:{self.port}/{self.es_index}/_stats"
 
     def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs) -> List[dict]:
         """Perform an ElasticSearch query, and return the hits.
