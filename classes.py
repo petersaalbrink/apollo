@@ -4,6 +4,7 @@ import mysql.connector
 from os import PathLike
 from warnings import warn
 from email import encoders
+from socket import timeout
 from base64 import b64decode
 import mysql.connector.cursor
 from pymongo import MongoClient
@@ -51,11 +52,11 @@ class ElasticSearch(Elasticsearch):
             try:
                 result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)["hits"]["hits"]
                 break
-            except (ElasticsearchException, OSError):
-                pass
+            except (ElasticsearchException, OSError, ConnectionError, timeout):
+                warn("Retrying", ConnectionWarning)
         return result
 
-    def query(self, field: str = None, query: Union[str, int] = None, **kwargs) -> List[dict]:
+    def query(self, field: str = None, value: Union[str, int] = None, **kwargs) -> List[dict]:
         """Perform a simple ElasticSearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
@@ -84,7 +85,7 @@ class ElasticSearch(Elasticsearch):
             else:
                 q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
                 return self.find(q, sort=sort)
-        return self.find({"query": {"bool": {"must": [{"match": {field: query}}]}}})
+        return self.find({"query": {"bool": {"must": [{"match": {field: value}}]}}})
 
 
 class EmailClient:
@@ -398,9 +399,9 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if type(table) == Query or table.startswith("SELECT"):
+        if isinstance(table, Query) or table.startswith("SELECT"):
             query = table
-        elif type(table) == str:
+        elif isinstance(table, str):
             query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
         else:
             raise ValueError(f"Query error: '{table}'")
