@@ -164,6 +164,9 @@ class MongoDB:
         host = '136.144.173.2'
         mongo_client = MongoClient(f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
         if database is not None:
+            if "." in database:
+                collection = database.split(".")[1]
+                database = database.split(".")[0]
             if collection is not None:
                 return mongo_client.__getattr__(database).__getattr__(collection)
             return mongo_client.__getattr__(database)
