@@ -1,20 +1,19 @@
 import pathlib
 import smtplib
 import mysql.connector
-from os import PathLike
 from warnings import warn
 from email import encoders
 from socket import timeout
 from base64 import b64decode
 import mysql.connector.cursor
 from pymongo import MongoClient
-from typing import Any, List, Union
 from urllib.parse import quote_plus
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
 from mysql.connector import DatabaseError
+from typing import Any, List, Union
 from email.mime.multipart import MIMEMultipart
 from elasticsearch import Elasticsearch, ElasticsearchException
 
@@ -26,35 +25,73 @@ class ElasticSearch(Elasticsearch):
         """Client for ElasticSearch"""
         from common.secrets import es
         if dev:
-            self.host = '136.144.173.2'
+            self._host = '136.144.173.2'
             if es_index is None:
                 es_index = 'dev_peter.person_data_20190606'
         else:
-            self.host = '37.97.169.90'
+            self._host = '37.97.169.90'
             if es_index is None:
                 es_index = 'production_realestate.realestate'
         self.es_index = es_index
-        self.port = 9201
-        config = [{'host': self.host, 'port': self.port, 'http_auth': (es[0], b64decode(es[1]).decode())}]
-        super().__init__(config)
+        self._port = 9201
+        hosts = [{'host': self._host, 'port': self._port}]
+        config = {'http_auth': (es[0], b64decode(es[1]).decode()), "retry_on_timeout": True}
+        super().__init__(hosts, **config)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(host='{self.host}', port='{self.port}', index='{self.es_index}')"
+        return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
 
     def __str__(self):
-        return f"http://{self.host}:{self.port}/{self.es_index}/_stats"
+        return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
-    def find(self, query: Union[dict, List[dict]] = None, *args, **kwargs) -> List[dict]:
+    def find(self, query: Union[dict, List[dict]] = None,
+             hits_only: bool = True, source_only: bool = False, first_only: bool = False,
+             *args, **kwargs) -> Union[List[dict], List[List[dict]], dict]:
         """Perform an ElasticSearch query, and return the hits.
 
-        Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors."""
-        while True:
-            try:
-                result = self.search(index=self.es_index, size=10_000, body=query, *args, **kwargs)["hits"]["hits"]
-                break
-            except (ElasticsearchException, OSError, ConnectionError, timeout):
-                warn("Retrying", ConnectionWarning)
-        return result
+        Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
+        Accepts a single query (dict) or multiple (List[dict]).
+        Returns:
+            query: dict and
+                not hits_only -> dict
+                hits_only -> List[dict]
+                source_only -> List[dict]
+                first_only -> dict
+            query: List[dict] and
+                not hits_only -> List[dict]
+                hits_only -> List[List[dict]]
+                source_only -> List[List[dict]]
+                first_only -> List[dict]
+        """
+        if isinstance(query, dict):
+            query = [query]
+        if first_only and not source_only:
+            source_only = True
+        if source_only and not hits_only:
+            warn("Returning hits only if any([source_only, first_only])")
+            hits_only = True
+        results = []
+        for q in query:
+            while True:
+                try:
+                    result = self.search(
+                        index=self.es_index, size=10_000, body=q, *args, **kwargs)
+                    break
+                except (ElasticsearchException, OSError, ConnectionError, timeout):
+                    warn("Retrying", ConnectionWarning)
+            if hits_only:
+                result = result["hits"]["hits"]
+            if source_only:
+                result = [doc["_source"] for doc in result]
+            if first_only:
+                try:
+                    result = [result[0]]
+                except IndexError:
+                    result = []
+            results.append(result)
+        if len(results) == 1:
+            results = results[0]
+        return results
 
     def query(self, field: str = None, value: Union[str, int] = None, **kwargs) -> List[dict]:
         """Perform a simple ElasticSearch query, and return the hits.
@@ -97,16 +134,16 @@ class EmailClient:
                  login='dev@matrixiangroup.com',
                  password=b64decode(mail_pass).decode()):
         """Client for sending plain text emails and attachments."""
-        self.smtp_server = smtp_server
-        self.login = login
-        self.password = password
+        self._smtp_server = smtp_server
+        self._login = login
+        self._password = password
 
     def send_email(self,
                    to_address: Union[str, list] = 'psaalbrink@matrixiangroup.com',
                    subject: str = 'no subject',
                    message: str = '',
                    from_address: str = 'dev@matrixiangroup.com',
-                   attachment_path: Union[str, pathlib.Path, PathLike] = None,
+                   attachment_path: Union[str, pathlib.PurePath] = None,
                    ):
         """Send an email to an email address (str) or a list of addresses.
         To attach a file, include the Path to the file
@@ -126,20 +163,18 @@ class EmailClient:
             p = MIMEBase('application', 'octet-stream')
             p.set_payload(attachment.read())
             encoders.encode_base64(p)
-            if not isinstance(attachment_path, str):
-                p.add_header('Content-Disposition', f"attachment; filename={attachment_path.name}")
-            else:
-                p.add_header('Content-Disposition', f"attachment; filename={attachment_path}")
+            filename = attachment_path.name if isinstance(attachment_path, pathlib.PurePath) else attachment_path
+            p.add_header('Content-Disposition', f"attachment; filename={filename}")
             msg.attach(p)
 
-        server = smtplib.SMTP(self.smtp_server)
+        server = smtplib.SMTP(self._smtp_server)
         server.starttls()
-        server.login(self.login, self.password)
+        server.login(self._login, self._password)
         server.sendmail(from_address, to_address, msg.as_string())
         server.quit()
 
 
-class MongoDB:
+class MongoDB(MongoClient):
     """Client for MongoDB
 
     Usage:
@@ -162,7 +197,7 @@ class MongoDB:
         user = mongo[0]
         password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
-        mongo_client = MongoClient(f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
+        mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
         if database is not None:
             if "." in database:
                 collection = database.split(".")[1]
@@ -195,6 +230,7 @@ class MySQLClient:
             sql = MySQLClient()
             data = sql.query(table="pc_data_final", postcode="1014AK")
         """
+        import common
         from common.secrets import sql
         if database is not None:
             if "." in database:
@@ -208,29 +244,22 @@ class MySQLClient:
                 database = table.split(".")[0]
         self.database = database
         self.table_name = table
-        try:
-            ssl_ca = next(pathlib.Path.cwd().rglob("common/certificates/server-ca.pem"))
-            ssl_key = next(pathlib.Path.cwd().rglob("common/certificates/client-key.pem"))
-            ssl_cert = next(pathlib.Path.cwd().rglob("common/certificates/client-cert.pem"))
-        except StopIteration:
-            ssl_ca = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/server-ca.pem"))
-            ssl_key = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/client-key.pem"))
-            ssl_cert = next(pathlib.Path.cwd().parents[0].rglob("common/certificates/client-cert.pem"))
-        self.config = {
+        path = pathlib.Path(common.__file__).parent / "certificates"
+        self.__config = {
             'user': sql[0],
             'password': b64decode(sql[1]).decode(),
             'host': '104.199.69.152',
             'database': self.database,
             'raise_on_warnings': True,
             'client_flags': [mysql.connector.ClientFlag.SSL],
-            'ssl_ca': str(ssl_ca),
-            'ssl_cert': str(ssl_cert),
-            'ssl_key': str(ssl_key)}
-        self.cnx = self.cursor = self.iter = None
+            'ssl_ca': str(path / "server-ca.pem"),
+            'ssl_cert': str(path / "client-cert.pem"),
+            'ssl_key': str(path / "client-key.pem")}
+        self.cnx = self.cursor = self._iter = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
-        self.cnx = mysql.connector.connect(**self.config)
+        self.cnx = mysql.connector.connect(**self.__config)
         self.cnx.autocommit = True
         self.cursor = self.cnx.cursor(buffered=True)
         if conn:
@@ -278,11 +307,11 @@ class MySQLClient:
         """Fetch one row from MySQL"""
         self.connect()
         if query is None:
-            query = self.build(limit=1, offset=self.iter)
-            if self.iter is None:
-                self.iter = 1
+            query = self.build(limit=1, offset=self._iter)
+            if self._iter is None:
+                self._iter = 1
             else:
-                self.iter += 1
+                self._iter += 1
         self.execute(query, *args, **kwargs)
         row = list(self.fetchall()[0])
         self.disconnect()
