@@ -332,13 +332,23 @@ class MySQLClient:
         self.disconnect()
         return column
 
-    def table(self, query: Union[str, Query] = None, *args, **kwargs) -> List[list]:
+    def table(self,
+              query: Union[str, Query] = None,
+              fieldnames: Union[bool, List[str]] = False,
+              *args, **kwargs) -> Union[List[list], List[dict]]:
         """Fetch a table from MySQL"""
-        self.connect()
+        if isinstance(fieldnames, list):
+            pass
+        elif fieldnames:
+            fieldnames = self.column()
         if query is None:
             query = self.build()
+        self.connect()
         self.execute(query, *args, **kwargs)
-        table = [list(row) for row in self.fetchall()]
+        if fieldnames:
+            table = [dict(zip(fieldnames, row)) for row in self.fetchall()]
+        else:
+            table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
 
