@@ -13,12 +13,13 @@ from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
 from mysql.connector import DatabaseError
-from typing import Any, List, Union
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime, timedelta, date
+from typing import Any, Dict, List, Tuple, Type, Union
 from elasticsearch import Elasticsearch, ElasticsearchException
 
 
-class ElasticSearch(Elasticsearch):
+class ESClient(Elasticsearch):
     """Client for ElasticSearch"""
 
     def __init__(self, dev: bool = True, es_index: str = None):
@@ -27,7 +28,7 @@ class ElasticSearch(Elasticsearch):
         if dev:
             self._host = '136.144.173.2'
             if es_index is None:
-                es_index = 'dev_peter.person_data_20190606'
+                es_index = 'dev_peter.person_data_20190716'
         else:
             self._host = '37.97.169.90'
             if es_index is None:
@@ -74,8 +75,7 @@ class ElasticSearch(Elasticsearch):
         for q in query:
             while True:
                 try:
-                    result = self.search(
-                        index=self.es_index, size=10_000, body=q, *args, **kwargs)
+                    result = self.search(index=self.es_index, size=10_000, body=q, *args, **kwargs)
                     break
                 except (ElasticsearchException, OSError, ConnectionError, timeout):
                     warn("Retrying", ConnectionWarning)
@@ -112,17 +112,19 @@ class ElasticSearch(Elasticsearch):
         """
         if kwargs:
             sort = kwargs.pop("sort", None)
+            track_scores = kwargs.pop("track_scores", None)
             args = {}
             for k in kwargs:
                 if "_" in k and not k.startswith("_"):
                     args[k.replace("_", ".")] = kwargs[k]
             if len(args) == 1:
                 q = {"query": {"bool": {"must": [{"match": args}]}}}
-                return self.find(q)
+                return self.find(q, sort=sort, track_scores=track_scores)
             else:
                 q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
-                return self.find(q, sort=sort)
-        return self.find({"query": {"bool": {"must": [{"match": {field: value}}]}}})
+                return self.find(q, sort=sort, track_scores=track_scores)
+        q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
+        return self.find(q)
 
 
 class EmailClient:
@@ -158,7 +160,7 @@ class EmailClient:
         msg['Subject'] = subject
         msg.attach(MIMEText(message, 'plain'))
 
-        if attachment_path is not None:
+        if attachment_path:
             attachment = open(attachment_path, 'rb')
             p = MIMEBase('application', 'octet-stream')
             p.set_payload(attachment.read())
@@ -198,14 +200,51 @@ class MongoDB(MongoClient):
         password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
-        if database is not None:
+        if database:
             if "." in database:
                 collection = database.split(".")[1]
                 database = database.split(".")[0]
-            if collection is not None:
+            if collection:
                 return mongo_client.__getattr__(database).__getattr__(collection)
             return mongo_client.__getattr__(database)
         return mongo_client
+
+    def find_last(self) -> dict:
+        """Return the last document in a collection.
+
+        Usage:
+            from common.classes import MongoDB
+            db = MongoDB("dev_peter.person_data_20190716")
+            doc = MongoDB.find_last(db)
+            print(doc)
+        """
+        if isinstance(self, Collection):
+            return next(self.find().sort([('_id', -1)]).limit(1))
+
+    def find_duplicates(self) -> List[dict]:
+        """Return duplicated documents in a collection.
+
+        Usage:
+            from common.classes import MongoDB
+            db = MongoDB("dev_peter.person_data_20190716")
+            docs = MongoDB.find_duplicates(db)
+            print(docs)
+        """
+        return list(self.aggregate([
+            {"$unwind": "$birth"},
+            {"$unwind": "$address"},
+            {"$unwind": "$address.current"},
+            {"$group": {"_id": {
+                "lastname": "$lastname",
+                "dateOfRecord": "$dateOfRecord",
+                "birth": "$birth.date",
+                "address": "$address.current.postalCode",
+            },
+                "uniqueIds": {"$addToSet": "$_id"},
+                "count": {"$sum": 1}
+            }},
+            {"$match": {"count": {"$gt": 1}}}
+        ], allowDiskUse=True))
 
 
 class Query(str):
@@ -232,13 +271,13 @@ class MySQLClient:
         """
         import common
         from common.secrets import sql
-        if database is not None:
+        if database:
             if "." in database:
                 table = database.split(".")[1]
                 database = database.split(".")[0]
         else:
             database = "mx_traineeship_peter"
-        if table is not None:
+        if table:
             if "." in table:
                 table = table.split(".")[1]
                 database = table.split(".")[0]
@@ -356,15 +395,77 @@ class MySQLClient:
                     break
                 yield table
 
-    def create_sql_table(self, query: Union[str, Query] = None):
+    @staticmethod
+    def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str]) -> dict:
+        types = list(zip([type(value) for value in data[0]],
+                         list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
+        if len(types) != len(fieldnames):
+            raise ValueError
+        return dict(zip(fieldnames, types))
+
+    def create_table(self,
+                     table: str,
+                     fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
+                     drop_existing: bool = False):
+        """Create a SQL table in MySQLClient.database.
+
+        :param table: The name of the table to be created.
+        :param fields: A dictionary with field names for keys and tuples for values, containing a pair of class type
+        and precision. For example:
+            fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
+        :param drop_existing: If the table already exists, delete it (default: False).
+        """
+        types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
+                 timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
+        fields = [name + f' {types[type_]}({str(length).replace(".", ",")})'
+                  if type_ not in [date, datetime.date] else name + f' {types[type_]}'
+                  for name, (type_, length) in fields.items()]
         self.connect()
-        if query is None:
-            query = self.build()
+        if drop_existing:
+            try:
+                self.execute(f"DROP TABLE {table}")
+            except DatabaseError:
+                pass
         try:
-            self.execute(query)
+            self.execute(f"CREATE TABLE {table} ({', '.join(fields)})")
         except DatabaseError:
             pass
         self.disconnect()
+
+    def insert(self, table: str, data: List[list]) -> int:
+        """Insert a data array into a SQL table.
+
+        The data is split into chunks of appropriate size before upload."""
+        self.connect()
+        try:
+            query = f"INSERT INTO {table} VALUES ({', '.join(['%s'] * len(data[0]))})"
+        except IndexError:
+            raise ValueError("Your data might be empty.")
+        limit = 10_000
+        for offset in range(0, 1_000_000_000, limit):
+            chunk = data[offset:offset + limit]
+            if len(chunk) == 0:
+                break
+            self.executemany(query, chunk)
+        self.disconnect()
+        return len(data)
+
+    def insert_new(self,
+                   table: str,
+                   fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
+                   data: List[Union[list, tuple]]) -> int:
+        """Create a new SQL table in MySQLClient.database, and insert a data array into it.
+
+        :param table: The name of the table to be created.
+        :param fields: A dictionary with field names for keys and tuples for values, containing a pair of class type
+        and precision. For example:
+            fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
+        :param data: A two-dimensional array containing data corresponding to fields.
+
+        The data is split into chunks of appropriate size before upload.
+        """
+        self.create_table(table, fields, drop_existing=True)
+        return self.insert(table, data)
 
     def build(self, table: str = None, select_fields: Union[list, str] = None,
               field: str = None, value: Union[str, int] = None,
@@ -394,12 +495,12 @@ class MySQLClient:
                 query += f"AND {keys}"
             else:
                 query += f"WHERE {keys}"
-        if limit is not None:
+        if limit:
             if isinstance(limit, (int, str)):
                 query += f"LIMIT {limit} "
             elif isinstance(limit, (list, tuple)):
                 query += f"LIMIT {limit[0]}, {limit[1]} "
-        if offset is not None:
+        if offset:
             query += f"OFFSET {offset} "
         return Query(query)
 
@@ -447,6 +548,3 @@ class MySQLClient:
             result = [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
-
-# TODO: sql class method for creating table
-# TODO: sql class method for updating table
