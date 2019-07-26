@@ -1,5 +1,6 @@
 import pathlib
 import smtplib
+from sys import argv
 import mysql.connector
 from warnings import warn
 from email import encoders
@@ -15,7 +16,7 @@ from pymongo.database import Collection
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
-from typing import Any, Dict, List, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Tuple, Type, Union
 from elasticsearch import Elasticsearch, ElasticsearchException
 
 
@@ -36,7 +37,7 @@ class ESClient(Elasticsearch):
         self.es_index = es_index
         self._port = 9201
         hosts = [{'host': self._host, 'port': self._port}]
-        config = {'http_auth': (es[0], b64decode(es[1]).decode()), "retry_on_timeout": True}
+        config = {'http_auth': (es[0], b64decode(es[1]).decode()), "timeout": 60, "retry_on_timeout": True}
         super().__init__(hosts, **config)
 
     def __repr__(self):
@@ -45,7 +46,7 @@ class ESClient(Elasticsearch):
     def __str__(self):
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
-    def find(self, query: Union[dict, List[dict]] = None,
+    def find(self, query: Union[dict, List[dict], Iterator[dict]] = None,
              hits_only: bool = True, source_only: bool = False, first_only: bool = False,
              *args, **kwargs) -> Union[List[dict], List[List[dict]], dict]:
         """Perform an ElasticSearch query, and return the hits.
@@ -64,6 +65,8 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
+        if not query:
+            return self.search(index=self.es_index, size=1, body={}, *args, **kwargs)
         if isinstance(query, dict):
             query = [query]
         if first_only and not source_only:
@@ -73,6 +76,9 @@ class ESClient(Elasticsearch):
             hits_only = True
         results = []
         for q in query:
+            if not q:
+                results.append([])
+                continue
             while True:
                 try:
                     result = self.search(index=self.es_index, size=10_000, body=q, *args, **kwargs)
@@ -85,7 +91,7 @@ class ESClient(Elasticsearch):
                 result = [doc["_source"] for doc in result]
             if first_only:
                 try:
-                    result = [result[0]]
+                    result = result[0]
                 except IndexError:
                     result = []
             results.append(result)
@@ -142,8 +148,8 @@ class EmailClient:
 
     def send_email(self,
                    to_address: Union[str, list] = 'psaalbrink@matrixiangroup.com',
-                   subject: str = 'no subject',
-                   message: str = '',
+                   subject: str = None,
+                   message: Union[str, Exception] = None,
                    from_address: str = 'dev@matrixiangroup.com',
                    attachment_path: Union[str, pathlib.PurePath] = None,
                    ):
@@ -157,7 +163,13 @@ class EmailClient:
             msg['To'] = to_address
         elif isinstance(to_address, list):
             msg['To'] = ','.join(to_address)
+        if not subject:
+            subject = pathlib.Path(argv[0]).stem
         msg['Subject'] = subject
+        if not message:
+            message = ''
+        elif isinstance(message, Exception):
+            message = str(message)
         msg.attach(MIMEText(message, 'plain'))
 
         if attachment_path:
@@ -186,7 +198,8 @@ class MongoDB(MongoClient):
         coll = MongoDB()['dev_peter']['person_data_20190606']
     """
 
-    def __new__(cls, database: str = None, collection: str = None) -> Union[MongoClient, Database, Collection]:
+    def __new__(cls, database: str = None, collection: str = None, client: bool = False) \
+            -> Union[MongoClient, Database, Collection]:
         """Client for MongoDB
 
         Usage:
@@ -200,6 +213,8 @@ class MongoDB(MongoClient):
         password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
+        if not client and not database:
+            database = "dev_peter.person_data_20190716"
         if database:
             if "." in database:
                 collection = database.split(".")[1]
@@ -345,24 +360,29 @@ class MySQLClient:
             query = self.build()
         self.connect()
         self.execute(query, *args, **kwargs)
-        if fieldnames:
-            table = [dict(zip(fieldnames, row)) for row in self.fetchall()]
-        else:
-            table = [list(row) for row in self.fetchall()]
+        table = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
+            else [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
 
-    def row(self, query: Union[str, Query] = None, *args, **kwargs) -> List[Any]:
+    def row(self,
+            query: Union[str, Query] = None,
+            fieldnames: Union[bool, List[str]] = False,
+            *args, **kwargs) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
-        self.connect()
+        if isinstance(fieldnames, list):
+            pass
+        elif fieldnames:
+            fieldnames = self.column()
         if query is None:
             query = self.build(limit=1, offset=self._iter)
             if self._iter is None:
                 self._iter = 1
             else:
                 self._iter += 1
+        self.connect()
         self.execute(query, *args, **kwargs)
-        row = list(self.fetchall()[0])
+        row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
         self.disconnect()
         return row
 
@@ -409,6 +429,8 @@ class MySQLClient:
     def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str]) -> dict:
         types = list(zip([type(value) for value in data[0]],
                          list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
+        types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
+                 for type_, prec in types]
         if len(types) != len(fieldnames):
             raise ValueError
         return dict(zip(fieldnames, types))
@@ -460,6 +482,17 @@ class MySQLClient:
         self.disconnect()
         return len(data)
 
+    def add_index(self, table: str = None, fieldnames: List[str] = None):
+        """Add indexes to a MySQL table."""
+        query = f"ALTER TABLE {self.database}.{table if table else self.table_name} "
+        if not fieldnames:
+            fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
+        for index in fieldnames:
+            query += f"ADD INDEX {index} ({index}) USING BTREE, "
+        self.connect()
+        self.execute(query.rstrip(", "))
+        self.disconnect()
+
     def insert_new(self,
                    table: str,
                    fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
@@ -475,6 +508,7 @@ class MySQLClient:
         The data is split into chunks of appropriate size before upload.
         """
         self.create_table(table, fields, drop_existing=True)
+        self.add_index(table, list(fields))
         return self.insert(table, data)
 
     def build(self, table: str = None, select_fields: Union[list, str] = None,
@@ -514,9 +548,10 @@ class MySQLClient:
             query += f"OFFSET {offset} "
         return Query(query)
 
-    def query(self, table: str, field: str = None, value: Union[str, int] = None,
+    def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              select_fields: Union[list, str] = None, **kwargs) -> List[list]:
+              fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
+              **kwargs) -> Union[List[list], List[dict]]:
         """Build and perform a MySQL query, and returns a data array.
 
         Examples:
@@ -542,19 +577,21 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if isinstance(table, Query) or table.startswith("SELECT"):
-            query = table
-        elif isinstance(table, str):
-            query = self.build(table, field, value, limit, offset, select_fields, **kwargs)
-        else:
-            raise ValueError(f"Query error: '{table}'")
+        query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) else self.build(
+            table=table, field=field, value=value, limit=limit, offset=offset, select_fields=select_fields, **kwargs)
+        if isinstance(fieldnames, list):
+            pass
+        elif fieldnames:
+            fieldnames = self.column()
         self.connect()
         self.execute(query)
         if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
-            result = [value[0] for value in self.fetchall()]
+            result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
+                      for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
         elif limit == 1:
-            result = list(self.fetchall()[0])
+            result = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
         else:
-            result = [list(row) for row in self.fetchall()]
+            result = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
+                else [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
