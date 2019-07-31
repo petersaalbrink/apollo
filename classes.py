@@ -189,14 +189,7 @@ class EmailClient:
 
 
 class MongoDB(MongoClient):
-    """Client for MongoDB
-
-    Usage:
-        client = MongoDB()
-        db = MongoDB('dev_peter')
-        coll = MongoDB('dev_peter', 'person_data_20190606')
-        coll = MongoDB()['dev_peter']['person_data_20190606']
-    """
+    """Client for MongoDB. Uses MongoClient as superclass."""
 
     def __new__(cls, database: str = None, collection: str = None, client: bool = False) \
             -> Union[MongoClient, Database, Collection]:
@@ -212,7 +205,8 @@ class MongoDB(MongoClient):
         user = mongo[0]
         password = b64decode(mongo[1]).decode()
         host = '136.144.173.2'
-        mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}")
+        mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",
+                                   connectTimeoutMS=None)
         if not client and not database:
             database = "dev_peter.person_data_20190716"
         if database:
@@ -488,7 +482,7 @@ class MySQLClient:
         if not fieldnames:
             fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
         for index in fieldnames:
-            query += f"ADD INDEX {index} ({index}) USING BTREE, "
+            query += f"ADD INDEX `{index}` (`{index}`) USING BTREE, "
         self.connect()
         self.execute(query.rstrip(", "))
         self.disconnect()
