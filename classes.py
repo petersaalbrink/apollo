@@ -27,17 +27,17 @@ class ESClient(Elasticsearch):
         """Client for ElasticSearch"""
         from common.secrets import es
         if dev:
-            self._host = '136.144.173.2'
+            self._host = "136.144.173.2"
             if es_index is None:
-                es_index = 'dev_peter.person_data_20190716'
+                es_index = "dev_peter.person_data_20190716"
         else:
-            self._host = '37.97.169.90'
+            self._host = "37.97.169.90"
             if es_index is None:
-                es_index = 'production_realestate.realestate'
+                es_index = "production_realestate.realestate"
         self.es_index = es_index
         self._port = 9201
-        hosts = [{'host': self._host, 'port': self._port}]
-        config = {'http_auth': (es[0], b64decode(es[1]).decode()), "timeout": 60, "retry_on_timeout": True}
+        hosts = [{"host": self._host, "port": self._port}]
+        config = {"http_auth": (es[0], b64decode(es[1]).decode()), "timeout": 60, "retry_on_timeout": True}
         super().__init__(hosts, **config)
 
     def __repr__(self):
@@ -129,8 +129,11 @@ class ESClient(Elasticsearch):
             else:
                 q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
                 return self.find(q, sort=sort, track_scores=track_scores)
-        q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
-        return self.find(q)
+        if field and value:
+            q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
+            return self.find(q)
+        else:
+            return self.find()
 
 
 class EmailClient:
@@ -138,8 +141,8 @@ class EmailClient:
     from common.secrets import mail_pass
 
     def __init__(self,
-                 smtp_server='smtp.gmail.com:587',
-                 login='dev@matrixiangroup.com',
+                 smtp_server="smtp.gmail.com:587",
+                 login="dev@matrixiangroup.com",
                  password=b64decode(mail_pass).decode()):
         """Client for sending plain text emails and attachments."""
         self._smtp_server = smtp_server
@@ -147,10 +150,10 @@ class EmailClient:
         self._password = password
 
     def send_email(self,
-                   to_address: Union[str, list] = 'psaalbrink@matrixiangroup.com',
+                   to_address: Union[str, list] = "psaalbrink@matrixiangroup.com",
                    subject: str = None,
                    message: Union[str, Exception] = None,
-                   from_address: str = 'dev@matrixiangroup.com',
+                   from_address: str = "dev@matrixiangroup.com",
                    attachment_path: Union[str, pathlib.PurePath] = None,
                    ):
         """Send an email to an email address (str) or a list of addresses.
@@ -158,27 +161,27 @@ class EmailClient:
         or just the filename (str) if it's in the current working directory."""
 
         msg = MIMEMultipart()
-        msg['From'] = from_address
+        msg["From"] = from_address
         if isinstance(to_address, str):
-            msg['To'] = to_address
+            msg["To"] = to_address
         elif isinstance(to_address, list):
-            msg['To'] = ','.join(to_address)
+            msg["To"] = ",".join(to_address)
         if not subject:
             subject = pathlib.Path(argv[0]).stem
-        msg['Subject'] = subject
+        msg["Subject"] = subject
         if not message:
-            message = ''
+            message = ""
         elif isinstance(message, Exception):
             message = str(message)
-        msg.attach(MIMEText(message, 'plain'))
+        msg.attach(MIMEText(message, "plain"))
 
         if attachment_path:
-            attachment = open(attachment_path, 'rb')
-            p = MIMEBase('application', 'octet-stream')
-            p.set_payload(attachment.read())
+            p = MIMEBase("application", "octet-stream")
+            with open(attachment_path, "rb") as attachment:
+                p.set_payload(attachment.read())
             encoders.encode_base64(p)
             filename = attachment_path.name if isinstance(attachment_path, pathlib.PurePath) else attachment_path
-            p.add_header('Content-Disposition', f"attachment; filename={filename}")
+            p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
         server = smtplib.SMTP(self._smtp_server)
@@ -204,7 +207,7 @@ class MongoDB(MongoClient):
         from common.secrets import mongo
         user = mongo[0]
         password = b64decode(mongo[1]).decode()
-        host = '136.144.173.2'
+        host = "136.144.173.2"
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",
                                    connectTimeoutMS=None)
         if not client and not database:
@@ -228,7 +231,7 @@ class MongoDB(MongoClient):
             print(doc)
         """
         if isinstance(self, Collection):
-            return next(self.find().sort([('_id', -1)]).limit(1))
+            return next(self.find().sort([("_id", -1)]).limit(1))
 
     def find_duplicates(self) -> List[dict]:
         """Return duplicated documents in a collection.
@@ -294,15 +297,15 @@ class MySQLClient:
         self.table_name = table
         path = pathlib.Path(common.__file__).parent / "certificates"
         self.__config = {
-            'user': sql[0],
-            'password': b64decode(sql[1]).decode(),
-            'host': '104.199.69.152',
-            'database': self.database,
-            'raise_on_warnings': True,
-            'client_flags': [mysql.connector.ClientFlag.SSL],
-            'ssl_ca': str(path / "server-ca.pem"),
-            'ssl_cert': str(path / "client-cert.pem"),
-            'ssl_key': str(path / "client-key.pem")}
+            "user": sql[0],
+            "password": b64decode(sql[1]).decode(),
+            "host": "104.199.69.152",
+            "database": self.database,
+            "raise_on_warnings": True,
+            "client_flags": [mysql.connector.ClientFlag.SSL],
+            "ssl_ca": str(path / "server-ca.pem"),
+            "ssl_cert": str(path / "client-cert.pem"),
+            "ssl_key": str(path / "client-key.pem")}
         self.cnx = self.cursor = self._iter = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
@@ -443,8 +446,8 @@ class MySQLClient:
         """
         types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
                  timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
-        fields = [name + f' {types[type_]}({str(length).replace(".", ",")})'
-                  if type_ not in [date, datetime.date] else name + f' {types[type_]}'
+        fields = [name + f" {types[type_]}({str(length).replace('.', ',')})"
+                  if type_ not in [date, datetime.date] else name + f" {types[type_]}"
                   for name, (type_, length) in fields.items()]
         self.connect()
         if drop_existing:
@@ -506,20 +509,22 @@ class MySQLClient:
         return self.insert(table, data)
 
     def build(self, table: str = None, select_fields: Union[list, str] = None,
-              field: str = None, value: Union[str, int] = None,
+              field: str = None, value: Union[str, int] = None, distinct: str = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               **kwargs) -> Query:
         """Build a MySQL query"""
+        if not distinct:
+            distinct = ""
         if table is None:
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
         if select_fields is None:
-            query = f"SELECT * FROM {table} "
+            query = f"SELECT {distinct} * FROM {table} "
         elif isinstance(select_fields, list):
-            query = f"SELECT `{'`, `'.join(select_fields)}` FROM {table} "
+            query = f"SELECT {distinct} `{'`, `'.join(select_fields)}` FROM {table} "
         else:
-            query = f"SELECT {select_fields} FROM {table} "
+            query = f"SELECT {distinct} {select_fields} FROM {table} "
         if not all([field is None, value is None]):
             if isinstance(value, str):
                 query += f"WHERE {field} = '{value}' "
