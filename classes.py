@@ -1,13 +1,17 @@
-import pathlib
 import smtplib
 from sys import argv
 import mysql.connector
 from warnings import warn
 from email import encoders
+from csv import DictReader
 from socket import timeout
+from zipfile import ZipFile
+from io import TextIOWrapper
 from base64 import b64decode
 import mysql.connector.cursor
 from pymongo import MongoClient
+from subprocess import check_call
+from pathlib import Path, PurePath
 from urllib.parse import quote_plus
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
@@ -16,8 +20,8 @@ from pymongo.database import Collection
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
-from typing import Any, Dict, Iterator, List, Tuple, Type, Union
 from elasticsearch import Elasticsearch, ElasticsearchException
+from typing import Any, Callable, Dict, Iterator, List, Tuple, Type, Union
 
 
 class ESClient(Elasticsearch):
@@ -154,7 +158,7 @@ class EmailClient:
                    subject: str = None,
                    message: Union[str, Exception] = None,
                    from_address: str = "dev@matrixiangroup.com",
-                   attachment_path: Union[str, pathlib.PurePath] = None,
+                   attachment_path: Union[str, PurePath] = None,
                    ):
         """Send an email to an email address (str) or a list of addresses.
         To attach a file, include the Path to the file
@@ -167,7 +171,7 @@ class EmailClient:
         elif isinstance(to_address, list):
             msg["To"] = ",".join(to_address)
         if not subject:
-            subject = pathlib.Path(argv[0]).stem
+            subject = Path(argv[0]).stem
         msg["Subject"] = subject
         if not message:
             message = ""
@@ -180,7 +184,7 @@ class EmailClient:
             with open(attachment_path, "rb") as attachment:
                 p.set_payload(attachment.read())
             encoders.encode_base64(p)
-            filename = attachment_path.name if isinstance(attachment_path, pathlib.PurePath) else attachment_path
+            filename = attachment_path.name if isinstance(attachment_path, PurePath) else attachment_path
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
@@ -295,14 +299,14 @@ class MySQLClient:
                 database = table.split(".")[0]
         self.database = database
         self.table_name = table
-        path = pathlib.Path(common.__file__).parent / "certificates"
+        path = Path(common.__file__).parent / "certificates"
         self.__config = {
             "user": sql[0],
             "password": b64decode(sql[1]).decode(),
             "host": "104.199.69.152",
             "database": self.database,
             "raise_on_warnings": True,
-            "client_flags": [mysql.connector.ClientFlag.SSL],
+            "client_flags": 2048,
             "ssl_ca": str(path / "server-ca.pem"),
             "ssl_cert": str(path / "client-cert.pem"),
             "ssl_key": str(path / "client-key.pem")}
@@ -594,3 +598,53 @@ class MySQLClient:
                 else [list(row) for row in self.fetchall()]
         self.disconnect()
         return result
+
+
+class ZipData:
+    """Class for processing zip archives containing csv data files."""
+    def __init__(self, file_path: PurePath, data_as_dicts: bool = False):
+        """Create a ZipData class instance.
+
+        Examples:
+            path = Path.cwd() / "test.zip"
+            zipt = ZipData(path)
+            zipt.open(remove=True)
+            zipt.transform(function=custom_func)
+            zipt.write(replace=("_In", "_Uit"))
+        """
+        assert file_path.suffix == ".zip"
+        self.file_path = file_path
+        self._dicts = data_as_dicts
+        self.data = {}
+
+    def open(self, remove: bool = False):
+        """Load (and optionally remove) data from zip archive."""
+        if remove:
+            from sys import platform
+            assert "x" in platform
+        with ZipFile(self.file_path) as zipfile:
+            for file in zipfile.namelist():
+                with TextIOWrapper(zipfile.open(file)) as csv:
+                    csv = DictReader(csv, delimiter=";")
+                    self.data[file] = [row for row in csv] if self._dicts else \
+                        [csv.fieldnames] + [list(row.values()) for row in csv]
+                if remove:
+                    check_call(["zip", "-d", zipfile.filename, file])
+
+    def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
+        """Perform a custom function on all data files.
+
+        Optionally, (keyword) arguments are passed through. By default, skips the file header."""
+        for file, data in self.data.items():
+            self.data[file] = function(data, *args, **kwargs) if self._dicts else \
+                function(data[1:] if skip_fieldnames else data, *args, **kwargs)
+
+    def write(self, replace: Tuple[str, str] = ("", "")):
+        """Archives and deflates all data files."""
+        with ZipFile(self.file_path, "w", compression=8) as zipfile:
+            for file, values in self.data.items():
+                if self._dicts:
+                    zipfile.writestr(file.replace(*replace), "\n".join(
+                        values[0].keys() + [",".join(row.values()) for row in values]))
+                else:
+                    zipfile.writestr(file.replace(*replace), "\n".join([",".join(row) for row in values]))
