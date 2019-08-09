@@ -184,7 +184,8 @@ class EmailClient:
             with open(attachment_path, "rb") as attachment:
                 p.set_payload(attachment.read())
             encoders.encode_base64(p)
-            filename = attachment_path.name if isinstance(attachment_path, PurePath) else attachment_path
+            filename = attachment_path.name if isinstance(attachment_path, PurePath) \
+                else attachment_path.split("/")[-1]
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
