@@ -339,6 +339,9 @@ class MySQLClient:
     def fetchall(self) -> List[tuple]:
         return self.cursor.fetchall()
 
+    def fetchone(self) -> List[tuple]:
+        return self.cursor.fetchone()
+
     def column(self, query: Union[str, Query] = None, *args, **kwargs) -> List[str]:
         """Fetch one column from MySQL"""
         self.connect()
@@ -354,9 +357,7 @@ class MySQLClient:
               fieldnames: Union[bool, List[str]] = False,
               *args, **kwargs) -> Union[List[list], List[dict]]:
         """Fetch a table from MySQL"""
-        if isinstance(fieldnames, list):
-            pass
-        elif fieldnames:
+        if not isinstance(fieldnames, list) and fieldnames:
             fieldnames = self.column()
         if query is None:
             query = self.build()
@@ -399,16 +400,18 @@ class MySQLClient:
                 Province="Noord-Holland",
                 select_fields=['id', 'City']
             )
-            for i, row in enumerate(sql.chunk(query=query, size=10)):
+            for row in sql.chunk(query=query, size=10):
                 print(row)
         """
         if query is None:
             query = self.build()
         if size <= 0:
             raise ValueError("Chunk size must be > 0")
-        elif size == 1:
+        elif size is None:
+            size = 1
+        if size == 1:
             for i in range(0, 1_000_000_000, size):
-                q = query + f" LIMIT {i}, {size}"
+                q = f"{query} LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
                 except IndexError:
@@ -416,7 +419,7 @@ class MySQLClient:
                 yield row
         else:
             for i in range(0, 1_000_000_000, size):
-                q = query + f" LIMIT {i}, {size}"
+                q = f"{query} LIMIT {i}, {size}"
                 while True:
                     try:
                         table = self.table(q, *args, **kwargs)
@@ -429,6 +432,15 @@ class MySQLClient:
 
     @staticmethod
     def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str]) -> dict:
+        """Use this method to provide data for the fields argument in create_table.
+
+        Example:
+            sql = MySQLClient()
+            data = [[1, "Peter"], [2, "Paul"]]
+            fieldnames = ["id", "name"]
+            fields = sql.create_definition(data=data, fieldnames=fieldnames)
+            sql.create_table(table="employees", fields=fields)
+        """
         types = list(zip([type(value) for value in data[0]],
                          list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
         types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
@@ -451,8 +463,8 @@ class MySQLClient:
         """
         types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
                  timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
-        fields = [name + f" {types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else name + f" {types[type_]}"
+        fields = [f"{name} {types[type_]}({str(length).replace('.', ',')})"
+                  if type_ not in [date, datetime.date] else f"{name} {types[type_]}"
                   for name, (type_, length) in fields.items()]
         self.connect()
         if drop_existing:
@@ -486,13 +498,13 @@ class MySQLClient:
 
     def add_index(self, table: str = None, fieldnames: List[str] = None):
         """Add indexes to a MySQL table."""
-        query = f"ALTER TABLE {self.database}.{table if table else self.table_name} "
+        query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
         if not fieldnames:
             fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
         for index in fieldnames:
-            query += f"ADD INDEX `{index}` (`{index}`) USING BTREE, "
+            query = f"{query} ADD INDEX `{index}` (`{index}`) USING BTREE,"
         self.connect()
-        self.execute(query.rstrip(", "))
+        self.execute(query.rstrip(","))
         self.disconnect()
 
     def insert_new(self,
@@ -527,29 +539,29 @@ class MySQLClient:
         if select_fields is None:
             query = f"SELECT {distinct} * FROM {table} "
         elif isinstance(select_fields, list):
-            query = f"SELECT {distinct} `{'`, `'.join(select_fields)}` FROM {table} "
+            query = f"SELECT {distinct} `{'`, `'.join(select_fields)}` FROM {table}"
         else:
-            query = f"SELECT {distinct} {select_fields} FROM {table} "
+            query = f"SELECT {distinct} {select_fields} FROM {table}"
         if not all([field is None, value is None]):
             if isinstance(value, str):
-                query += f"WHERE {field} = '{value}' "
+                query = f"{query} WHERE {field} = '{value}'"
             elif isinstance(value, int):
-                query += f"WHERE {field} = {value} "
+                query = f"{query} WHERE {field} = {value}"
         if kwargs:
-            keys = "AND ".join([f"{k} = {v} " if isinstance(v, int) else (f"{k} IS NULL " if v == "NULL" else (
-                f"{k} IS NOT NULL " if v == "!NULL" else (
-                    f"{k} != '{v[1:]}' " if v.startswith('!') else f"{k} = '{v}' "))) for k, v in kwargs.items()])
+            keys = " AND ".join([f"{k} = {v}" if isinstance(v, int) else (f"{k} IS NULL" if v == "NULL" else (
+                f"{k} IS NOT NULL" if v == "!NULL" else (
+                    f"{k} != '{v[1:]}'" if v.startswith('!') else f"{k} = '{v}'"))) for k, v in kwargs.items()])
             if "WHERE" in query:
-                query += f"AND {keys}"
+                query = f"{query} AND {keys}"
             else:
-                query += f"WHERE {keys}"
+                query = f"{query} WHERE {keys}"
         if limit:
             if isinstance(limit, (int, str)):
-                query += f"LIMIT {limit} "
+                query = f"{query} LIMIT {limit}"
             elif isinstance(limit, (list, tuple)):
-                query += f"LIMIT {limit[0]}, {limit[1]} "
+                query = f"{query} LIMIT {limit[0]}, {limit[1]}"
         if offset:
-            query += f"OFFSET {offset} "
+            query = f"{query} OFFSET {offset} "
         return Query(query)
 
     def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
@@ -603,7 +615,7 @@ class MySQLClient:
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
-    def __init__(self, file_path: PurePath, data_as_dicts: bool = False):
+    def __init__(self, file_path: PurePath, data_as_dicts: bool = False, **kwargs):
         """Create a ZipData class instance.
 
         Examples:
@@ -617,6 +629,8 @@ class ZipData:
         self.file_path = file_path
         self._dicts = data_as_dicts
         self.data = {}
+        self._encoding = kwargs.get("encoding", "utf-8")
+        self._delimiter = kwargs.get("delimiter", ";")
 
     def open(self, remove: bool = False):
         """Load (and optionally remove) data from zip archive."""
@@ -625,12 +639,15 @@ class ZipData:
             assert "x" in platform
         with ZipFile(self.file_path) as zipfile:
             for file in zipfile.namelist():
-                with TextIOWrapper(zipfile.open(file)) as csv:
-                    csv = DictReader(csv, delimiter=";")
-                    self.data[file] = [row for row in csv] if self._dicts else \
-                        [csv.fieldnames] + [list(row.values()) for row in csv]
-                if remove:
-                    check_call(["zip", "-d", zipfile.filename, file])
+                if file.endswith(".csv"):
+                    with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
+                        csv = DictReader(csv, delimiter=self._delimiter)
+                        self.data[file] = [row for row in csv] if self._dicts else \
+                            [csv.fieldnames] + [list(row.values()) for row in csv]
+                    if remove:
+                        check_call(["zip", "-d", zipfile.filename, file])
+        if len(self.data) == 1:
+            self.data = self.data[list(self.data)[0]]
 
     def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
         """Perform a custom function on all data files.

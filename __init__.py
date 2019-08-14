@@ -1,1 +1,1 @@
-from common.classes import ESClient, EmailClient, MySQLClient, MongoDB
+from common.classes import ESClient, EmailClient, MySQLClient, MongoDB, ZipData
