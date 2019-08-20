@@ -159,6 +159,7 @@ class EmailClient:
                    message: Union[str, Exception] = None,
                    from_address: str = "dev@matrixiangroup.com",
                    attachment_path: Union[str, PurePath] = None,
+                   error_message: bool = False,
                    ):
         """Send an email to an email address (str) or a list of addresses.
         To attach a file, include the Path to the file
@@ -177,6 +178,11 @@ class EmailClient:
             message = ""
         elif isinstance(message, Exception):
             message = str(message)
+        if error_message:
+            from sys import exc_info
+            from traceback import format_exception
+            message = f"{message}\n\n{''.join(format_exception(*exc_info()))}" \
+                if message else "".join(format_exception(*exc_info()))
         msg.attach(MIMEText(message, "plain"))
 
         if attachment_path:
