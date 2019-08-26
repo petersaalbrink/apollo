@@ -1,3 +1,4 @@
+import re
 import smtplib
 from sys import argv
 import mysql.connector
@@ -15,6 +16,7 @@ from pathlib import Path, PurePath
 from urllib.parse import quote_plus
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
+from text_unidecode import unidecode
 from pymongo.database import Database
 from pymongo.database import Collection
 from mysql.connector import DatabaseError
@@ -363,6 +365,11 @@ class MySQLClient:
               fieldnames: Union[bool, List[str]] = False,
               *args, **kwargs) -> Union[List[list], List[dict]]:
         """Fetch a table from MySQL"""
+        if not self.table_name and query and "." in query:
+            for word in query.split():
+                if "." in word:
+                    self.database, self.table_name = word.split(".")
+                    break
         if not isinstance(fieldnames, list) and fieldnames:
             fieldnames = self.column()
         if query is None:
@@ -447,12 +454,26 @@ class MySQLClient:
             fields = sql.create_definition(data=data, fieldnames=fieldnames)
             sql.create_table(table="employees", fields=fields)
         """
-        types = list(zip([type(value) for value in data[0]],
-                         list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
+        i = 0
+        test_row = data[i].values() if isinstance(data[i], dict) else data[i]
+        try:
+            while None in test_row:
+                i += 1
+                test_row = data[i].values() if isinstance(data[i], dict) else data[i]
+        except IndexError:
+            test_row = ["" if row is None else row for row in test_row]
+        if isinstance(data[0], (list, tuple)):
+            types = list(zip([type(value) for value in test_row],
+                             list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
+        elif isinstance(data[0], dict):
+            types = list(zip([type(value) for value in test_row],
+                             list(map(max, zip(*[[len(str(value)) for value in row.values()] for row in data])))))
+        else:
+            raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
         types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
                  for type_, prec in types]
         if len(types) != len(fieldnames):
-            raise ValueError
+            raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
     def create_table(self,
@@ -484,7 +505,7 @@ class MySQLClient:
             pass
         self.disconnect()
 
-    def insert(self, table: str, data: List[list]) -> int:
+    def insert(self, table: str, data: List[Union[list, tuple, dict]]) -> int:
         """Insert a data array into a SQL table.
 
         The data is split into chunks of appropriate size before upload."""
@@ -498,16 +519,22 @@ class MySQLClient:
             chunk = data[offset:offset + limit]
             if len(chunk) == 0:
                 break
-            self.executemany(query, chunk)
+            if isinstance(chunk[0], dict):
+                chunk = [list(d.values()) for d in chunk]
+            try:
+                self.executemany(query, chunk)
+            except DatabaseError:
+                print(chunk)
+                raise
         self.disconnect()
         return len(data)
 
-    def add_index(self, table: str = None, fieldnames: List[str] = None):
+    def add_index(self, table: str = None, fieldnames: Union[List[str], str] = None):
         """Add indexes to a MySQL table."""
         query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
         if not fieldnames:
             fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
-        for index in fieldnames:
+        for index in fieldnames if isinstance(fieldnames, list) else [fieldnames]:
             query = f"{query} ADD INDEX `{index}` (`{index}`) USING BTREE,"
         self.connect()
         self.execute(query.rstrip(","))
@@ -516,7 +543,7 @@ class MySQLClient:
     def insert_new(self,
                    table: str,
                    fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
-                   data: List[Union[list, tuple]]) -> int:
+                   data: List[Union[list, tuple, dict]]) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
@@ -573,7 +600,7 @@ class MySQLClient:
     def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
-              **kwargs) -> Union[List[list], List[dict]]:
+              query: Union[str, Query] = None,**kwargs) -> Union[List[list], List[dict], None]:
         """Build and perform a MySQL query, and returns a data array.
 
         Examples:
@@ -599,8 +626,15 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) else self.build(
-            table=table, field=field, value=value, limit=limit, offset=offset, select_fields=select_fields, **kwargs)
+        if query:
+            self.connect()
+            self.execute(query)
+            self.disconnect()
+            return
+        elif not query:
+            query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) \
+                else self.build(table=table, field=field, value=value, limit=limit, offset=offset,
+                                select_fields=select_fields, **kwargs)
         if isinstance(fieldnames, list):
             pass
         elif fieldnames:
@@ -672,3 +706,97 @@ class ZipData:
                         values[0].keys() + [",".join(row.values()) for row in values]))
                 else:
                     zipfile.writestr(file.replace(*replace), "\n".join([",".join(row) for row in values]))
+
+
+class NoMatch(Exception):
+    pass
+
+
+class Match:
+    """Base Match class"""
+    drop_fields = {"source", "previous", "common", "country", "place", "fax", "id", "year",
+                   "postalCodeMin", "purposeOfUse", "latitude", "longitude", "title", "state", "dateOfRecord"}
+    title_data = {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
+                  "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
+
+    def __init__(self):
+        self.data = self.query = self.result = None
+        self.es = ESClient()
+
+    def match(self, data: dict):
+        self.data = data
+        self.build_query()
+        self.find_match()
+        return self.result
+
+    def build_query(self):
+        if not self.data.get("lastname") or not self.data.get("initials"):
+            raise NoMatch
+        should_list = []
+        if self.data.get("gender"):
+            should_list.append({"match": {"gender": self._clean_gender(self.data["gender"])}})
+        if self.data.get("date_of_birth"):
+            should_list.append({"match": {"birth.date": self._clean_dob(self.data["date_of_birth"])}})
+        if self.data.get("postcode"):
+            should_list.append({"match": {"address.current.postalCode": self.data["postcode"]}})
+        if self.data.get("telephone") and self.data["telephone"] != "0":
+            phone_number, phone_type = self._clean_phone(self.data["telephone"])
+            should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
+        self.query = {"query": {"bool": {"must": [
+            {"match": {"lastname": {"query": self._clean_lastname(self.data["lastname"]), "fuzziness": 1}}},
+            {"match": {"initials": self._clean_initials(self.data["initials"])}},
+        ], "should": should_list, "minimum_should_match": 2}}}
+
+    def find_match(self):
+        self.result = self.es.find(self.query, sort="dateOfRecord:desc")
+        if not self.result:
+            raise NoMatch
+        self.result = self.result[0]["_source"]
+        # Run twice to flatten nested address dicts
+        self._flatten_result()
+        self._flatten_result()
+
+    def _clean_lastname(self, name: str) -> str:
+        """Keep only letters; hyphens become spaces. Remove all special characters and titles"""
+        if name:
+            name = unidecode(re.sub(r"[^\sA-Za-z\u00C0-\u017F]", "", re.sub(r"-", " ", name)).strip()) \
+                .replace("÷", "o").replace("y", "ij")
+            if name != "" and name.split()[-1].lower() in self.title_data:
+                name = " ".join(name.split()[:-1])
+        return name
+
+    @staticmethod
+    def _clean_initials(initials: str) -> str:
+        return re.sub(r"[^A-Za-z\u00C0-\u017F]", "", initials.upper())
+
+    @staticmethod
+    def _clean_gender(gender: str) -> str:
+        return gender.upper().replace("MAN", "M").replace("VROUW", "V") if gender in [
+            "Man", "Vrouw", "MAN", "VROUW", "man", "vrouw", "m", "v", "M", "V"] else ""
+
+    @staticmethod
+    def _clean_dob(dob: str) -> datetime:
+        try:
+            return datetime.strptime(dob, "%Y-%m-%d")
+        except ValueError:
+            return datetime.strptime(dob, "%d/%m/%Y")
+
+    @staticmethod
+    def _clean_phone(phone: str) -> (int, str):
+        phone_number = phone.replace("-", "").replace(" ", "").lstrip("0")
+        phone_type = "mobile" if phone_number.startswith("6") else "number"
+        return int(phone_number), phone_type
+
+    def _flatten_result(self):
+        new_result = {}
+        for key, maybe_nested in self.result.items():
+            if not key.startswith("_") and key not in self.drop_fields:
+                if isinstance(maybe_nested, dict):
+                    for sub, value in maybe_nested.items():
+                        if key in {"birth", "death"} and sub == "date":
+                            sub = f"date_of_{key}"
+                        if sub not in self.drop_fields:
+                            new_result[sub] = value
+                else:
+                    new_result[key] = maybe_nested
+        self.result = new_result
