@@ -600,7 +600,7 @@ class MySQLClient:
     def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
-              query: Union[str, Query] = None,**kwargs) -> Union[List[list], List[dict], None]:
+              query: Union[str, Query] = None, **kwargs) -> Union[List[list], List[dict], None]:
         """Build and perform a MySQL query, and returns a data array.
 
         Examples:
@@ -727,12 +727,26 @@ class Match:
         self.data = data
         self.build_query()
         self.find_match()
-        return self.result
+        if self.result:
+            return self.result
+        else:
+            self.build_query(fuzzy=True)
+            self.find_match()
+            return self.result
 
-    def build_query(self):
-        if not self.data.get("lastname") or not self.data.get("initials"):
+    def build_query(self, fuzzy: bool = False):
+        if not self.data.get("lastname"):
             raise NoMatch
+
+        self.query = {"query": {"bool": {"must": [
+            {"match": {"lastname": self._clean_lastname(self.data["lastname"])}},
+        ]}}} if not fuzzy else {"query": {"bool": {"must": [
+            {"match": {"lastname": {"query": self._clean_lastname(self.data["lastname"]), "fuzziness": 1}}},
+        ]}}}
+
         should_list = []
+        if self.data.get("initials"):
+            should_list.append({"match": {"initials": self._clean_initials(self.data["initials"])}})
         if self.data.get("gender"):
             should_list.append({"match": {"gender": self._clean_gender(self.data["gender"])}})
         if self.data.get("date_of_birth"):
@@ -742,10 +756,10 @@ class Match:
         if self.data.get("telephone") and self.data["telephone"] != "0":
             phone_number, phone_type = self._clean_phone(self.data["telephone"])
             should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
-        self.query = {"query": {"bool": {"must": [
-            {"match": {"lastname": {"query": self._clean_lastname(self.data["lastname"]), "fuzziness": 1}}},
-            {"match": {"initials": self._clean_initials(self.data["initials"])}},
-        ], "should": should_list, "minimum_should_match": 2}}}
+        if should_list:
+            self.query["query"]["bool"]["should"] = should_list
+            # if len(should_list) > 2:
+            #     self.query["query"]["bool"]["minimum_should_match"] = 2
 
     def find_match(self):
         self.result = self.es.find(self.query, sort="dateOfRecord:desc")
@@ -782,10 +796,11 @@ class Match:
             return datetime.strptime(dob, "%d/%m/%Y")
 
     @staticmethod
-    def _clean_phone(phone: str) -> (int, str):
-        phone_number = phone.replace("-", "").replace(" ", "").lstrip("0")
-        phone_type = "mobile" if phone_number.startswith("6") else "number"
-        return int(phone_number), phone_type
+    def _clean_phone(phone: Union[str, int]) -> (int, str):
+        if isinstance(phone, str):
+            phone = phone.replace("-", "").replace(" ", "").lstrip("0")
+        phone_type = "mobile" if f"{phone}".startswith("6") else "number"
+        return int(phone), phone_type
 
     def _flatten_result(self):
         new_result = {}
