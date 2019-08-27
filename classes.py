@@ -207,7 +207,7 @@ class EmailClient:
 class MongoDB(MongoClient):
     """Client for MongoDB. Uses MongoClient as superclass."""
 
-    def __new__(cls, database: str = None, collection: str = None, client: bool = False) \
+    def __new__(cls, database: str = None, collection: str = None, client: bool = False, host: str = None) \
             -> Union[MongoClient, Database, Collection]:
         """Client for MongoDB
 
@@ -217,10 +217,14 @@ class MongoDB(MongoClient):
             coll = MongoDB('dev_peter', 'person_data_20190606')
             coll = MongoDB()['dev_peter']['person_data_20190606']
         """
-        from common.secrets import mongo
-        user = mongo[0]
-        password = b64decode(mongo[1]).decode()
-        host = "136.144.173.2"
+        if host in {None, "136.144.173.2", "dev"}:
+            from common.secrets import mongo
+            host = "136.144.173.2"
+        elif host in {"149.210.164.50", "address"}:
+            from common.secrets import addr as mongo
+            host = "149.210.164.50"
+        # noinspection PyUnboundLocalVariable
+        user, password = mongo[0], b64decode(mongo[1]).decode()
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",
                                    connectTimeoutMS=None)
         if not client and not database:
