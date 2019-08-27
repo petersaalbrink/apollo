@@ -758,8 +758,7 @@ class Match:
             should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
         if should_list:
             self.query["query"]["bool"]["should"] = should_list
-            # if len(should_list) > 2:
-            #     self.query["query"]["bool"]["minimum_should_match"] = 2
+            self.query["query"]["bool"]["minimum_should_match"] = min(2, len(should_list))
 
     def find_match(self):
         self.result = self.es.find(self.query, sort="dateOfRecord:desc")
