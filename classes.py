@@ -719,22 +719,25 @@ class Match:
     title_data = {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
                   "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
 
-    def __init__(self):
+    def __init__(self, strictness: int = 3):
         self.data = self.query = self.result = None
+        self._strictness = strictness
         self.es = ESClient()
 
-    def match(self, data: dict):
+    def match(self, data: dict, strictness: int = None):
+        if strictness:
+            self._strictness = strictness
         self.data = data
-        self.build_query()
+        self.build_query(strictness=strictness)
         self.find_match()
         if self.result:
             return self.result
         else:
-            self.build_query(fuzzy=True)
+            self.build_query(strictness=strictness, fuzzy=True)
             self.find_match()
             return self.result
 
-    def build_query(self, fuzzy: bool = False):
+    def build_query(self, strictness: int, fuzzy: bool = False):
         if not self.data.get("lastname"):
             raise NoMatch
 
@@ -758,7 +761,8 @@ class Match:
             should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
         if should_list:
             self.query["query"]["bool"]["should"] = should_list
-            self.query["query"]["bool"]["minimum_should_match"] = min(2, len(should_list))
+            # noinspection PyTypeChecker
+            self.query["query"]["bool"]["minimum_should_match"] = min(strictness, len(should_list))
 
     def find_match(self):
         self.result = self.es.find(self.query, sort="dateOfRecord:desc")
