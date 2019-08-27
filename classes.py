@@ -751,8 +751,8 @@ class Match:
             should_list.append({"match": {"gender": self._clean_gender(self.data["gender"])}})
         if self.data.get("date_of_birth"):
             should_list.append({"match": {"birth.date": self._clean_dob(self.data["date_of_birth"])}})
-        if self.data.get("postcode"):
-            should_list.append({"match": {"address.current.postalCode": self.data["postcode"]}})
+        if self.data.get("postalCode"):
+            should_list.append({"match": {"address.current.postalCode": self.data["postalCode"]}})
         if self.data.get("telephone") and self.data["telephone"] != "0":
             phone_number, phone_type = self._clean_phone(self.data["telephone"])
             should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
