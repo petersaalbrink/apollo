@@ -1,0 +1,28 @@
+Metadata-Version: 2.1
+Name: common
+Version: 0.0.1
+Summary: Common classes
+Home-page: https://bitbucket.org/matrixiangroup_dev/common_classes_peter
+Author: Peter Saalbrink
+Author-email: psaalbrink@matrixiangroup.com
+License: UNKNOWN
+Description: These are classes for MySQL, MongoDB, ElasticSearch, and an EmailClient.  
+        # To use these classes, create  
+        *  A directory called `'~/Python/common/certificates/'` containing three `*.pem` files for MySQL connection  
+        *  A Python file called `'~/Python/common/secrets.py'` containing four base64-encoded passwords for connections  
+        
+        Format for `secrets.py`:  
+        
+        `from base64 import b64decode`  
+        `mongo = ("devpsaalbrink", b"")`  
+        `sql = ("trainee_peter", b"")`  
+        `es = ("psaalbrink@matrixiangroup.com", b"")`  
+        `mail_pass = b"TmtUZ01wbThvVDNjSzk1NA=="`  
+        
+        Â© _Matrixian Group, created by Peter Saalbrink._
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Description-Content-Type: text/markdown
