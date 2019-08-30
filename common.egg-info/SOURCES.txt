@@ -2,6 +2,7 @@ README.md
 setup.py
 common/__init__.py
 common/classes.py
+common/parsers.py
 common/secrets.py
 common.egg-info/PKG-INFO
 common.egg-info/SOURCES.txt
