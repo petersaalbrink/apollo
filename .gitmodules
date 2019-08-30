@@ -1,3 +1,3 @@
-[submodule "common/address_checker"]
-	path = common/address_checker
+[submodule "address_checker"]
+	path = address_checker
 	url = git@bitbucket.org:matrixiangroup_dev/address_checker.git
