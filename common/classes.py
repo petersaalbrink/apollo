@@ -826,8 +826,6 @@ class Match:
 
 
 class NamesData:
-    from common import __file__
-    _path = Path(__file__).parent / "data"
     @staticmethod
     def first_names() -> dict:
         """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
@@ -836,42 +834,27 @@ class NamesData:
         None is returned. Names are cleaned before output.
 
         The output can be used to fill missing gender data."""
-        with open(NamesData._path / "voornamen_spreiding_clean.csv", encoding="utf-8") as file:
-            first_name_data = [n_row for n_row in DictReader(file) if n_row["totaal_aantal"] != 0]
-        first = defaultdict(list)
-        for n_row in first_name_data:
-            first["gender"].append("M" if n_row["aantal_mannen"] > n_row["aantal_vrouwen"] else (
-                "V" if n_row["aantal_mannen"] < n_row["aantal_vrouwen"] else None))
-            first["name"].append(re.search(r"(^[A-Za-z\u00C0-\u017F-]+)", n_row["voornaam"])[0])
-        return dict(zip(first["name"], first["gender"]))
+        return {doc["firstname"]: doc["gender"] for doc in
+                MongoDB("dev_peter.names_data").find({"data": "firstnames"}, {"firstname": True, "gender": True})}
 
     @staticmethod
     def titles() -> set:
-        """Imports a file with titles and returns them as a set.
-
-        The output can be used to clean last name data."""
-        with open(NamesData._path / "titelatuur.csv") as file:
-            titles_data = set(n_row["titel"] for n_row in DictReader(file))
-        return titles_data
+        """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
+        return set(doc["title"] for doc in MongoDB("dev_peter.names_data").find({"data": "titles"}, {"title": True}))
 
     @staticmethod
     def surnames(common_only: bool = True) -> set:
-        """Imports a file with surnames frequencies and returns common surnames as a list.
+        """Imports a database with surnames frequencies and returns common surnames as a list.
 
         Only surnames that occur more than 200 times in the Netherlands are regarded as common.
         If a name occurs twice in the file, the largest number is taken.
 
         The output can be used for data and matching quality calculations."""
-        with open(NamesData._path / "achternamen_spreiding_clean.csv", encoding="utf-8") as file:
-            names_data = [[unidecode(n_row["achternaam"]), n_row["aantal_in_NL"]]
-                          for n_row in DictReader(file) if n_row["achternaam"]]
-        # Deduplicate the list
-        names_dict = defaultdict(list)
-        for n_row in names_data:
-            names_dict[n_row[0]].append(float(n_row[1]))
-        # Return only names that occur commonly
+        db = MongoDB("dev_peter.names_data")
         if common_only:
-            names_data = set(name for name, number in names_dict.items() if max(number) > 200)
+            # Return only names that occur commonly
+            names_data = set(doc["surname"] for doc in
+                             db.find({"data": "surnames", "number": {"$gt": 200}}, {"surname": True}))
         else:
-            names_data = set(names_dict)
+            names_data = set(doc["surname"] for doc in db.find({"data": "surnames"}, {"surname": True}))
         return names_data

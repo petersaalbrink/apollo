@@ -1,9 +1,7 @@
 import setuptools
 
-
 with open("README.md", "r") as fh:
     long_description = fh.read()
-
 
 setuptools.setup(
     name="common",
@@ -16,10 +14,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_peter",
     packages=setuptools.find_packages(),
-    package_data={"common": [
-        "certificates/*.pem",
-        "data/*.csv"
-    ]},
+    package_data={"common": ["certificates/*.pem"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
