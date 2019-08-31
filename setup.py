@@ -20,18 +20,6 @@ setuptools.setup(
         "certificates/*.pem",
         "data/*.csv"
     ]},
-    # data_files=[
-    #     ("certificates", [
-    #         "certificates/client-cert.pem",
-    #         "certificates/client-key.pem",
-    #         "certificates/server-ca.pem"
-    #     ]),
-    #     ("data", [
-    #         "data/achternamen_spreiding_clean.csv",
-    #         "data/titelatuur.csv",
-    #         "data/voornamen_spreiding_clean.csv"
-    #     ])],
-    # include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

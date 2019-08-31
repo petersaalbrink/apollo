@@ -312,7 +312,7 @@ class MySQLClient:
                 database = table.split(".")[0]
         self.database = database
         self.table_name = table
-        path = Path(common.__file__).parents[1] / "certificates"
+        path = Path(common.__file__).parent / "certificates"
         self.__config = {
             "user": sql[0],
             "password": b64decode(sql[1]).decode(),
