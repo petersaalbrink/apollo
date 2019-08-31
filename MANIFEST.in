@@ -1,8 +1,2 @@
-graft certificates
-graft data
-include certificates/client-cert.pem
-include certificates/client-key.pem
-include certificates/server-ca.pem
-include data/achternamen_spreiding_clean.csv
-include data/titelatuur.csv
-include data/voornamen_spreiding_clean.csv
+include certificates *.pem
+include data *.csv
