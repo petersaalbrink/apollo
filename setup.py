@@ -17,7 +17,7 @@ setuptools.setup(
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_peter",
     packages=setuptools.find_packages(),
     package_data={"common": [
-        "certicicates/*.pem",
+        "certificates/*.pem",
         "data/*.csv"
     ]},
     # data_files=[
