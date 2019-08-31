@@ -13,7 +13,6 @@ import mysql.connector.cursor
 from pymongo import MongoClient
 from subprocess import check_call
 from pathlib import Path, PurePath
-from collections import defaultdict
 from urllib.parse import quote_plus
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
