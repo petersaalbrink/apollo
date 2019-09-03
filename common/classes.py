@@ -602,7 +602,7 @@ class MySQLClient:
         return Query(query)
 
     def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
-              limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
+              *, limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
               query: Union[str, Query] = None, **kwargs) -> Union[List[list], List[dict], None]:
         """Build and perform a MySQL query, and returns a data array.
