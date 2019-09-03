@@ -4,4 +4,6 @@ sql = ("trainee_peter", b"cGV0ZXIwMQ==")
 es = ("psaalbrink@matrixiangroup.com", b"ODJNJTBdbW5lJ252")
 mail_pass = b"TmtUZ01wbThvVDNjSzk1NA=="
 ccv = ("CCV", b"WGpPNko4NEU=")
+bk = ("MatrixianGroup", b"NVg5Y043OFhQaGx5")
+ng = ("consumatrix-reporting-consumatrix", b"dDU4NkpuWU45cm93M2NXSlpzV2w=")
 ftp = ("peter", b'dEQ0RWFZOGo2eTVK')
