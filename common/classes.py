@@ -582,6 +582,26 @@ class MySQLClient:
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               **kwargs) -> Query:
         """Build a MySQL query"""
+
+        def search_for(k, v):
+            key = f"{k} = '{v}'"
+            if isinstance(v, int):
+                key = f"{k} = {v}"
+            elif isinstance(v, str):
+                if v == "NULL":
+                    key = f"{k} = {v}"
+                if v == "!NULL":
+                    key = f"{k} IS NOT NULL"
+                if v.startswith("!"):
+                    key = f"{k} != '{v[1:]}'"
+                if v.startswith((">", "<")):
+                    key = f"{k} {v[0]} '{v[1:]}'"
+                if v.startswith((">=", "<=")):
+                    key = f"{k} {v[:2]} '{v[2:]}'"
+                if "%" in v:
+                    key = f"{k} LIKE '{v}'"
+            return key
+
         if not distinct:
             distinct = ""
         if table is None:
@@ -600,12 +620,14 @@ class MySQLClient:
             elif isinstance(value, int):
                 query = f"{query} WHERE {field} = {value}"
         if kwargs:
-            keys = " AND ".join([f"{k} = {v}" if isinstance(v, int) else (f"{k} IS NULL" if v == "NULL" else (
-                f"{k} IS NOT NULL" if v == "!NULL" else (
-                    f"{k} != '{v[1:]}'" if v.startswith("!") else (
-                        f"{k} {v[0]} '{v[1:]}'" if v.startswith((">", "<")) else (
-                            f"{k} LIKE '{v}'" if "%" in v else f"{k} = '{v}'"
-                        ))))) for k, v in kwargs.items()])
+            keys = []
+            for field, value in kwargs.items():
+                if isinstance(value, list):
+                    skey = " AND ".join([search_for(field, skey) for skey in value])
+                else:
+                    skey = search_for(field, value)
+                keys.append(skey)
+            keys = " AND ".join(keys)
             if "WHERE" in query:
                 query = f"{query} AND {keys}"
             else:
