@@ -364,6 +364,21 @@ class MySQLClient:
         self.disconnect()
         return column
 
+    def count(self, table: str = None, *args, **kwargs) -> int:
+        """Fetch row count from MySQL"""
+        self.connect()
+        if not self.table_name:
+            self.table_name = table
+        query = f"SELECT COUNT(*) FROM {self.database}.{self.table_name}"
+        self.execute(query, *args, **kwargs)
+        count = self.fetchone()
+        if isinstance(count, list):
+            count = count[0]
+        if isinstance(count, tuple):
+            count = count[0]
+        self.disconnect()
+        return count
+
     def table(self,
               query: Union[str, Query] = None,
               fieldnames: Union[bool, List[str]] = False,
@@ -562,7 +577,7 @@ class MySQLClient:
         self.add_index(table, list(fields))
         return self.insert(table, data)
 
-    def build(self, table: str = None, select_fields: Union[list, str] = None,
+    def build(self, table: str = None, select_fields: Union[List[str], str] = None,
               field: str = None, value: Union[str, int] = None, distinct: str = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               **kwargs) -> Query:
@@ -587,7 +602,9 @@ class MySQLClient:
         if kwargs:
             keys = " AND ".join([f"{k} = {v}" if isinstance(v, int) else (f"{k} IS NULL" if v == "NULL" else (
                 f"{k} IS NOT NULL" if v == "!NULL" else (
-                    f"{k} != '{v[1:]}'" if v.startswith('!') else f"{k} = '{v}'"))) for k, v in kwargs.items()])
+                    f"{k} != '{v[1:]}'" if v.startswith("!") else (
+                        f"{k} {v[0]} '{v[1:]}'" if v.startswith((">", "<")) else f"{k} = '{v}'"
+                    )))) for k, v in kwargs.items()])
             if "WHERE" in query:
                 query = f"{query} AND {keys}"
             else:
