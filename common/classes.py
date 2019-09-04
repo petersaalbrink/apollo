@@ -603,8 +603,9 @@ class MySQLClient:
             keys = " AND ".join([f"{k} = {v}" if isinstance(v, int) else (f"{k} IS NULL" if v == "NULL" else (
                 f"{k} IS NOT NULL" if v == "!NULL" else (
                     f"{k} != '{v[1:]}'" if v.startswith("!") else (
-                        f"{k} {v[0]} '{v[1:]}'" if v.startswith((">", "<")) else f"{k} = '{v}'"
-                    )))) for k, v in kwargs.items()])
+                        f"{k} {v[0]} '{v[1:]}'" if v.startswith((">", "<")) else (
+                            f"{k} LIKE '{v}'" if "%" in v else f"{k} = '{v}'"
+                        ))))) for k, v in kwargs.items()])
             if "WHERE" in query:
                 query = f"{query} AND {keys}"
             else:
