@@ -1,10 +1,10 @@
-from address_checker.Address_Parsers.address_parser import parser_final as global_parser
-from address_checker.Address_Parsers.address_parser_BE import parser_final as belgium_parser
-from address_checker.Address_Parsers.address_parser_DE import parser_final as german_parser
-from address_checker.Address_Parsers.address_parser_FR import parser as french_parser
-from address_checker.Address_Parsers.address_parser_IT import parser as italian_parser
-from address_checker.Address_Parsers.address_parser_NL import parser_final as dutch_parser
-from address_checker.Address_Parsers.address_parser_UK import parser as english_parser
+from address_checker.Global.address_parser import parser_final as global_parser
+from address_checker.BE.Parser.address_parser_BE import parser_final as belgium_parser
+from address_checker.DE.Parser.address_parser_DE import parser_final as german_parser
+from address_checker.FR.Parser.address_parser_FR import parser as french_parser
+from address_checker.IT.Parser.address_parser_IT import parser as italian_parser
+from address_checker.NL.Parser.address_parser_NL import parser_final as dutch_parser
+from address_checker.UK.Parser.address_parser_UK import parser as english_parser
 
 
 def parse(address: str, country: str = "NL"):
