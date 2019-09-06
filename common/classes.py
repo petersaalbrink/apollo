@@ -242,11 +242,10 @@ class MongoDB(MongoClient):
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",
                                    connectTimeoutMS=None)
         if not client and not database:
-            database = "dev_peter.person_data_20190716"
+            database, collection = "dev_peter", "person_data_20190716"
         if database:
             if "." in database:
-                collection = database.split(".")[1]
-                database = database.split(".")[0]
+                database, collection = database.split(".")
             if collection:
                 return mongo_client.__getattr__(database).__getattr__(collection)
             return mongo_client.__getattr__(database)
