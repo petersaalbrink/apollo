@@ -2,6 +2,7 @@ import re
 import smtplib
 from sys import argv
 import mysql.connector
+from tqdm import trange
 from warnings import warn
 from email import encoders
 from csv import DictReader
@@ -19,11 +20,20 @@ from email.mime.text import MIMEText
 from text_unidecode import unidecode
 from pymongo.database import Database
 from pymongo.database import Collection
+from pymongo.operations import UpdateOne
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
 from elasticsearch import Elasticsearch, ElasticsearchException
 from typing import Any, Callable, Dict, Iterator, List, Tuple, Type, Union
+
+
+class Timer:
+    def __init__(self):
+        self.t = datetime.now()
+
+    def end(self):
+        return datetime.now() - self.t
 
 
 class ESClient(Elasticsearch):
@@ -238,6 +248,11 @@ class MongoDB(MongoClient):
             return mongo_client.__getattr__(database)
         return mongo_client
 
+    # noinspection PyPep8Naming, PyShadowingBuiltins
+    @staticmethod
+    def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):
+        return UpdateOne(filter, update, upsert, collation, array_filters)
+
     def find_last(self) -> dict:
         """Return the last document in a collection.
 
@@ -251,7 +266,7 @@ class MongoDB(MongoClient):
             return next(self.find().sort([("_id", -1)]).limit(1))
 
     def find_duplicates(self) -> List[dict]:
-        """Return duplicated documents in a collection.
+        """Return duplicated documents in the person_data collection.
 
         Usage:
             from common.classes import MongoDB
@@ -442,7 +457,7 @@ class MySQLClient:
         elif size is None:
             size = 1
         if size == 1:
-            for i in range(0, 1_000_000_000, size):
+            for i in trange(0, 1_000_000_000, size):
                 q = f"{query} LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
@@ -450,7 +465,7 @@ class MySQLClient:
                     break
                 yield row
         else:
-            for i in range(0, 1_000_000_000, size):
+            for i in trange(0, 1_000_000_000, size):
                 q = f"{query} LIMIT {i}, {size}"
                 while True:
                     try:
@@ -534,7 +549,7 @@ class MySQLClient:
         except IndexError:
             raise ValueError("Your data might be empty.")
         limit = 10_000
-        for offset in range(0, 1_000_000_000, limit):
+        for offset in trange(0, 1_000_000_000, limit):
             chunk = data[offset:offset + limit]
             if len(chunk) == 0:
                 break
