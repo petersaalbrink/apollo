@@ -30,10 +30,14 @@ from typing import Any, Callable, Dict, Iterator, List, Tuple, Type, Union
 
 class Timer:
     def __init__(self):
-        self.t = datetime.now()
+        self.t = self.now()
+
+    @staticmethod
+    def now():
+        return datetime.now()
 
     def end(self):
-        return datetime.now() - self.t
+        return self.now() - self.t
 
 
 class ESClient(Elasticsearch):
@@ -615,6 +619,8 @@ class MySQLClient:
                     key = f"{k} {v[:2]} '{v[2:]}'"
                 if "%" in v:
                     key = f"{k} LIKE '{v}'"
+                if "IN " in v:
+                    key = f"{k} {v}"
             return key
 
         if not distinct:
@@ -659,7 +665,7 @@ class MySQLClient:
     def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
               *, limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
-              query: Union[str, Query] = None, **kwargs) -> Union[List[list], List[dict], None]:
+              query: Union[str, Query] = None, **kwargs) -> Union[List[dict], List[list], None]:
         """Build and perform a MySQL query, and returns a data array.
 
         Examples:
