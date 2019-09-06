@@ -1,3 +1,4 @@
 [submodule "address_checker"]
 	path = address_checker
 	url = git@bitbucket.org:matrixiangroup_dev/address_checker.git
+	branch = parsers
