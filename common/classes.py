@@ -460,7 +460,7 @@ class MySQLClient:
         elif size is None:
             size = 1
         if size == 1:
-            for i in trange(0, 1_000_000_000, size):
+            for i in trange(0, self.count(), size):
                 q = f"{query} LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
@@ -468,7 +468,7 @@ class MySQLClient:
                     break
                 yield row
         else:
-            for i in trange(0, 1_000_000_000, size):
+            for i in trange(0, self.count(), size):
                 q = f"{query} LIMIT {i}, {size}"
                 while True:
                     try:
@@ -542,7 +542,7 @@ class MySQLClient:
             pass
         self.disconnect()
 
-    def insert(self, table: str, data: List[Union[list, tuple, dict]]) -> int:
+    def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000) -> int:
         """Insert a data array into a SQL table.
 
         The data is split into chunks of appropriate size before upload."""
@@ -551,9 +551,8 @@ class MySQLClient:
             query = f"INSERT INTO {table} VALUES ({', '.join(['%s'] * len(data[0]))})"
         except IndexError:
             raise ValueError("Your data might be empty.")
-        limit = 10_000
-        for offset in trange(0, 1_000_000_000, limit):
-            chunk = data[offset:offset + limit]
+        for offset in trange(0, len(data), _limit):
+            chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
                 break
             if isinstance(chunk[0], dict):
