@@ -439,7 +439,8 @@ class MySQLClient:
         self.disconnect()
         return row
 
-    def chunk(self, query: Union[str, Query] = None, size: int = None, *args, **kwargs) -> List[list]:
+    def chunk(self, query: Union[str, Query] = None, size: int = None, use_tqdm: bool = True,
+              *args, **kwargs) -> List[list]:
         """Returns a generator for downloading a table in chunks
 
         Example:
@@ -453,6 +454,7 @@ class MySQLClient:
             for row in sql.chunk(query=query, size=10):
                 print(row)
         """
+        range_func = trange if use_tqdm else range
         if query is None:
             query = self.build()
         if size <= 0:
@@ -460,7 +462,7 @@ class MySQLClient:
         elif size is None:
             size = 1
         if size == 1:
-            for i in trange(0, self.count(), size):
+            for i in range_func(0, self.count(), size):
                 q = f"{query} LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
@@ -468,7 +470,7 @@ class MySQLClient:
                     break
                 yield row
         else:
-            for i in trange(0, self.count(), size):
+            for i in range_func(0, self.count(), size):
                 q = f"{query} LIMIT {i}, {size}"
                 while True:
                     try:
@@ -542,16 +544,18 @@ class MySQLClient:
             pass
         self.disconnect()
 
-    def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000) -> int:
+    def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000,
+               use_tqdm: bool = True) -> int:
         """Insert a data array into a SQL table.
 
         The data is split into chunks of appropriate size before upload."""
+        range_func = trange if use_tqdm else range
         self.connect()
         try:
             query = f"INSERT INTO {table} VALUES ({', '.join(['%s'] * len(data[0]))})"
         except IndexError:
             raise ValueError("Your data might be empty.")
-        for offset in trange(0, len(data), _limit):
+        for offset in range_func(0, len(data), _limit):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
                 break
