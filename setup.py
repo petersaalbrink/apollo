@@ -18,7 +18,11 @@ setuptools.setup(
         "mysql-connector-python",
         "pymongo",
         "text_unidecode",
-        "elasticsearch"
+        "elasticsearch",
+        "tqdm",
+        "pandas",
+        "numpy",
+        "matplotlib",
     ],
     package_data={"common": ["certificates/*.pem"]},
     classifiers=[
