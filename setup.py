@@ -12,7 +12,7 @@ setuptools.setup(
     description="Common classes",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://bitbucket.org/matrixiangroup_dev/common_classes_peter",
+    url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
     packages=setuptools.find_packages(),
     install_requires=[
         "mysql-connector-python",
