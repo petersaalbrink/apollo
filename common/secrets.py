@@ -36,6 +36,7 @@ def ask_secret(name: str) -> Tuple[str, bytes]:
 
 
 def get_secret(name: str) -> Tuple[str, bytes]:
+    create_secrets()
     with open(FILE) as f:
         for line in f:
             key, usr, pwd = line.rstrip("\r\n").split("::")
