@@ -23,6 +23,7 @@ setuptools.setup(
         "pandas",
         "numpy",
         "matplotlib",
+        "requests",
     ],
     package_data={"common": ["certificates/*.pem"]},
     classifiers=[
