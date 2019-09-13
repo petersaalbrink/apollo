@@ -702,8 +702,10 @@ class MySQLClient:
                                 select_fields=select_fields, **kwargs)
         if isinstance(fieldnames, list):
             pass
-        elif fieldnames:
+        elif fieldnames and not select_fields:
             fieldnames = self.column()
+        elif fieldnames and select_fields:
+            fieldnames = select_fields
         self.connect()
         self.execute(query)
         if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
