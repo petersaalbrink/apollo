@@ -26,7 +26,6 @@ def create_secrets():
 
 
 def ask_secret(name: str) -> Tuple[str, bytes]:
-    create_secrets()
     usr = input(f"{NAMES[name]} username: ")
     pwd = input(f"{NAMES[name]} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
