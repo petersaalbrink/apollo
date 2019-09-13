@@ -39,7 +39,8 @@ class ESClient(Elasticsearch):
 
     def __init__(self, dev: bool = True, es_index: str = None):
         """Client for ElasticSearch"""
-        from common.secrets import es
+        from common.secrets import get_secret
+        es = get_secret("es")
         if dev:
             self._host = "136.144.173.2"
             if es_index is None:
@@ -152,7 +153,8 @@ class ESClient(Elasticsearch):
 
 class EmailClient:
     """Client for sending plain text emails and attachments."""
-    from common.secrets import mail_pass
+    from common.secrets import get_secret
+    _, mail_pass = get_secret("mail_pass")
 
     def __init__(self,
                  smtp_server="smtp.gmail.com:587",
@@ -225,11 +227,12 @@ class MongoDB(MongoClient):
             coll = MongoDB('dev_peter', 'person_data_20190606')
             coll = MongoDB()['dev_peter']['person_data_20190606']
         """
+        from common.secrets import get_secret
         if host in {None, "136.144.173.2", "dev"}:
-            from common.secrets import mongo
+            mongo = get_secret("mongo")
             host = "136.144.173.2"
         elif host in {"149.210.164.50", "address"}:
-            from common.secrets import addr as mongo
+            mongo = get_secret("addr")
             host = "149.210.164.50"
         # noinspection PyUnboundLocalVariable
         user, password = mongo[0], b64decode(mongo[1]).decode()
@@ -311,7 +314,8 @@ class MySQLClient:
             data = sql.query(table="pc_data_final", postcode="1014AK")
         """
         from common import __file__
-        from common.secrets import sql
+        from common.secrets import get_secret
+        sql = get_secret("sql")
         if database:
             if "." in database:
                 table = database.split(".")[1]
