@@ -6,9 +6,14 @@ Furthermore, they include an address parser common.parsers.parse, a RadarPlot cl
 
 Enjoy!
 
-Install \[and upgrade\] using:  
-`pip install [--upgrade] git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common`  
 
+
+Install:  
+`pip install git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common`  
+
+
+Upgrade:  
+`pip install --upgrade common_classes_mx`  
 
 
 © _Matrixian Group, created by Peter Saalbrink._
