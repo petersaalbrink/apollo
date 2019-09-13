@@ -14,6 +14,16 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_peter",
     packages=setuptools.find_packages(),
+    install_requires=[
+        "mysql-connector-python",
+        "pymongo",
+        "text_unidecode",
+        "elasticsearch",
+        "tqdm",
+        "pandas",
+        "numpy",
+        "matplotlib",
+    ],
     package_data={"common": ["certificates/*.pem"]},
     classifiers=[
         "Programming Language :: Python :: 3",

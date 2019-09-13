@@ -3,14 +3,22 @@ from pathlib import PurePath
 from io import TextIOWrapper
 from subprocess import check_call
 from csv import DictReader, DictWriter
-from typing import Callable, List, Tuple
+from typing import Callable, List, MutableMapping, Tuple, Union
 
 
-def csv_write(data: List[dict], filename: str):
+def csv_write(data: List[dict], filename: Union[PurePath, str]) -> None:
+    """Simple function for writing a list of dictionaries to a csv file."""
     with open(filename, "w", newline="") as f:
         csv = DictWriter(f, fieldnames=list(data[0].keys()))
         csv.writeheader()
         csv.writerows(data)
+
+
+def csv_read(filename: Union[PurePath, str]) -> MutableMapping:
+    """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
+    with open(filename) as f:
+        for row in DictReader(f):
+            yield row
 
 
 class ZipData:
