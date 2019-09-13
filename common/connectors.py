@@ -395,8 +395,7 @@ class MySQLClient:
         self.disconnect()
         return count
 
-    def table(self,
-              query: Union[str, Query] = None,
+    def table(self, query: Union[str, Query] = None,
               fieldnames: Union[bool, List[str]] = False,
               *args, **kwargs) -> Union[List[list], List[dict]]:
         """Fetch a table from MySQL"""
@@ -612,17 +611,17 @@ class MySQLClient:
             elif isinstance(v, str):
                 if v == "NULL":
                     key = f"{k} = {v}"
-                if v == "!NULL":
+                elif v == "!NULL":
                     key = f"{k} IS NOT NULL"
-                if v.startswith("!"):
+                elif v.startswith("!"):
                     key = f"{k} != '{v[1:]}'"
-                if v.startswith((">", "<")):
+                elif v.startswith((">", "<")):
                     key = f"{k} {v[0]} '{v[1:]}'"
-                if v.startswith((">=", "<=")):
+                elif v.startswith((">=", "<=")):
                     key = f"{k} {v[:2]} '{v[2:]}'"
-                if "%" in v:
+                elif "%" in v:
                     key = f"{k} LIKE '{v}'"
-                if "IN " in v:
+                elif "IN " in v:
                     key = f"{k} {v}"
             return key
 
@@ -703,6 +702,8 @@ class MySQLClient:
             query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) \
                 else self.build(table=table, field=field, value=value, limit=limit, offset=offset,
                                 select_fields=select_fields, **kwargs)
+        if table and not self.table_name:
+            self.table_name = table
         if isinstance(fieldnames, list):
             pass
         elif fieldnames and not select_fields:
