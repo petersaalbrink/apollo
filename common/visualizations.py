@@ -29,6 +29,8 @@ class RadarPlot:
         self.row = np.array(row)
         self.fieldnames = fieldnames
         self.maximum = maximum
+
+        # Set the figure
         self.fig = self.axes = None
         self.name_figure = "figure"
 
@@ -50,6 +52,8 @@ class RadarPlot:
         self.color_points = "white"
         self.edgecolor_points = "black"
         self.size_points = 50
+
+        # Labels
         self.size_ticklabels = 10
         self.size_fieldnamelabels = 14
 
