@@ -7,7 +7,7 @@ Furthermore, they include an address parser common.parsers.parse, a RadarPlot cl
 Enjoy!
 
 Install \[and upgrade\] using:  
-`pip install [--upgrade] git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_peter.git#egg=common`  
+`pip install [--upgrade] git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common`  
 
 
 
