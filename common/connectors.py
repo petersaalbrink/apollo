@@ -481,7 +481,7 @@ class MySQLClient:
                 yield table
 
     @staticmethod
-    def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str]) -> dict:
+    def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str] = None) -> dict:
         """Use this method to provide data for the fields argument in create_table.
 
         Example:
@@ -491,6 +491,10 @@ class MySQLClient:
             fields = sql.create_definition(data=data, fieldnames=fieldnames)
             sql.create_table(table="employees", fields=fields)
         """
+        if not fieldnames and not isinstance(data[0], dict):
+            raise ValueError("Provide fieldnames if you don't have data dicts!")
+        elif not fieldnames:
+            fieldnames = list(data[0].keys())
         i = 0
         test_row = data[i].values() if isinstance(data[i], dict) else data[i]
         try:
@@ -513,8 +517,7 @@ class MySQLClient:
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
-    def create_table(self,
-                     table: str,
+    def create_table(self, table: str,
                      fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
                      drop_existing: bool = False):
         """Create a SQL table in MySQLClient.database.
@@ -578,20 +581,20 @@ class MySQLClient:
         self.execute(query.rstrip(","))
         self.disconnect()
 
-    def insert_new(self,
-                   table: str,
-                   fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
-                   data: List[Union[list, tuple, dict]]) -> int:
+    def insert_new(self, table: str, data: List[Union[list, tuple, dict]],
+                   fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]] = None) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
+        :param data: A two-dimensional array containing data corresponding to fields.
         :param fields: A dictionary with field names for keys and tuples for values, containing a pair of class type
         and precision. For example:
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
-        :param data: A two-dimensional array containing data corresponding to fields.
 
         The data is split into chunks of appropriate size before upload.
         """
+        if not fields:
+            fields = self.create_definition(data)
         self.create_table(table, fields, drop_existing=True)
         self.add_index(table, list(fields))
         return self.insert(table, data)
