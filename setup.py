@@ -4,11 +4,11 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="common",
+    name="common_classes_mx",
     version="0.0.1",
     author="Peter Saalbrink",
     author_email="psaalbrink@matrixiangroup.com",
-    keywords="common",
+    keywords="common classes matrixian group mx",
     description="Common classes",
     long_description=long_description,
     long_description_content_type="text/markdown",
