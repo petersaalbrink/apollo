@@ -89,6 +89,10 @@ class ESClient(Elasticsearch):
         if source_only and not hits_only:
             warn("Returning hits only if any([source_only, first_only])")
             hits_only = True
+        if "size" in kwargs:
+            size = kwargs.pop("size")
+        else:
+            size = 10_000
         results = []
         for q in query:
             if not q:
@@ -96,7 +100,7 @@ class ESClient(Elasticsearch):
                 continue
             while True:
                 try:
-                    result = self.search(index=self.es_index, size=10_000, body=q, *args, **kwargs)
+                    result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
                 except (ElasticsearchException, OSError, ConnectionError, timeout):
                     warn("Retrying", ConnectionWarning)
