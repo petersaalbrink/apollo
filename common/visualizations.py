@@ -8,6 +8,115 @@ import matplotlib.path as path
 import matplotlib.patches as patches
 
 
+class DistributionPlot:
+    """
+    Requirements:
+        - Input must be a list
+        - For categorical data, we need a list of strings -> bar chart
+        - For numerical data, we need a list of numerical values -> histogram
+
+    Example categorical data:
+        1. data = ["apple", "orange", "apple", "lemon", "lemon", "strawberry", "strawberry", "strawberry"]
+        2. plot = DistributionPlot(data)
+        3. plot.bar_graph()
+
+    Example numerical data:
+        1. data = [1, 1, 1, 1, 14, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 25, 5, 6, 7]
+        2. fieldname = "Top 40 Position"
+        3. plot = DistributionPlot(x=data, fieldname=fieldname)
+        4. plot.histogram()
+    """
+    def __init__(self, x: list = None, fieldname: str = None, grid: bool = None):
+        self.x = x
+        self.fieldname = fieldname
+        self.grid = grid
+        self.name_figure = "figure"
+
+        # Visualization defaults
+        self.color_bars = '#20b2aa'
+        self.color_baredges = "black"
+
+        # Initialize the figure
+        self.fig = self.ax = plt.subplots()
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().spines['top'].set_visible(False)
+        plt.grid(self.grid)
+
+    def histogram(self, color_bars: str = None, color_baredges: str = None) -> dict:
+        # Set the layout
+        layout_dict = {
+            "color_bars": (color_bars, self.color_bars),
+            "color_baredges": (color_baredges, self.color_baredges)
+        }
+
+        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
+
+        # Plot the histogram
+        plt.hist(self.x, density=False, facecolor=layout_dict["color_bars"],
+                 edgecolor=layout_dict["color_baredges"])
+
+        # Plot the labels
+        plt.title("Histogram")
+        plt.xlabel(f"{self.fieldname}")
+        plt.ylabel("Count")
+
+        # Get the ticks
+        xticks, xtick_labels = plt.xticks()
+        yticks, ytick_labels = plt.yticks()
+        ticks = {"x": xticks, "y": yticks}
+
+        # Show the figure
+        plt.tight_layout()
+        plt.show()
+
+        return ticks
+
+    def bar_chart(self, color_bars: str = None, color_baredges: str = None) -> dict:
+        # Set the layout
+        layout_dict = {
+            "color_bars": (color_bars, self.color_bars),
+            "color_baredges": (color_baredges, self.color_baredges)
+        }
+
+        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
+
+        # Prepare the data for the bar chart
+        keys, counts = np.unique(self.x, return_counts=True)
+        total_counts = sum(counts)
+
+        # Plot the bar chart
+        plt.bar(keys, counts, color=layout_dict["color_bars"], edgecolor=layout_dict["color_baredges"])
+
+        # Plot the ticks
+        plt.xticks(keys)
+
+        # Plot the percentages
+        for index, data in enumerate(counts):
+            plt.text(x=index, y=data, s=f"{data/total_counts*100:.2f}%", fontdict=dict(fontsize=10))
+
+        # Plot the labels
+        plt.title("Bar Chart")
+        plt.xlabel(f"{self.fieldname}")
+        plt.ylabel("Count")
+
+        # Get the ticks
+        xticks, xtick_labels = plt.xticks()
+        yticks, ytick_labels = plt.yticks()
+        ticks = {"x": xticks, "y": yticks}
+
+        # Show the figure
+        plt.tight_layout()
+        plt.show()
+
+        return ticks
+
+    def save(self, name_figure: str = None):
+        if not name_figure:
+            name_figure = self.name_figure
+
+        plt.savefig(fname=name_figure, bbox_inches="tight", format="png")
+
+
 class RadarPlot:
     """
     Requirements:
@@ -29,8 +138,6 @@ class RadarPlot:
         self.row = np.array(row)
         self.fieldnames = fieldnames
         self.maximum = maximum
-
-        # Set the figure
         self.fig = self.axes = None
         self.name_figure = "figure"
 
@@ -52,8 +159,6 @@ class RadarPlot:
         self.color_points = "white"
         self.edgecolor_points = "black"
         self.size_points = 50
-
-        # Labels
         self.size_ticklabels = 10
         self.size_fieldnamelabels = 14
 
