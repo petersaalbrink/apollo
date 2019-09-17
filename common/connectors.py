@@ -232,6 +232,8 @@ class MongoDB(MongoClient):
             coll = MongoDB()['dev_peter']['person_data_20190606']
         """
         from common.secrets import get_secret
+        if collection and not database:
+            raise ValueError("Please provide a database name as well.")
         if host in {"149.210.164.50", "address"} or "addressvalidation" in database:
             mongo = get_secret("addr")
             host = "149.210.164.50"
