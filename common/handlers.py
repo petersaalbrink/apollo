@@ -6,22 +6,26 @@ from csv import DictReader, DictWriter
 from typing import Callable, List, MutableMapping, Tuple, Union
 
 
-def csv_write(data: List[dict], filename: Union[PurePath, str], encoding: str = None) -> None:
+def csv_write(data: List[dict], filename: Union[PurePath, str], encoding: str = None, delimiter: str = None) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
     if not encoding:
         encoding = "utf-8"
+    if not delimiter:
+        delimiter = ","
     with open(filename, "w", encoding=encoding, newline="") as f:
-        csv = DictWriter(f, fieldnames=list(data[0].keys()))
+        csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
         csv.writeheader()
         csv.writerows(data)
 
 
-def csv_read(filename: Union[PurePath, str], encoding: str = None) -> MutableMapping:
+def csv_read(filename: Union[PurePath, str], encoding: str = None, delimiter: str = None) -> MutableMapping:
     """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
     if not encoding:
         encoding = "utf-8"
+    if not delimiter:
+        delimiter = ","
     with open(filename, encoding=encoding) as f:
-        for row in DictReader(f):
+        for row in DictReader(f, delimiter=delimiter):
             yield row
 
 
