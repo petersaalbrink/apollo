@@ -221,7 +221,7 @@ class EmailClient:
 class MongoDB(MongoClient):
     """Client for MongoDB. Uses MongoClient as superclass."""
 
-    def __new__(cls, database: str = None, collection: str = None, client: bool = False, host: str = None) \
+    def __new__(cls, database: str = None, collection: str = None, host: str = None, client: bool = False) \
             -> Union[MongoClient, Database, Collection]:
         """Client for MongoDB
 
@@ -234,12 +234,15 @@ class MongoDB(MongoClient):
         from common.secrets import get_secret
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
-        if host in {"149.210.164.50", "address"} or "addressvalidation" in database:
+        if host == "address" or "addressvalidation" in database:
             mongo = get_secret("addr")
             host = "149.210.164.50"
-        elif host in {None, "136.144.173.2", "dev"}:
+        elif not host or host == "dev":
             mongo = get_secret("mongo")
             host = "136.144.173.2"
+        elif host == "stg":
+            mongo = get_secret("mongo_stg")
+            host = "136.144.189.123"
         # noinspection PyUnboundLocalVariable
         user, password = mongo[0], b64decode(mongo[1]).decode()
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",

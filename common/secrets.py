@@ -12,6 +12,7 @@ NAMES = {
     "bk": "BuurtKadoos FTP server",
     "ng": "NutsGroep FTP server",
     "ftp": "VPS11 FTP server",
+    "mongo_stg": "MongoDB stg server",
 }
 
 
@@ -26,8 +27,8 @@ def create_secrets():
 
 
 def ask_secret(name: str) -> Tuple[str, bytes]:
-    usr = input(f"{NAMES[name]} username: ")
-    pwd = input(f"{NAMES[name]} password: ")
+    usr = input(f"{NAMES.get(name, name)} username: ")
+    pwd = input(f"{NAMES.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
     with open(FILE, "a") as f:
         f.write(f"{name}::{usr}::{pwd}\n")
