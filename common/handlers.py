@@ -1,29 +1,24 @@
 from zipfile import ZipFile
-from pathlib import PurePath
 from io import TextIOWrapper
 from subprocess import check_call
+from pathlib import PurePath, Path
 from csv import DictReader, DictWriter
 from typing import Callable, List, MutableMapping, Tuple, Union
 
 
-def csv_write(data: List[dict], filename: Union[PurePath, str], encoding: str = None, delimiter: str = None) -> None:
+def csv_write(data: List[dict], filename: Union[PurePath, str],
+              encoding: str = "utf-8", delimiter: str = ",", mode: str = "w") -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
-    if not encoding:
-        encoding = "utf-8"
-    if not delimiter:
-        delimiter = ","
-    with open(filename, "w", encoding=encoding, newline="") as f:
+    write_header = True if not Path(filename).exists() else False
+    with open(filename, mode, encoding=encoding, newline="") as f:
         csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
-        csv.writeheader()
+        if write_header:
+            csv.writeheader()
         csv.writerows(data)
 
 
-def csv_read(filename: Union[PurePath, str], encoding: str = None, delimiter: str = None) -> MutableMapping:
+def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
     """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
-    if not encoding:
-        encoding = "utf-8"
-    if not delimiter:
-        delimiter = ","
     with open(filename, encoding=encoding) as f:
         for row in DictReader(f, delimiter=delimiter):
             yield row
