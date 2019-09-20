@@ -79,8 +79,12 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
+        if "index" in kwargs:
+            index = kwargs.pop("index")
+        else:
+            index = self.es_index
         if not query:
-            return self.search(index=self.es_index, size=1, body={}, *args, **kwargs)
+            return self.search(index=index, size=1, body={}, *args, **kwargs)
         if isinstance(query, dict):
             query = [query]
         if first_only and not source_only:
@@ -325,14 +329,12 @@ class MySQLClient:
         sql = get_secret("sql")
         if database:
             if "." in database:
-                table = database.split(".")[1]
-                database = database.split(".")[0]
+                database, table = database.split(".")
         else:
             database = "mx_traineeship_peter"
         if table:
             if "." in table:
-                table = table.split(".")[1]
-                database = table.split(".")[0]
+                database, table = database.split(".")
         self.database = database
         self.table_name = table
         path = Path(__file__).parent / "certificates"
