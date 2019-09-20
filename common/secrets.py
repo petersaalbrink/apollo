@@ -23,6 +23,7 @@ def get_secret(name: str) -> Credentials:
         "ftp": "VPS11 FTP server",
         "mongo_stg": "MongoDB stg server",
         "bstorage": "Matrixian Synaman File Transfer",
+        "da": "DigitalAudience FTP server",
     }
 
     # Create secrets, if it doesn't exist yet
