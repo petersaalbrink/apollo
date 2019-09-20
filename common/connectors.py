@@ -445,7 +445,8 @@ class MySQLClient:
         self.disconnect()
         return row
 
-    def chunk(self, query: Union[str, Query] = None, size: int = None, use_tqdm: bool = True,
+    def chunk(self, query: Union[str, Query] = None, size: int = None,
+              use_tqdm: bool = False, retry_on_error: bool = False,
               *args, **kwargs) -> List[list]:
         """Returns a generator for downloading a table in chunks
 
@@ -461,6 +462,7 @@ class MySQLClient:
                 print(row)
         """
         range_func = trange if use_tqdm else range
+        count = self.count() if use_tqdm else 1_000_000_000
         if query is None:
             query = self.build()
         if size <= 0:
@@ -468,7 +470,7 @@ class MySQLClient:
         elif size is None:
             size = 1
         if size == 1:
-            for i in range_func(0, self.count(), size):
+            for i in range_func(0, count, size):
                 q = f"{query} LIMIT {i}, {size}"
                 try:
                     row = self.row(q, *args, **kwargs)
@@ -476,14 +478,17 @@ class MySQLClient:
                     break
                 yield row
         else:
-            for i in range_func(0, self.count(), size):
+            for i in range_func(0, count, size):
                 q = f"{query} LIMIT {i}, {size}"
-                while True:
-                    try:
-                        table = self.table(q, *args, **kwargs)
-                        break
-                    except DatabaseError:
-                        warn("Retrying", ConnectionWarning)
+                if retry_on_error:
+                    while True:
+                        try:
+                            table = self.table(q, *args, **kwargs)
+                            break
+                        except DatabaseError:
+                            warn("Retrying", ConnectionWarning)
+                else:
+                    table = self.table(q, *args, **kwargs)
                 if len(table) == 0:
                     break
                 yield table
