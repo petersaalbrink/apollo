@@ -1,46 +1,50 @@
 from pathlib import Path
-from typing import Tuple
-from base64 import b64encode
-
-FILE = Path(Path.home() / ".common/.secrets")
-NAMES = {
-    "es": "Elasticsearch dev server",
-    "mongo": "MongoDB dev server",
-    "addr": "MongoDB addressvalidation server",
-    "sql": "MySQL dev server",
-    "ccv": "CCV FTP server",
-    "bk": "BuurtKadoos FTP server",
-    "ng": "NutsGroep FTP server",
-    "ftp": "VPS11 FTP server",
-    "mongo_stg": "MongoDB stg server",
-    "bstorage": "Matrixian Synaman File Transfer",
-}
+from base64 import b64encode, b64decode
 
 
-def create_secrets():
-    if not FILE.exists():
+class Credentials:
+    __slots__ = ["usr", "pwd"]
+
+    def __init__(self, usr: str, pwd: str):
+        self.usr = usr
+        self.pwd = pwd
+
+
+def get_secret(name: str) -> Credentials:
+    file = Path(Path.home() / ".common/.secrets")
+    names = {
+        "es": "Elasticsearch dev server",
+        "mongo": "MongoDB dev server",
+        "addr": "MongoDB addressvalidation server",
+        "sql": "MySQL dev server",
+        "ccv": "CCV FTP server",
+        "bk": "BuurtKadoos FTP server",
+        "ng": "NutsGroep FTP server",
+        "ftp": "VPS11 FTP server",
+        "mongo_stg": "MongoDB stg server",
+        "bstorage": "Matrixian Synaman File Transfer",
+    }
+
+    # Create secrets, if it doesn't exist yet
+    if not file.exists():
         try:
-            FILE.parent.mkdir()
+            file.parent.mkdir()
         except FileExistsError:
             pass
-        with open(FILE, "w") as f:
+        with open(file, "w") as f:
             f.write("mail_pass::::TmtUZ01wbThvVDNjSzk1NA==\n")
 
-
-def ask_secret(name: str) -> Tuple[str, bytes]:
-    usr = input(f"{NAMES.get(name, name)} username: ")
-    pwd = input(f"{NAMES.get(name, name)} password: ")
-    pwd = b64encode(bytes(pwd.encode())).decode()
-    with open(FILE, "a") as f:
-        f.write(f"{name}::{usr}::{pwd}\n")
-    return usr, bytes(pwd.encode())
-
-
-def get_secret(name: str) -> Tuple[str, bytes]:
-    create_secrets()
-    with open(FILE) as f:
+    # Get secret, if it has been saved
+    with open(file) as f:
         for line in f:
             key, usr, pwd = line.rstrip("\r\n").split("::")
             if key == name:
-                return usr, bytes(pwd.encode())
-    return ask_secret(name)
+                return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
+
+    # Ask secret, if needed
+    usr = input(f"{names.get(name, name)} username: ")
+    pwd = input(f"{names.get(name, name)} password: ")
+    pwd = b64encode(bytes(pwd.encode())).decode()
+    with open(file, "a") as f:
+        f.write(f"{name}::{usr}::{pwd}\n")
+    return Credentials(usr, b64decode(bytes(pwd.encode())).decode())

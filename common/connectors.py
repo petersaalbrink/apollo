@@ -5,7 +5,6 @@ from tqdm import trange
 from warnings import warn
 from email import encoders
 from socket import timeout
-from base64 import b64decode
 import mysql.connector.cursor
 from pymongo import MongoClient
 from pathlib import Path, PurePath
@@ -52,7 +51,7 @@ class ESClient(Elasticsearch):
         self.es_index = es_index
         self._port = 9201
         hosts = [{"host": self._host, "port": self._port}]
-        config = {"http_auth": (es[0], b64decode(es[1]).decode()), "timeout": 60, "retry_on_timeout": True}
+        config = {"http_auth": (es.usr, es.pwd), "timeout": 60, "retry_on_timeout": True}
         super().__init__(hosts, **config)
 
     def __repr__(self):
@@ -158,12 +157,12 @@ class ESClient(Elasticsearch):
 class EmailClient:
     """Client for sending plain text emails and attachments."""
     from common.secrets import get_secret
-    _, mail_pass = get_secret("mail_pass")
+    mail = get_secret("mail_pass")
 
     def __init__(self,
                  smtp_server="smtp.gmail.com:587",
                  login="dev@matrixiangroup.com",
-                 password=b64decode(mail_pass).decode()):
+                 password=mail.pwd):
         """Client for sending plain text emails and attachments."""
         self._smtp_server = smtp_server
         self._login = login
@@ -244,8 +243,7 @@ class MongoDB(MongoClient):
             mongo = get_secret("mongo_stg")
             host = "136.144.189.123"
         # noinspection PyUnboundLocalVariable
-        user, password = mongo[0], b64decode(mongo[1]).decode()
-        mongo_client = MongoClient(host=f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}",
+        mongo_client = MongoClient(host=f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}",
                                    connectTimeoutMS=None)
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
@@ -339,8 +337,8 @@ class MySQLClient:
         self.table_name = table
         path = Path(__file__).parent / "certificates"
         self.__config = {
-            "user": sql[0],
-            "password": b64decode(sql[1]).decode(),
+            "user": sql.usr,
+            "password": sql.pwd,
             "host": "104.199.69.152",
             "database": self.database,
             "raise_on_warnings": True,
