@@ -1,9 +1,27 @@
-class Credentials:
+from contextlib import AbstractContextManager
+
+
+class Credentials(AbstractContextManager):
     __slots__ = ["usr", "pwd"]
 
     def __init__(self, usr: str, pwd: str):
         self.usr = usr
         self.pwd = pwd
+
+    def __str__(self):
+        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
+
+del AbstractContextManager
 
 
 def get_secret(name: str) -> Credentials:
