@@ -1,8 +1,3 @@
-from pathlib import Path
-from getpass import getpass
-from base64 import b64encode, b64decode
-
-
 class Credentials:
     __slots__ = ["usr", "pwd"]
 
@@ -12,6 +7,13 @@ class Credentials:
 
 
 def get_secret(name: str) -> Credentials:
+    # Funtion imports
+    from pathlib import Path
+    from getpass import getpass, GetPassWarning
+    from warnings import simplefilter
+    from base64 import b64encode, b64decode
+
+    # Set defaults
     file = Path(Path.home() / ".common/.secrets")
     names = {
         "es": "Elasticsearch dev server",
@@ -44,8 +46,12 @@ def get_secret(name: str) -> Credentials:
                 return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
 
     # Ask secret, if needed
+    simplefilter("error")
     usr = input(f"{names.get(name, name)} username: ")
-    pwd = getpass(f"{names.get(name, name)} password: ")
+    try:
+        pwd = getpass(f"{names.get(name, name)} password: ")
+    except GetPassWarning:
+        pwd = input(f"{names.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
     with open(file, "a") as f:
         f.write(f"{name}::{usr}::{pwd}\n")
