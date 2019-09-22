@@ -1,4 +1,5 @@
 from pathlib import Path
+from getpass import getpass
 from base64 import b64encode, b64decode
 
 
@@ -44,7 +45,7 @@ def get_secret(name: str) -> Credentials:
 
     # Ask secret, if needed
     usr = input(f"{names.get(name, name)} username: ")
-    pwd = input(f"{names.get(name, name)} password: ")
+    pwd = getpass(f"{names.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
     with open(file, "a") as f:
         f.write(f"{name}::{usr}::{pwd}\n")
