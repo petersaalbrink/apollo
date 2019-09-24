@@ -1,3 +1,4 @@
+from datetime import datetime
 from address_checker.Global.address_parser import parser_final as global_parser
 from address_checker.BE.Parser.address_parser_BE import parser_final as belgium_parser
 from address_checker.DE.Parser.address_parser_DE import parser_final as german_parser
@@ -48,6 +49,10 @@ class Checks:
     @staticmethod
     def float_or_null(var):
         return float(var) if var is not None else None
+
+    @staticmethod
+    def date_or_null(var, f):
+        return datetime.strptime(var, f) if var else None
 
     @staticmethod
     def check_null(var):
