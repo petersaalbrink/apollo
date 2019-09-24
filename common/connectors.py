@@ -225,10 +225,12 @@ class MongoDB(MongoClient):
         from common.secrets import get_secret
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
-        if host == "address" or "addressvalidation" in database:
+        if not host:
+            host = "address" if "addressvalidation" in database else "dev"
+        if host == "address":
             mongo = get_secret("addr")
             host = "149.210.164.50"
-        elif not host or host == "dev":
+        elif host == "dev":
             mongo = get_secret("mongo")
             host = "136.144.173.2"
         elif host == "stg":
