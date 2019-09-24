@@ -226,7 +226,7 @@ class MongoDB(MongoClient):
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
         if not host:
-            host = "address" if "addressvalidation" in database else "dev"
+            host = "address" if database and "addressvalidation" in database else "dev"
         if host == "address":
             mongo = get_secret("addr")
             host = "149.210.164.50"
