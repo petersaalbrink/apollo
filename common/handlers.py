@@ -1,5 +1,6 @@
 from zipfile import ZipFile
 from io import TextIOWrapper
+from datetime import datetime
 from subprocess import check_call
 from pathlib import PurePath, Path
 from csv import DictReader, DictWriter
@@ -77,3 +78,21 @@ class ZipData:
                         values[0].keys() + [",".join(row.values()) for row in values]))
                 else:
                     zipfile.writestr(file.replace(*replace), "\n".join([",".join(row) for row in values]))
+
+
+class Timer:
+    def __init__(self):
+        self.t = self.now()
+
+    @staticmethod
+    def now():
+        return datetime.now()
+
+    def end(self):
+        return self.now() - self.t
+
+    def __str__(self):
+        return f"{self.end()}".split(".")[0]
+
+    def __repr__(self):
+        return f"Timer: {self.end()}".split(".")[0]

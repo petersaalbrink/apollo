@@ -21,18 +21,6 @@ from elasticsearch import Elasticsearch, ElasticsearchException
 from typing import Any, Dict, Iterator, List, Tuple, Type, Union
 
 
-class Timer:
-    def __init__(self):
-        self.t = self.now()
-
-    @staticmethod
-    def now():
-        return datetime.now()
-
-    def end(self):
-        return self.now() - self.t
-
-
 class ESClient(Elasticsearch):
     """Client for ElasticSearch"""
 
