@@ -27,7 +27,7 @@ def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter:
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
-    def __init__(self, file_path: PurePath, data_as_dicts: bool = False, **kwargs):
+    def __init__(self, file_path: PurePath, data_as_dicts: bool = True, **kwargs):
         """Create a ZipData class instance.
 
         Examples:
@@ -60,6 +60,7 @@ class ZipData:
                         check_call(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
             self.data = self.data[list(self.data)[0]]
+        return self.data
 
     def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
         """Perform a custom function on all data files.
