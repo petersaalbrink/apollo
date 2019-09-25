@@ -592,6 +592,8 @@ class MySQLClient:
 
     def add_index(self, table: str = None, fieldnames: Union[List[str], str] = None):
         """Add indexes to a MySQL table."""
+        if "." in table:
+            self.database, table = table.split(".")
         query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
         if not fieldnames:
             fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
