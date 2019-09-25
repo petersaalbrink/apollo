@@ -372,8 +372,11 @@ class MySQLClient:
         self.connect()
         if query is None:
             query = f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}"
-        self.execute(query, *args, **kwargs)
-        column = [value[0] for value in self.fetchall()]
+        try:
+            self.execute(query, *args, **kwargs)
+            column = [value[0] for value in self.fetchall()]
+        except DatabaseError as e:
+            raise DatabaseError(query) from e
         self.disconnect()
         return column
 
@@ -430,8 +433,11 @@ class MySQLClient:
             else:
                 self._iter += 1
         self.connect()
-        self.execute(query, *args, **kwargs)
-        row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
+        try:
+            self.execute(query, *args, **kwargs)
+            row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
+        except (DatabaseError, IndexError) as e:
+            raise DatabaseError(query) from e
         self.disconnect()
         return row
 
@@ -749,13 +755,16 @@ class MySQLClient:
             fieldnames = select_fields
         self.connect()
         self.execute(query)
-        if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
-            result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
-                      for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
-        elif limit == 1:
-            result = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
-        else:
-            result = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
-                else [list(row) for row in self.fetchall()]
+        try:
+            if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
+                result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
+                          for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
+            elif limit == 1:
+                result = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
+            else:
+                result = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
+                    else [list(row) for row in self.fetchall()]
+        except (DatabaseError, IndexError) as e:
+            raise DatabaseError(query) from e
         self.disconnect()
         return result
