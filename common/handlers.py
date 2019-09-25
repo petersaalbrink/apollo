@@ -1,5 +1,6 @@
 from zipfile import ZipFile
 from io import TextIOWrapper
+from itertools import islice
 from datetime import datetime
 from subprocess import check_call
 from pathlib import PurePath, Path
@@ -44,7 +45,7 @@ class ZipData:
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
 
-    def open(self, remove: bool = False):
+    def open(self, remove: bool = False, n_lines: int = None):
         """Load (and optionally remove) data from zip archive."""
         if remove:
             from sys import platform
@@ -54,8 +55,8 @@ class ZipData:
                 if file.endswith(".csv"):
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
-                        self.data[file] = [row for row in csv] if self._dicts else \
-                            [csv.fieldnames] + [list(row.values()) for row in csv]
+                        self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
+                            [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
                     if remove:
                         check_call(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
