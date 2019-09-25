@@ -46,6 +46,7 @@ def get_secret(name: str) -> Credentials:
         "bstorage": "Matrixian Synaman File Transfer",
         "da": "DigitalAudience FTP server",
         "platform": "Matrixian Platform",
+        "dev_platform": "Matrixian Platform (development)",
     }
 
     # Create secrets, if it doesn't exist yet
