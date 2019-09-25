@@ -72,7 +72,8 @@ class ESClient(Elasticsearch):
         else:
             index = self.es_index
         if not query:
-            return self.search(index=index, size=1, body={}, *args, **kwargs)
+            size = kwargs.pop("size") if "size" in kwargs else 1
+            return self.search(index=index, size=size, body={}, *args, **kwargs)
         if isinstance(query, dict):
             query = [query]
         if first_only and not source_only:
@@ -80,10 +81,7 @@ class ESClient(Elasticsearch):
         if source_only and not hits_only:
             warn("Returning hits only if any([source_only, first_only])")
             hits_only = True
-        if "size" in kwargs:
-            size = kwargs.pop("size")
-        else:
-            size = 10_000
+        size = kwargs.pop("size") if "size" in kwargs else 10_000
         results = []
         for q in query:
             if not q:
@@ -567,9 +565,12 @@ class MySQLClient:
                 chunk = [list(d.values()) for d in chunk]
             try:
                 self.executemany(query, chunk)
-            except DatabaseError:
-                print(chunk)
-                raise
+            except DatabaseError as e:
+                if "truncated" in f"{e}":
+                    pass  # TOOD: ALTER TABLE
+                else:
+                    print(chunk)
+                    raise
         self.disconnect()
         return len(data)
 
