@@ -548,7 +548,7 @@ class MySQLClient:
 
     def _increase_max_field_len(self, e: str, chunk: List[Union[list, tuple]]):
         field = e.split("'")[1]
-        field_type, position = self.row(f"SELECT COLUMN_TYPE FROM information_schema.COLUMNS"
+        field_type, position = self.row(f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
                                         f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
                                         f" = '{self.table_name}' AND COLUMN_NAME = '{field}'")
         field_type, field_len = field_type.split("(")
