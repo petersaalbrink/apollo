@@ -380,6 +380,8 @@ class MySQLClient:
     def count(self, table: str = None, *args, **kwargs) -> int:
         """Fetch row count from MySQL"""
         self.connect()
+        if "." in table:
+            self.database, table = table.split(".")
         if not self.table_name:
             self.table_name = table
         query = f"SELECT COUNT(*) FROM {self.database}.{self.table_name}"
@@ -534,10 +536,12 @@ class MySQLClient:
         fields = [f"{name} {types[type_]}({str(length).replace('.', ',')})"
                   if type_ not in [date, datetime.date] else f"{name} {types[type_]}"
                   for name, (type_, length) in fields.items()]
+        if "." in table:
+            self.database, table = table.split(".")
         self.connect()
         if drop_existing:
             try:
-                self.execute(f"DROP TABLE {table}")
+                self.execute(f"DROP TABLE {self.database}.{table}")
             except DatabaseError:
                 pass
         try:
@@ -619,6 +623,8 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload.
         """
+        if "." in table:
+            self.database, table = table.split(".")
         if not fields:
             fields = self.create_definition(data)
         self.create_table(table, fields, drop_existing=True)
@@ -731,6 +737,8 @@ class MySQLClient:
             query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) \
                 else self.build(table=table, field=field, value=value, limit=limit, offset=offset,
                                 select_fields=select_fields, **kwargs)
+        if "." in table:
+            self.database, table = table.split(".")
         if table and not self.table_name:
             self.table_name = table
         if isinstance(fieldnames, list):
