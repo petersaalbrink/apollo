@@ -546,6 +546,19 @@ class MySQLClient:
             pass
         self.disconnect()
 
+    def _increase_max_field_len(self, e: str, chunk: List[Union[list, tuple]]):
+        field = e.split("'")[1]
+        field_type, position = self.row(f"SELECT COLUMN_TYPE FROM information_schema.COLUMNS"
+                                        f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
+                                        f" = '{self.table_name}' AND COLUMN_NAME = '{field}'")[0]
+        field_type, field_len = field_type.split("(")
+        field_len = int(field_len.strip(")"))
+        position -= 1
+        new_len = max(len(str(value)) for value in [row[position] for row in chunk])
+        assert new_len > field_len
+        field_type = f"{field_type}({new_len})"
+        self.execute(f"ALTER TABLE {self.database}.{self.table_name} MODIFY COLUMN `{field}` {field_type}")
+
     def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000,
                use_tqdm: bool = True) -> int:
         """Insert a data array into a SQL table.
@@ -563,14 +576,17 @@ class MySQLClient:
                 break
             if isinstance(chunk[0], dict):
                 chunk = [list(d.values()) for d in chunk]
-            try:
-                self.executemany(query, chunk)
-            except DatabaseError as e:
-                if "truncated" in f"{e}":
-                    pass  # TOOD: ALTER TABLE
-                else:
-                    print(chunk)
-                    raise
+            while True:
+                try:
+                    self.executemany(query, chunk)
+                    break
+                except DatabaseError as e:
+                    e = f"{e}"
+                    if "truncated" in e:
+                        self._increase_max_field_len(e, chunk)
+                    else:
+                        print(chunk)
+                        raise
         self.disconnect()
         return len(data)
 
