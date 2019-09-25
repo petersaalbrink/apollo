@@ -320,9 +320,8 @@ class MySQLClient:
                 database, table = database.split(".")
         else:
             database = "mx_traineeship_peter"
-        if table:
-            if "." in table:
-                database, table = database.split(".")
+        if table and "." in table:
+            database, table = database.split(".")
         self.database = database
         self.table_name = table
         path = Path(__file__).parent / "certificates"
@@ -383,7 +382,7 @@ class MySQLClient:
     def count(self, table: str = None, *args, **kwargs) -> int:
         """Fetch row count from MySQL"""
         self.connect()
-        if "." in table:
+        if table and "." in table:
             self.database, table = table.split(".")
         if not self.table_name:
             self.table_name = table
@@ -606,7 +605,7 @@ class MySQLClient:
 
     def add_index(self, table: str = None, fieldnames: Union[List[str], str] = None):
         """Add indexes to a MySQL table."""
-        if "." in table:
+        if table and "." in table:
             self.database, table = table.split(".")
         query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
         if not fieldnames:
@@ -743,7 +742,7 @@ class MySQLClient:
             query = table if table and (isinstance(table, Query) or table.startswith("SELECT")) \
                 else self.build(table=table, field=field, value=value, limit=limit, offset=offset,
                                 select_fields=select_fields, **kwargs)
-        if "." in table:
+        if table and "." in table:
             self.database, table = table.split(".")
         if table and not self.table_name:
             self.table_name = table
