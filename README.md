@@ -9,7 +9,7 @@ Enjoy!
 
 
 Install:  
-`pip install git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common`  
+`pip install git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common_classes_mx`  
 
 
 Upgrade:  
