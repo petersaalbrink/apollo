@@ -565,6 +565,8 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload."""
         range_func = trange if use_tqdm else range
+        if "." in table:
+            self.database, table = table.split(".")
         self.connect()
         try:
             query = f"INSERT INTO {table} VALUES ({', '.join(['%s'] * len(data[0]))})"
