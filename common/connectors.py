@@ -615,6 +615,8 @@ class MySQLClient:
             elif isinstance(v, str):
                 if v == "NULL":
                     key = f"{k} = {v}"
+                elif v == "IS NULL":
+                    key = f"{k} IS NULL"
                 elif v == "!NULL":
                     key = f"{k} IS NOT NULL"
                 elif v.startswith("!"):
