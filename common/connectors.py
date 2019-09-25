@@ -557,7 +557,9 @@ class MySQLClient:
         new_len = max(len(str(row[position])) for row in chunk)
         assert new_len > field_len
         field_type = f"{field_type}({new_len})"
+        self.connect()
         self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
+        self.disconnect()
 
     def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000,
                use_tqdm: bool = True) -> int:
@@ -567,9 +569,8 @@ class MySQLClient:
         range_func = trange if use_tqdm else range
         if "." in table:
             self.database, table = table.split(".")
-        self.connect()
         try:
-            query = f"INSERT INTO {table} VALUES ({', '.join(['%s'] * len(data[0]))})"
+            query = f"INSERT INTO {self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
         except IndexError:
             raise ValueError("Your data might be empty.")
         for offset in range_func(0, len(data), _limit):
@@ -580,7 +581,9 @@ class MySQLClient:
                 chunk = [list(d.values()) for d in chunk]
             while True:
                 try:
+                    self.connect()
                     self.executemany(query, chunk)
+                    self.disconnect()
                     break
                 except DatabaseError as e:
                     e = f"{e}"
@@ -589,7 +592,6 @@ class MySQLClient:
                     else:
                         print(chunk)
                         raise
-        self.disconnect()
         return len(data)
 
     def add_index(self, table: str = None, fieldnames: Union[List[str], str] = None):
