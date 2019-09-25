@@ -398,7 +398,7 @@ class MySQLClient:
 
     def table(self, query: Union[str, Query] = None,
               fieldnames: Union[bool, List[str]] = False,
-              *args, **kwargs) -> Union[List[list], List[dict]]:
+              *args, **kwargs) -> Union[List[dict], List[list]]:
         """Fetch a table from MySQL"""
         if not self.table_name and query and "." in query:
             for word in query.split():
