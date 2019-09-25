@@ -550,7 +550,7 @@ class MySQLClient:
         field = e.split("'")[1]
         field_type, position = self.row(f"SELECT COLUMN_TYPE FROM information_schema.COLUMNS"
                                         f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
-                                        f" = '{self.table_name}' AND COLUMN_NAME = '{field}'")[0]
+                                        f" = '{self.table_name}' AND COLUMN_NAME = '{field}'")
         field_type, field_len = field_type.split("(")
         field_len = int(field_len.strip(")"))
         position -= 1
