@@ -4,8 +4,9 @@ from itertools import islice
 from datetime import datetime
 from subprocess import check_call
 from pathlib import PurePath, Path
+from collections import OrderedDict
 from csv import DictReader, DictWriter
-from typing import Callable, List, MutableMapping, Tuple, Union
+from typing import Callable, Dict, List, MutableMapping, Tuple, Union
 
 
 def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
@@ -35,7 +36,7 @@ def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter:
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
-    def __init__(self, file_path: PurePath, data_as_dicts: bool = True, **kwargs):
+    def __init__(self, file_path: Union[PurePath, str], data_as_dicts: bool = True, **kwargs):
         """Create a ZipData class instance.
 
         Examples:
@@ -52,8 +53,17 @@ class ZipData:
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
 
-    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False):
-        """Load (and optionally remove) data from zip archive."""
+    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
+            -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
+        """Load (and optionally remove) data from zip archive. If the archive contains multiple csv files,
+        they are returned in Dict[str, List[OrderedDict]] format.
+
+        Example:
+            zipdata = ZipData("testfile.zip", delimiter=",")
+            for row in zipdata.open(as_generator=True):
+                row.pop("index")
+                csv_write(row, "cleaned_output.csv")
+        """
         if remove:
             from sys import platform
             assert "x" in platform
