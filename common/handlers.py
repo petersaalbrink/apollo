@@ -8,15 +8,22 @@ from csv import DictReader, DictWriter
 from typing import Callable, List, MutableMapping, Tuple, Union
 
 
-def csv_write(data: List[dict], filename: Union[PurePath, str],
+def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
               encoding: str = "utf-8", delimiter: str = ",", mode: str = "w") -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
     write_header = True if not Path(filename).exists() else False
-    with open(filename, mode, encoding=encoding, newline="") as f:
-        csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
-        if write_header:
-            csv.writeheader()
-        csv.writerows(data)
+    if isinstance(data, list):
+        with open(filename, mode, encoding=encoding, newline="") as f:
+            csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
+            if write_header:
+                csv.writeheader()
+            csv.writerows(data)
+    elif isinstance(data, dict):
+        with open(filename, mode, encoding=encoding, newline="") as f:
+            csv = DictWriter(f, fieldnames=list(data.keys()), delimiter=delimiter)
+            if write_header:
+                csv.writeheader()
+            csv.writerow(data)
 
 
 def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
@@ -45,23 +52,34 @@ class ZipData:
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
 
-    def open(self, remove: bool = False, n_lines: int = None):
+    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False):
         """Load (and optionally remove) data from zip archive."""
         if remove:
             from sys import platform
             assert "x" in platform
-        with ZipFile(self.file_path) as zipfile:
-            for file in zipfile.namelist():
-                if file.endswith(".csv"):
-                    with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
-                        csv = DictReader(csv, delimiter=self._delimiter)
-                        self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
-                            [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
-                    if remove:
-                        check_call(["zip", "-d", zipfile.filename, file])
-        if len(self.data) == 1:
-            self.data = self.data[list(self.data)[0]]
-        return self.data
+        if as_generator:
+            with ZipFile(self.file_path) as zipfile:
+                for file in zipfile.namelist():
+                    if file.endswith(".csv"):
+                        with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
+                            csv = DictReader(csv, delimiter=self._delimiter)
+                            for row in islice(csv, n_lines):
+                                yield row if self._dicts else list(row.values())
+            if remove:
+                check_call(["zip", "-d", zipfile.filename, file])
+        else:
+            with ZipFile(self.file_path) as zipfile:
+                for file in zipfile.namelist():
+                    if file.endswith(".csv"):
+                        with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
+                            csv = DictReader(csv, delimiter=self._delimiter)
+                            self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
+                                [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
+                        if remove:
+                            check_call(["zip", "-d", zipfile.filename, file])
+            if len(self.data) == 1:
+                self.data = self.data[list(self.data)[0]]
+            return self.data
 
     def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
         """Perform a custom function on all data files.
