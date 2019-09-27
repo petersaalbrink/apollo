@@ -47,16 +47,43 @@ class ZipData:
             zipt.write(replace=("_In", "_Uit"))
         """
         assert file_path.suffix == ".zip"
+        self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
         self.data = {}
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
 
+    def _open_all(self, n_lines: int = None):
+        with ZipFile(self.file_path) as zipfile:
+            for file in zipfile.namelist():
+                if file.endswith(".csv"):
+                    with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
+                        csv = DictReader(csv, delimiter=self._delimiter)
+                        self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
+                            [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
+                    if self.remove:
+                        check_call(["zip", "-d", zipfile.filename, file])
+        if len(self.data) == 1:
+            self.data = self.data[list(self.data)[0]]
+        return self.data
+
+    def _open_gen(self, n_lines: int = None):
+        with ZipFile(self.file_path) as zipfile:
+            for file in zipfile.namelist():
+                if file.endswith(".csv"):
+                    with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
+                        csv = DictReader(csv, delimiter=self._delimiter)
+                        for row in islice(csv, n_lines):
+                            yield row if self._dicts else list(row.values())
+                    if self.remove:
+                        check_call(["zip", "-d", zipfile.filename, file])
+
     def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
             -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
-        """Load (and optionally remove) data from zip archive. If the archive contains multiple csv files,
-        they are returned in Dict[str, List[OrderedDict]] format.
+        """Load (and optionally remove) data from zip archive. If the
+        archive contains multiple csv files, they are returned in
+        Dict[str, List[OrderedDict]] format.
 
         Example:
             zipdata = ZipData("testfile.zip", delimiter=",")
@@ -67,29 +94,8 @@ class ZipData:
         if remove:
             from sys import platform
             assert "x" in platform
-        if as_generator:
-            with ZipFile(self.file_path) as zipfile:
-                for file in zipfile.namelist():
-                    if file.endswith(".csv"):
-                        with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
-                            csv = DictReader(csv, delimiter=self._delimiter)
-                            for row in islice(csv, n_lines):
-                                yield row if self._dicts else list(row.values())
-            if remove:
-                check_call(["zip", "-d", zipfile.filename, file])
-        else:
-            with ZipFile(self.file_path) as zipfile:
-                for file in zipfile.namelist():
-                    if file.endswith(".csv"):
-                        with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
-                            csv = DictReader(csv, delimiter=self._delimiter)
-                            self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
-                                [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
-                        if remove:
-                            check_call(["zip", "-d", zipfile.filename, file])
-            if len(self.data) == 1:
-                self.data = self.data[list(self.data)[0]]
-            return self.data
+            self.remove = True
+        return self._open_gen(n_lines) if as_generator else self._open_all(n_lines)
 
     def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
         """Perform a custom function on all data files.
