@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, MutableMapping, Tuple, Union
 def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
               encoding: str = "utf-8", delimiter: str = ",", mode: str = "w") -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
-    write_header = True if mode == "a" and not Path(filename).exists() else False
+    write_header = True if mode == "w" or mode == "a" and not Path(filename).exists() else False
     if isinstance(data, list):
         with open(filename, mode, encoding=encoding, newline="") as f:
             csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
