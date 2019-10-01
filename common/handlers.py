@@ -91,11 +91,17 @@ class ZipData:
             for row in zipdata.open(as_generator=True):
                 row.pop("index")
                 csv_write(row, "cleaned_output.csv")
+
+        Example:
+            zipdata = ZipData("testfile.zip")
+            zipgen = zipdata.open(as_generator=True)
+            for row in tqdm(zipgen, total=zipdata.count):
+                pass
         """
         # First, store a count of the file
         with ZipFile(self.file_path) as zipfile:
-            for file in zipfile.infolist():
-                with TextIOWrapper(zipfile.open(file)) as f:
+            for file in zipfile.namelist():
+                with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as f:
                     self.count += sum(1 for _ in f) - 1
 
         if remove:
