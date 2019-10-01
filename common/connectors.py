@@ -340,7 +340,6 @@ class MySQLClient:
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
         self.cnx = mysql.connector.connect(**self.__config)
-        self.cnx.autocommit = True
         self.cursor = self.cnx.cursor(buffered=True)
         if conn:
             return self.cnx
@@ -354,10 +353,12 @@ class MySQLClient:
 
     def execute(self, query: Union[str, Query], *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
+        self.cnx.commit()
 
     def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
+        self.cnx.commit()
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
@@ -590,9 +591,7 @@ class MySQLClient:
                 chunk = [list(d.values()) for d in chunk]
             while True:
                 try:
-                    self.connect()
                     self.executemany(query, chunk)
-                    self.disconnect()
                     break
                 except DatabaseError as e:
                     e = f"{e}"
