@@ -481,8 +481,8 @@ class MySQLClient:
                         try:
                             table = self.table(q, *args, **kwargs)
                             break
-                        except DatabaseError:
-                            warn("Retrying", ConnectionWarning)
+                        except DatabaseError as e:
+                            warn(f"Retrying: {e}: {q}", ConnectionWarning)
                 else:
                     table = self.table(q, *args, **kwargs)
                 if len(table) == 0:
@@ -521,7 +521,8 @@ class MySQLClient:
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
         types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
-                 for type_, prec in types]
+                 for type_, prec in types]  # Change default precision for floats...
+        types = [(type_, 6) if type_ == datetime else (type_, prec) for type_, prec in types]  # ...and datetimes
         if len(types) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
@@ -546,14 +547,16 @@ class MySQLClient:
             self.database, table = table.split(".")
         self.connect()
         if drop_existing:
+            query = f"DROP TABLE {self.database}.{table}"
             try:
-                self.execute(f"DROP TABLE {self.database}.{table}")
-            except DatabaseError:
-                pass
+                self.execute(query)
+            except DatabaseError as e:
+                raise DatabaseError(query) from e
+        query = f"CREATE TABLE {table} ({', '.join(fields)})"
         try:
-            self.execute(f"CREATE TABLE {table} ({', '.join(fields)})")
-        except DatabaseError:
-            pass
+            self.execute(query)
+        except DatabaseError as e:
+            raise DatabaseError(query) from e
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
@@ -752,8 +755,8 @@ class MySQLClient:
         elif fieldnames and select_fields:
             fieldnames = select_fields
         self.connect()
-        self.execute(query)
         try:
+            self.execute(query)
             if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
                 result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
                           for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
