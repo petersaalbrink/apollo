@@ -53,6 +53,7 @@ class ZipData:
         self.data = {}
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
+        self.count = 0
 
     def _open_all(self, n_lines: int = None):
         with ZipFile(self.file_path) as zipfile:
@@ -91,10 +92,18 @@ class ZipData:
                 row.pop("index")
                 csv_write(row, "cleaned_output.csv")
         """
+        # First, store a count of the file
+        with ZipFile(self.file_path) as zipfile:
+            for file in zipfile.infolist():
+                with TextIOWrapper(zipfile.open(file)) as f:
+                    self.count += sum(1 for _ in f) - 1
+
         if remove:
             from sys import platform
             assert "x" in platform
             self.remove = True
+
+        # Load the data
         return self._open_gen(n_lines) if as_generator else self._open_all(n_lines)
 
     def transform(self, function: Callable, skip_fieldnames: bool = True, *args, **kwargs):
