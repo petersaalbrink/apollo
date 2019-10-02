@@ -53,6 +53,7 @@ class ZipData:
         self.data = {}
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
+        self.columns = set()
         self.count = 0
 
     def _open_all(self, n_lines: int = None):
@@ -61,8 +62,14 @@ class ZipData:
                 if file.endswith(".csv"):
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
-                        self.data[file] = [row for row in islice(csv, n_lines)] if self._dicts else \
-                            [csv.fieldnames] + [list(row.values()) for row in islice(csv, n_lines)]
+                        if self._dicts:
+                            self.data[file] = [
+                                {col: row[col] if col in row else None for col in self.columns}
+                                for row in islice(csv, n_lines)]
+                        else:
+                            self.data[file] = [csv.fieldnames] + [
+                                list({col: row[col] if col in row else None for col in self.columns}.values())
+                                for row in islice(csv, n_lines)]
                     if self.remove:
                         check_call(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
@@ -76,7 +83,9 @@ class ZipData:
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
                         for row in islice(csv, n_lines):
-                            yield row if self._dicts else list(row.values())
+                            yield {col: row[col] if col in row else None for col in self.columns} \
+                                if self._dicts else \
+                                list({col: row[col] if col in row else None for col in self.columns}.values())
                     if self.remove:
                         check_call(["zip", "-d", zipfile.filename, file])
 
@@ -98,10 +107,12 @@ class ZipData:
             for row in tqdm(zipgen, total=zipdata.count):
                 pass
         """
-        # First, store a count of the file
+        # First, store a count of all rows (of all csv's)
+        # in the zip file, and store the field names
         with ZipFile(self.file_path) as zipfile:
             for file in zipfile.namelist():
                 with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as f:
+                    self.columns = self.columns.union(set(DictReader(f, delimiter=self._delimiter).fieldnames))
                     self.count += sum(1 for _ in f) - 1
 
         if remove:
