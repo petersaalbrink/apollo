@@ -332,9 +332,9 @@ class MySQLClient:
             "database": self.database,
             "raise_on_warnings": True,
             "client_flags": 2048,
-            "ssl_ca": str(path / "server-ca.pem"),
-            "ssl_cert": str(path / "client-cert.pem"),
-            "ssl_key": str(path / "client-key.pem")}
+            "ssl_ca": f'{path / "server-ca.pem"}',
+            "ssl_cert": f'{path / "client-cert.pem"}',
+            "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
