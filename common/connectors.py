@@ -367,6 +367,9 @@ class MySQLClient:
     def fetchone(self) -> List[tuple]:
         return self.cursor.fetchone()
 
+    def truncate(self):
+        self.query(query=f"TRUNCATE TABLE {self.database}.{self.table_name}")
+
     def column(self, query: Union[str, Query] = None, *args, **kwargs) -> List[str]:
         """Fetch one column from MySQL"""
         self.connect()
@@ -574,18 +577,23 @@ class MySQLClient:
         self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
         self.disconnect()
 
-    def insert(self, table: str, data: List[Union[list, tuple, dict]], _limit: int = 10_000,
-               use_tqdm: bool = True) -> int:
+    def insert(self,
+               table: str = None,
+               data: List[Union[list, tuple, dict]] = None,
+               _limit: int = 10_000,
+               use_tqdm: bool = True
+               ) -> int:
         """Insert a data array into a SQL table.
 
         The data is split into chunks of appropriate size before upload."""
-        range_func = trange if use_tqdm else range
+        if not data:
+            raise ValueError("No data provided.")
+        if not table:
+            table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
-        try:
-            query = f"INSERT INTO {self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
-        except IndexError:
-            raise ValueError("Your data might be empty.")
+        query = f"INSERT INTO {self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
+        range_func = trange if use_tqdm else range
         for offset in range_func(0, len(data), _limit):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
