@@ -6,6 +6,7 @@ from warnings import warn
 from email import encoders
 from socket import timeout
 import mysql.connector.cursor
+from contextlib import suppress
 from pymongo import MongoClient
 from pathlib import Path, PurePath
 from urllib.parse import quote_plus
@@ -551,15 +552,11 @@ class MySQLClient:
         self.connect()
         if drop_existing:
             query = f"DROP TABLE {self.database}.{table}"
-            try:
+            with suppress(DatabaseError):
                 self.execute(query)
-            except DatabaseError as e:
-                raise DatabaseError(query) from e
         query = f"CREATE TABLE {table} ({', '.join(fields)})"
-        try:
+        with suppress(DatabaseError):
             self.execute(query)
-        except DatabaseError as e:
-            raise DatabaseError(query) from e
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
