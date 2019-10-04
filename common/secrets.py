@@ -61,9 +61,11 @@ def get_secret(name: str) -> Credentials:
     # Get secret, if it has been saved
     with open(file) as f:
         for line in f:
-            key, usr, pwd = line.rstrip("\r\n").split("::")
-            if key == name:
-                return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
+            secret = line.rstrip("\r\n").split("::")
+            if secret != [""]:
+                key, usr, pwd = secret
+                if key == name:
+                    return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
 
     # Ask secret, if needed
     simplefilter("error")
