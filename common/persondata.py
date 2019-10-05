@@ -1,5 +1,5 @@
 import re
-from typing import Union
+from typing import Union, List
 from datetime import datetime
 from text_unidecode import unidecode
 from common.connectors import ESClient, MongoDB
@@ -17,7 +17,8 @@ class Match:
                   "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
 
     def __init__(self, strictness: int = 3):
-        self.data = self.result = None
+        self.data = {}
+        self.result = {}
         self.query = {"query": {"bool": {}}}
         self._strictness = strictness
         self.es = ESClient()
@@ -67,10 +68,15 @@ class Match:
             self.query["query"]["bool"]["minimum_should_match"] = min(strictness, len(should_list))
 
     def find_match(self):
-        self.result = self.es.find(self.query, sort="dateOfRecord:desc")
-        if not self.result:
+        # Find all matches
+        results = self.es.find(self.query, source_only=True, sort="dateOfRecord:desc")
+        if not results:
             raise NoMatch
-        self.result = self.result[0]["_source"]
+
+        # Get the most recent match but update missing data
+        self.result = results.pop(0)
+        self._update_result(results)
+
         # Run twice to flatten nested address dicts
         self._flatten_result()
         self._flatten_result()
@@ -106,6 +112,22 @@ class Match:
             phone = phone.replace("-", "").replace(" ", "").lstrip("0")
         phone_type = "mobile" if f"{phone}".startswith("6") else "number"
         return int(phone), phone_type
+
+    def _update_result(self, results: List[dict]):
+        for field in {"valid", "extra"}:
+            self.result["phoneNumber"].pop(field)
+        for result in results:
+            for k1, v1 in self.result.items():
+                if isinstance(v1, dict) and k1 != "address":
+                    for k2, v2 in v1.items():
+                        if isinstance(v2, dict):
+                            for k3, v3 in v2.items():
+                                if not v3:
+                                    self.result[k1][k2][k3] = result[k1][k2][k3]
+                        elif not v2:
+                            self.result[k1][k2] = result[k1][k2]
+                elif not v1:
+                    self.result[k1] = result[k1]
 
     def _flatten_result(self):
         new_result = {}
