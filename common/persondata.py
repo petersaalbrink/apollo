@@ -17,13 +17,14 @@ class Match:
                   "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
 
     def __init__(self, strictness: int = 3):
-        self.data = self.query = self.result = None
+        self.data = self.result = None
+        self.query = {"query": {"bool": {}}}
         self._strictness = strictness
         self.es = ESClient()
 
     def match(self, data: dict, strictness: int = None):
-        if strictness:
-            self._strictness = strictness
+        if not strictness:
+            strictness = self._strictness
         self.data = data
         self.build_query(strictness=strictness)
         self.find_match()
@@ -35,14 +36,14 @@ class Match:
             return self.result
 
     def build_query(self, strictness: int, fuzzy: bool = False):
-        if not self.data.get("lastname"):
-            raise NoMatch
 
-        self.query = {"query": {"bool": {"must": [
-            {"match": {"lastname": self._clean_lastname(self.data["lastname"])}},
-        ]}}} if not fuzzy else {"query": {"bool": {"must": [
-            {"match": {"lastname": {"query": self._clean_lastname(self.data["lastname"]), "fuzziness": 1}}},
-        ]}}}
+        if self.data.get("lastname"):
+            must = {"must": [
+                {"match": {"lastname": self._clean_lastname(self.data["lastname"])}},
+            ]} if not fuzzy else {"must": [
+                {"match": {"lastname": {"query": self._clean_lastname(self.data["lastname"]), "fuzziness": 1}}},
+            ]}
+            self.query["query"]["bool"] = must
 
         should_list = []
         if self.data.get("initials"):
@@ -53,6 +54,10 @@ class Match:
             should_list.append({"match": {"birth.date": self._clean_dob(self.data["date_of_birth"])}})
         if self.data.get("postalCode"):
             should_list.append({"match": {"address.current.postalCode": self.data["postalCode"]}})
+        if self.data.get("houseNumber"):
+            should_list.append({"match": {"address.current.houseNumber": self.data["houseNumber"]}})
+        if self.data.get("houseNumberExt"):
+            should_list.append({"match": {"address.current.houseNumberExt": self.data["houseNumberExt"]}})
         if self.data.get("telephone") and self.data["telephone"] != "0":
             phone_number, phone_type = self._clean_phone(self.data["telephone"])
             should_list.append({"match": {f"phoneNumber.{phone_type}": phone_number}})
