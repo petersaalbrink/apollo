@@ -463,8 +463,11 @@ class MySQLClient:
         """
         range_func = trange if use_tqdm else range
         count = self.count() if use_tqdm else 1_000_000_000
+        select_fields = kwargs.pop("select_fields", None)
+        order_by = kwargs.pop("order_by", None)
+        fieldnames = kwargs.pop("fieldnames", None)
         if query is None:
-            query = self.build()
+            query = self.build(select_fields=select_fields, order_by=order_by)
         if size <= 0:
             raise ValueError("Chunk size must be > 0")
         elif size is None:
@@ -473,7 +476,7 @@ class MySQLClient:
             for i in range_func(0, count, size):
                 q = f"{query} LIMIT {i}, {size}"
                 try:
-                    row = self.row(q, *args, **kwargs)
+                    row = self.row(q, fieldnames=fieldnames, *args, **kwargs)
                 except IndexError:
                     break
                 yield row
@@ -483,12 +486,12 @@ class MySQLClient:
                 if retry_on_error:
                     while True:
                         try:
-                            table = self.table(q, *args, **kwargs)
+                            table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
                             break
                         except DatabaseError as e:
                             warn(f"Retrying: {e}: {q}", ConnectionWarning)
                 else:
-                    table = self.table(q, *args, **kwargs)
+                    table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
                 if len(table) == 0:
                     break
                 yield table
@@ -646,7 +649,7 @@ class MySQLClient:
     def build(self, table: str = None, select_fields: Union[List[str], str] = None,
               field: str = None, value: Union[str, int] = None, distinct: str = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              **kwargs) -> Query:
+              order_by: Union[str, List[str]] = None, **kwargs) -> Query:
         """Build a MySQL query"""
 
         def search_for(k, v):
@@ -702,6 +705,11 @@ class MySQLClient:
                 query = f"{query} AND {keys}"
             else:
                 query = f"{query} WHERE {keys}"
+        if order_by:
+            if isinstance(order_by, str):
+                order_by = [order_by]
+            order_by = ", ".join(order_by)
+            query = f"{query} ORDER BY {order_by}"
         if limit:
             if isinstance(limit, (int, str)):
                 query = f"{query} LIMIT {limit}"
