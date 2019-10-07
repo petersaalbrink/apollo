@@ -19,7 +19,7 @@ from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
 from elasticsearch import Elasticsearch, ElasticsearchException
-from typing import Any, Dict, Iterator, List, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Union
 
 
 class ESClient(Elasticsearch):
@@ -108,19 +108,70 @@ class ESClient(Elasticsearch):
             results = results[0]
         return results
 
-    def findall(self, q: dict, index: str = None) -> List[dict]:
+    def geo_distance(self, *,
+                     address_id: str = None,
+                     location: Union[Sequence[Union[str, float]], Mapping[str, Union[str, float]]] = None,
+                     distance: str = None
+                     ) -> Sequence[dict]:
+        """Find all real estate objects within :param distance: of :param address_id: or :param location:.
+
+        :param address_id: Address ID in format "postalCode houseNumber houseNumberExt"
+        :param location: A tuple, list, or dict of a latitude-longitude pair.
+        :param distance: Distance (in various units) in format "42km".
+        :return: List of results that are :param distance: away.
+
+        Examples:
+            es = ESClient("dev_realestate.realestate")
+            res = es.geo_distance(address_id="1071XB 71 B", distance="10m")
+            for d in res:
+                print(d["avmData"]["locationData"]["address_id"])
         """
-        Used for elastic search queries that are larger than the max windows size
-        of 10,000.
-        :param q: Dict[Any]
+
+        if not any((address_id, location)) or all((address_id, location)):
+            raise ValueError("Provide either an address_id or a location")
+
+        if address_id:
+            query = {"query": {"bool": {"must": [
+                {"match": {"avmData.locationData.address_id.keyword": address_id}}]}}}
+            result: Dict[str, Any] = self.find(query=query, first_only=True)
+            location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+
+        location = dict(zip(("latitude", "longitude"), location.values())) \
+            if isinstance(location, Mapping) else \
+            dict(zip(("latitude", "longitude"), location))
+
+        query = {"query": {"bool": {"filter": {
+                        "geo_distance": {
+                            "distance": distance,
+                            "geometry.geoPoint": {
+                                "lat": location["latitude"],
+                                "lon": location["longitude"]}}}}},
+                        "sort": [{
+                            "_geo_distance": {
+                                "geometry.geoPoint": {
+                                    "lat": location["latitude"],
+                                    "lon": location["longitude"]},
+                                "order": "asc"}}]}
+
+        results = self.findall(query=query)
+
+        if results:
+            results = [result["_source"] for result in results]
+
+        return results
+
+    def findall(self, query: Dict[Any, Any], index: str = None) -> List[Dict[Any, Any]]:
+        """Used for elastic search queries that are larger than the max
+        window size of 10,000.
+        :param query: Dict[Any, Any]
         :param index: str
-        :return: List[Dict[Any]]
+        :return: List[Dict[Any, Any]]
         """
 
         if not index:
             index = "dev_realestate.realestate"
 
-        data = self.search(index=index, scroll='1m', size=10_000, body=q)
+        data = self.search(index=index, scroll='1m', size=10_000, body=query)
 
         sid = data['_scroll_id']
         scroll_size = len(data['hits']['hits'])
