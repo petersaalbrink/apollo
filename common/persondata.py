@@ -122,10 +122,11 @@ class Match:
     def _validate_phone(self):
         for result in self.results:
             number = result["phoneNumber"]["number"]
-            valid = loads(get(f"http://94.168.87.210:4000/call/{number}",
-                              auth=("datateam", "matrixian")).text)
-            if not valid:
-                result["phoneNumber"]["number"] = None
+            if number:
+                valid = loads(get(f"http://94.168.87.210:4000/call/+31{number}",
+                                  auth=("datateam", "matrixian")).text)
+                if not valid:
+                    result["phoneNumber"]["number"] = None
         return self.results
 
     def _update_result(self):
