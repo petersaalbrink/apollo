@@ -1,4 +1,6 @@
 import re
+from json import loads
+from requests import get
 from typing import Union, List
 from datetime import datetime
 from text_unidecode import unidecode
@@ -16,11 +18,13 @@ class Match:
     title_data = {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
                   "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
 
-    def __init__(self, strictness: int = 3):
+    def __init__(self, strictness: int = 3, validate_phone: bool = False):
         self.data = {}
         self.result = {}
+        self.results = []
         self.query = {"query": {"bool": {}}}
         self._strictness = strictness
+        self.validate_phone = validate_phone
         self.es = ESClient()
 
     def match(self, data: dict, strictness: int = None):
@@ -69,13 +73,15 @@ class Match:
 
     def find_match(self):
         # Find all matches
-        results = self.es.find(self.query, source_only=True, sort="dateOfRecord:desc")
-        if not results:
+        self.results = self.es.find(self.query, source_only=True, sort="dateOfRecord:desc")
+        if not self.results:
             raise NoMatch
+        if self.validate_phone:
+            self._validate_phone()
 
         # Get the most recent match but update missing data
-        self.result = results.pop(0)
-        self._update_result(results)
+        self.result = self.results.pop(0)
+        self._update_result()
 
         # Run twice to flatten nested address dicts
         self._flatten_result()
@@ -113,10 +119,19 @@ class Match:
         phone_type = "mobile" if f"{phone}".startswith("6") else "number"
         return int(phone), phone_type
 
-    def _update_result(self, results: List[dict]):
+    def _validate_phone(self):
+        for result in self.results:
+            number = result["phoneNumber"]["number"]
+            valid = loads(get(f"http://94.168.87.210:4000/call/{number}",
+                              auth=("datateam", "matrixian")).text)
+            if not valid:
+                result["phoneNumber"]["number"] = None
+        return self.results
+
+    def _update_result(self):
         for field in {"valid", "extra"}:
             self.result["phoneNumber"].pop(field)
-        for result in results:
+        for result in self.results:
             for k1, v1 in self.result.items():
                 if isinstance(v1, dict) and k1 != "address":
                     for k2, v2 in v1.items():
