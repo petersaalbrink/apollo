@@ -108,7 +108,7 @@ class ESClient(Elasticsearch):
             results = results[0]
         return results
 
-    def findall(self, q: dict, index: str = None) -> List[Dict[Any]]:
+    def findall(self, q: dict, index: str = None) -> List[dict]:
         """
         Used for elastic search queries that are larger than the max windows size
         of 10,000.
