@@ -110,19 +110,25 @@ class ESClient(Elasticsearch):
 
     def geo_distance(self, *,
                      address_id: str = None,
-                     location: Union[Sequence[Union[str, float]], Mapping[str, Union[str, float]]] = None,
+                     location: Union[
+                         Sequence[Union[str, float]],
+                         Mapping[str, Union[str, float]]] = None,
                      distance: str = None
                      ) -> Sequence[dict]:
-        """Find all real estate objects within :param distance: of :param address_id: or :param location:.
+        """Find all real estate objects within :param distance: of
+        :param address_id: or :param location:.
 
-        :param address_id: Address ID in format "postalCode houseNumber houseNumberExt"
-        :param location: A tuple, list, or dict of a latitude-longitude pair.
+        :param address_id: Address ID in format
+            "postalCode houseNumber houseNumberExt"
+        :param location: A tuple, list, or dict of
+            a latitude-longitude pair.
         :param distance: Distance (in various units) in format "42km".
         :return: List of results that are :param distance: away.
 
-        Examples:
+        Example:
             es = ESClient("dev_realestate.realestate")
-            res = es.geo_distance(address_id="1071XB 71 B", distance="10m")
+            res = es.geo_distance(
+                address_id="1071XB 71 B", distance="10m")
             for d in res:
                 print(d["avmData"]["locationData"]["address_id"])
         """
