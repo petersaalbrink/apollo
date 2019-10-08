@@ -34,6 +34,35 @@ def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter:
             yield row
 
 
+class Log:
+    """Simple logger class that, when initiated, by default logs debug
+    to stderr."""
+    def __init__(self, level: str = None):
+        """Simple logger class that, when initiated, by default logs
+        debug to stderr."""
+        import sys
+        import logging
+        level = {
+            """CRITICAL = 50
+                FATAL = CRITICAL
+                ERROR = 40
+                WARNING = 30
+                WARN = WARNING
+                INFO = 20
+                DEBUG = 10
+                NOTSET = 0"""
+            "notset": logging.NOTSET,
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "warn": logging.WARN,
+            "warning": logging.WARN,
+            "error": logging.ERROR,
+            "fatal": logging.FATAL,
+            "critical": logging.FATAL,
+        }.get(level, logging.DEBUG)
+        logging.basicConfig(stream=sys.stderr, level=level)
+
+
 class ZipData:
     """Class for processing zip archives containing csv data files."""
     def __init__(self, file_path: Union[PurePath, str], data_as_dicts: bool = True, **kwargs):
