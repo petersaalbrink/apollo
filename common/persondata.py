@@ -7,6 +7,7 @@ from time import localtime, sleep
 from collections import namedtuple
 from text_unidecode import unidecode
 from phonenumbers import is_valid_number, parse
+from common.parsers import Checks
 from common.connectors import ESClient, MongoDB
 
 
@@ -242,8 +243,8 @@ class PhoneNumberFinder:
             data.get("postalCode"),
             int(float(data.get("houseNumber", 0))),
             data.get("houseNumberExt"),
-            data.get("initials", "").replace(".", ""),
-            data.get("lastname", ""))
+            Checks.str_or_empty(data.get("initials")).replace(".", ""),
+            data.get("lastname"))
 
         if not ((self.data.initials and self.data.lastname)
                 or (self.data.postalCode and self.data.houseNumber)):
