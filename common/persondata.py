@@ -188,20 +188,37 @@ class PhoneNumberFinder:
 
     def __init__(self, data: dict):
         """Class for phone number enrichment.
+        Also take a look at this class's find method.
 
-        The find function returns a dictionary with 3 keys:
-        number, source and score.
-        source can be N (name) or A (address)
-        score can be 1, 2 or 3 (3 is the highest)
+        The find method returns a dictionary with 3 keys:
+            number, source, and score.
+                source can be N (name) or A (address)
+                score can be 1, 2 or 3 (3 is the highest)
 
-        Example:
+        If you use n=2 as argument in .find(), the keys will be:
+            mobile, source, and score.
+
+        Examples:
             PhoneNumberFinder({
                 "initials": "P",
                 "lastname": "Saalbrink",
                 "postalCode": "1071XB",
                 "houseNumber": "71",
                 "houseNumberExt": "B",
-            }).find()"""
+            }).find()
+            :return: {'number': 649978891, 'source': 'N', 'score': 3}
+
+            PhoneNumberFinder({
+                "initials": "P",
+                "lastname": "Saalbrink",
+                "postalCode": "1071XB",
+                "houseNumber": "71",
+                "houseNumberExt": "B",
+            }).find()
+            :return:
+                {'mobile': {'number': 649978891, 'source': 'N', 'score': 3},
+                'number': {'number': 203345554, 'source': 'N', 'score': 1}}
+        """
 
         self.index = self.data = None
         self.queries = {}
@@ -296,8 +313,8 @@ class PhoneNumberFinder:
                               auth=("datateam", "matrixian")).text)
         return valid
 
-    def extract_number(self, data, records, record, result, source, score, fuzzy):
-        for number_type in ["number", "mobile"]:
+    def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
+        for number_type in number_types:
             number = record["phoneNumber"][number_type]
             if result is None and number is not None:
                 self.sleep_or_continue()
@@ -319,21 +336,22 @@ class PhoneNumberFinder:
                     )
         return result, source, score
 
-    def get_result(self, data, response, fuzzy: bool, result=None, source=None, score=None):
+    def get_result(self, data, response, fuzzy: bool, result=None, source=None, score=None, number_types: list = None):
+        if not number_types:
+            number_types = ["number", "mobile"]
         # Get the records that were found for this query (or address), and sort them (most recent first)
         records = sorted(response, key=lambda d: d["dateOfRecord"], reverse=True)
         # Loop over the results for a query, from recent to old
         for record in records:
             # Get fixed and mobile number from records (most recent first) and perform validation
-            result, source, score = self.extract_number(data, records, record, result, source, score, fuzzy)
+            result, source, score = self.extract_number(
+                data, records, record, result, source, score, fuzzy, number_types)
             if result:
                 break
         return result, source, score
 
-    def calculate_score(self, result_tuple: Union[namedtuple, None]) -> float:
+    def calculate_score(self, result_tuple: namedtuple) -> float:
         """Calculate a quality score for the found number."""
-
-        # Define scoring functions
         x = 100
 
         def date_score(var: str, score: float) -> float:
@@ -382,13 +400,13 @@ class PhoneNumberFinder:
         def moved_score(var: bool, score: float) -> float:
             return 0 if var else score
 
-        def data_score(data: Union[namedtuple, None], score: float) -> float:
+        def data_score(data: namedtuple, score: float) -> float:
             return 0 if not data.lastname else score
 
-        def full_score(result: Union[namedtuple, None]) -> Union[float, None]:
+        def full_score(data: namedtuple, result: namedtuple) -> Union[float, None]:
             if result is None:
                 return
-            score = data_score(self.data, moved_score(result.moved, occurring_score(result.occurring, number_score(
+            score = data_score(data, moved_score(result.moved, occurring_score(result.occurring, number_score(
                 result.phoneNumberNumber, missing_score(result, fuzzy_score(result.isFuzzy, name_score(
                     result.lastNameNumber, death_score(result.deceased, source_score(result.source, date_score(
                         result.yearOfRecord, 1))))))))))
@@ -405,11 +423,12 @@ class PhoneNumberFinder:
             return score
 
         # Calculate score
-        return categorize(full_score(result_tuple))
+        return categorize(full_score(self.data, result_tuple))
 
-    def find(self):
+    def find(self, n: int = 1) -> dict:
         """Download matching records from ES,
         and extract phone numbers.
+        Also take a look at this class's __init__ method.
 
         The strategy for this follows CBS protocol:
         1. Enrich fixed number based on address
@@ -424,10 +443,13 @@ class PhoneNumberFinder:
             (and, if available, name) match
 
         If one step results in a phone number, the number is
-        verified and returned; the remaining steps are skipped."""
+        verified and returned; the remaining steps are skipped.
 
-        # Default result: no phone number found
-        result = source = score = None
+        If n=1, returns a dict with the best number.
+        If n=2, returns a dict with two dicts."""
+
+        assert n in {1, 2}, "n=1 will return any number and n=2 will" \
+                            " return fixed and mobile; pick either."
 
         # Get the ES response for each query
         for q in ["initial", "name", "fuzzy", "address", "name_only"]:
@@ -435,15 +457,32 @@ class PhoneNumberFinder:
             if query:
                 response = self.es.find(query, source_only=True)
                 if response:
-                    result, source, score = self.get_result(
-                        self.data, response, q in {"fuzzy", "name_only"})
-                if result:
-                    break
+                    if n == 1:
+                        result, source, score = self.get_result(
+                            self.data, response, q in {"fuzzy", "name_only"})
+                        if result:
+                            self.result = {
+                                "number": result,
+                                "source": source,
+                                "score": self.calculate_score(score)
+                            }
+                            break
+                    elif n == 2:
+                        for number_type in ["number", "mobile"]:
+                            result, source, score = self.get_result(
+                                self.data, response, q in {"fuzzy", "name_only"},
+                                number_types=[number_type])
+                            if result:
+                                if number_type not in self.result:
+                                    self.result[number_type] = {
+                                        "number": result,
+                                        "source": source,
+                                        "score": self.calculate_score(score)
+                                    }
+                        if self.result.get("number") and self.result.get("mobile"):
+                            break
 
         # Return the found phone numbers for this query
-        self.result["number"] = result
-        self.result["source"] = source
-        self.result["score"] = self.calculate_score(score)
         return self.result
 
 
