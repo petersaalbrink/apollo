@@ -1,9 +1,12 @@
 import re
 from json import loads
 from requests import get
-from typing import Union, List
+from typing import Union
 from datetime import datetime
+from time import localtime, sleep
+from collections import namedtuple
 from text_unidecode import unidecode
+from phonenumbers import is_valid_number, parse
 from common.connectors import ESClient, MongoDB
 
 
@@ -158,6 +161,290 @@ class Match:
                 else:
                     new_result[key] = maybe_nested
         self.result = new_result
+
+
+class PhoneNumberFinder:
+    """Class for phone number enrichment."""
+    Data = namedtuple("Data", [
+        "postalCode",
+        "houseNumber",
+        "houseNumberExt",
+        "initials",
+        "lastname"
+    ])
+    Score = namedtuple("Score", [
+        "source",
+        "yearOfRecord",
+        "deceased",
+        "lastNameNumber",
+        "gender",
+        "dateOfBirth",
+        "phoneNumberNumber",
+        "isFuzzy",
+        "occurring",
+        "moved",
+    ])
+    es = ESClient("dev_peter.person_data_20190716")
+
+    def __init__(self, data: dict):
+        """Class for phone number enrichment.
+
+        The find function returns a dictionary with 3 keys:
+        number, source and score.
+        source can be N (name) or A (address)
+        score can be 1, 2 or 3 (3 is the highest)
+
+        Example:
+            PhoneNumberFinder({
+                "initials": "P",
+                "lastname": "Saalbrink",
+                "postalCode": "1071XB",
+                "houseNumber": "71",
+                "houseNumberExt": "B",
+            }).find()"""
+
+        self.index = self.data = None
+        self.queries = {}
+        self.result = {}
+
+        # Get phone numbers for data
+        self.load(data)
+
+    def __repr__(self):
+        return f"PhoneNumberFinder(result={self.result})"
+
+    def __str__(self):
+        return f"PhoneNumberFinder(result={self.result})"
+
+    def load(self, data: dict, a: str = "address.current."):
+        """Load queries from data. Used keys:
+        initials, lastname, postalCode, houseNumber, houseNumberExt"""
+
+        # Load address data from file
+        self.data = self.Data(
+            data.get("postalCode"),
+            int(float(data.get("houseNumber", 0))),
+            data.get("houseNumberExt"),
+            data.get("initials", "").replace(".", ""),
+            data.get("lastname", ""))
+
+        if not ((self.data.initials and self.data.lastname)
+                or (self.data.postalCode and self.data.houseNumber)):
+            raise NoMatch("Not enough data to match on.")
+
+        # Store one ES query for each search type using the data.
+        if self.data.postalCode and self.data.houseNumber:
+            q = [{"match": {f"{a}houseNumber": self.data.houseNumber}},
+                 {"match": {f"{a}postalCode": self.data.postalCode}}]
+            if self.data.houseNumberExt:
+                q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
+            self.queries["address"] = {"query": {"bool": {"must": q}}}
+
+            if self.data.lastname:
+                q = [{"match": {f"{a}houseNumber": self.data.houseNumber}},
+                     {"match": {f"{a}postalCode": self.data.postalCode}},
+                     {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}}]
+                if self.data.houseNumberExt:
+                    q.append({"match": {f"{a}houseNumberExt": {"query": self.data.houseNumberExt, "fuzziness": 2}}})
+                self.queries["fuzzy"] = {"query": {"bool": {"must": q}}}
+
+                q = [{"match": {f"{a}houseNumber": self.data.houseNumber}},
+                     {"match": {f"{a}postalCode": self.data.postalCode}},
+                     {"match": {"lastname": self.data.lastname}}]
+                if self.data.houseNumberExt:
+                    q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
+                self.queries["name"] = {"query": {"bool": {"must": q}}}
+
+                if self.data.initials:
+                    q = [{"match": {f"{a}houseNumber": self.data.houseNumber}},
+                         {"match": {f"{a}postalCode": self.data.postalCode}},
+                         {"match": {"lastname": self.data.lastname}},
+                         {"match": {"initials": self.data.initials}}]
+                    if self.data.houseNumberExt:
+                        q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
+                    self.queries["initial"] = {"query": {"bool": {"must": q}}}
+
+        q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+             {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
+        self.queries["name_only"] = {"query": {"bool": {"must": q}}}
+
+    @staticmethod
+    def sleep_or_continue():
+        """Don't call between 22PM and 8AM; if the
+        script is running then, just pause it."""
+        t = localtime().tm_hour
+        while t >= 22 or t < 8:
+            sleep(60)
+            t = localtime().tm_hour
+
+    @staticmethod
+    def validate(phone: str) -> bool:
+        """Offline (i.e., very basic) and online (i.e., paid) phone
+        number validation.
+
+        :raises:
+            ConnectionError: On API error.
+            JSONDecodeError: On API error.
+            NumberParseException: On parse error.
+            ValueError: On parse error."""
+
+        # Before calling our API, do basic (offline) validation
+        valid = is_valid_number(parse(phone, "NL"))
+        if valid and not phone.startswith("6"):
+            # We will only use our API if it's a landline
+            valid = loads(get(f"http://94.168.87.210:4000/call/+31{phone}",
+                              auth=("datateam", "matrixian")).text)
+        return valid
+
+    def extract_number(self, data, records, record, result, source, score, fuzzy):
+        for number_type in ["number", "mobile"]:
+            number = record["phoneNumber"][number_type]
+            if result is None and number is not None:
+                self.sleep_or_continue()
+                if self.validate(f"{number}"):
+                    result = number
+                    source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
+                    numbers = self.es.query(field=f"phoneNumber.{number_type}", value=int(number))
+                    score = self.Score(
+                        record["source"],
+                        record["dateOfRecord"][:4],
+                        record["death"]["year"],
+                        len(set(d["lastname"] for d in records)),
+                        record.get("gender"),
+                        record["birth"]["year"],
+                        len(set(d["phoneNumber"]["number"] for d in records)),
+                        fuzzy,
+                        len(numbers),
+                        record["address"]["moved"] != "1900-01-01T00:00:00Z",
+                    )
+        return result, source, score
+
+    def get_result(self, data, response, fuzzy: bool, result=None, source=None, score=None):
+        # Get the records that were found for this query (or address), and sort them (most recent first)
+        records = sorted(response, key=lambda d: d["dateOfRecord"], reverse=True)
+        # Loop over the results for a query, from recent to old
+        for record in records:
+            # Get fixed and mobile number from records (most recent first) and perform validation
+            result, source, score = self.extract_number(data, records, record, result, source, score, fuzzy)
+            if result:
+                break
+        return result, source, score
+
+    def calculate_score(self, result_tuple: Union[namedtuple, None]) -> float:
+        """Calculate a quality score for the found number."""
+
+        # Define scoring functions
+        x = 100
+
+        def date_score(var: str, score: float) -> float:
+            return (1 - ((datetime.now().year - int(var)) / (x / 2))) * score
+
+        def source_score(var: str, score: float) -> float:
+            return (1 - (({"Kadaster_4": 1,
+                           "Kadaster_3": 2,
+                           "Kadaster_2": 3,
+                           "Kadaster_1": 4,
+                           "company_data_NL_contact": 5,
+                           "shop_data_nl_main": 5,
+                           "whitepages_nl_2019": 6,
+                           "whitepages_nl_2018": 7,
+                           "YP_CDs_Consumer_main": 8,
+                           "car_data_names_only_dob": 9,
+                           "yp_2004_2005": 10,
+                           "postregister_dm": 11,
+                           "Insolventies_main": 12,
+                           "GevondenCC": 13,
+                           "consumer_table_distinct_indexed": 14
+                           }[var] - 1) / (x * 2))) * score
+
+        def death_score(var: int, score: float) -> float:
+            return score if var is None else .5 * score
+
+        def name_score(var: int, score: float) -> float:
+            return score * (1 - ((var - 1) / x))
+
+        def fuzzy_score(var: bool, score: float) -> float:
+            return score * .5 if var else score
+
+        def missing_score(result: namedtuple, score: float) -> float:
+            if result.dateOfBirth is None:
+                score = .975 * score
+            if result.gender is None:
+                score = .975 * score
+            return score
+
+        def number_score(var: int, score: float) -> float:
+            return score * (1 - ((var - 1) / x))
+
+        def occurring_score(var: int, score: float) -> float:
+            return score * (1 + ((var - 1) / x))
+
+        def moved_score(var: bool, score: float) -> float:
+            return 0 if var else score
+
+        def data_score(data: Union[namedtuple, None], score: float) -> float:
+            return 0 if not data.lastname else score
+
+        def full_score(result: Union[namedtuple, None]) -> Union[float, None]:
+            if result is None:
+                return
+            score = data_score(self.data, moved_score(result.moved, occurring_score(result.occurring, number_score(
+                result.phoneNumberNumber, missing_score(result, fuzzy_score(result.isFuzzy, name_score(
+                    result.lastNameNumber, death_score(result.deceased, source_score(result.source, date_score(
+                        result.yearOfRecord, 1))))))))))
+            return score
+
+        def categorize(score: float):
+            if score is not None:
+                if score >= 3/4:
+                    score = 3
+                elif score >= 2/4:
+                    score = 2
+                else:
+                    score = 1
+            return score
+
+        # Calculate score
+        return categorize(full_score(result_tuple))
+
+    def find(self):
+        """Download matching records from ES,
+        and extract phone numbers.
+
+        The strategy for this follows CBS protocol:
+        1. Enrich fixed number based on address
+            and (if available) name match
+        2. Enrich mobile number based on address
+            and (if available) name match
+        3. Enrich fixed number based on address match
+        4. Enrich mobile number based on address match
+        5. Enrich fixed number based on fuzzy address
+            (and, if available, name) match
+        6. Enrich mobile number based on fuzzy address
+            (and, if available, name) match
+
+        If one step results in a phone number, the number is
+        verified and returned; the remaining steps are skipped."""
+
+        # Default result: no phone number found
+        result = source = score = None
+
+        # Get the ES response for each query
+        for q in ["initial", "name", "fuzzy", "address", "name_only"]:
+            query = self.queries.get(q)
+            if query:
+                response = self.es.find(query, source_only=True)
+                if response:
+                    result, source, score = self.get_result(
+                        self.data, response, q in {"fuzzy", "name_only"})
+                if result:
+                    break
+
+        # Return the found phone numbers for this query
+        self.result["number"] = result
+        self.result["source"] = source
+        self.result["score"] = self.calculate_score(score)
+        return self.result
 
 
 class NamesData:
