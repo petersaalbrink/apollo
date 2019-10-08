@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Un
 class ESClient(Elasticsearch):
     """Client for ElasticSearch"""
 
-    def __init__(self, dev: bool = True, es_index: str = None):
+    def __init__(self, es_index: str = None, dev: bool = True):
         """Client for ElasticSearch"""
         from common.secrets import get_secret
         es = get_secret("es")
