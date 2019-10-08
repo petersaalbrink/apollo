@@ -14,7 +14,7 @@ class NoMatch(Exception):
     pass
 
 
-class Match:
+class PersonMatch:
     """Base Match class"""
     drop_fields = {"source", "previous", "common", "country", "place", "fax", "id", "year",
                    "postalCodeMin", "purposeOfUse", "latitude", "longitude", "title", "state", "dateOfRecord"}
