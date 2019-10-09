@@ -1,6 +1,7 @@
 import re
 from json import loads
-from requests import get
+from requests import Session
+from requests.adapters import HTTPAdapter
 from typing import Union
 from datetime import datetime
 from time import localtime, sleep
@@ -31,6 +32,8 @@ class PersonMatch:
         self.validate_phone = validate_phone
         self.es = ESClient()
         self.vn = MongoDB("dev_peter.validated_numbers")
+        self.session = Session()
+        self.session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
 
     def match(self, data: dict, strictness: int = None):
         if not strictness:
@@ -132,8 +135,9 @@ class PersonMatch:
                 if result:
                     valid = result["valid"]
                 else:
-                    valid = loads(get(f"http://94.168.87.210:4000/call/+31{number}",
-                                      auth=("datateam", "matrixian")).text)
+                    valid = loads(self.session.get(
+                        f"http://94.168.87.210:4000/call/+31{number}",
+                        auth=("datateam", "matrixian")).text)
                 if not valid:
                     result["phoneNumber"]["number"] = None
         return self.results
@@ -192,6 +196,8 @@ class PhoneNumberFinder:
     ])
     es = ESClient()
     vn = MongoDB("dev_peter.validated_numbers")
+    session = Session()
+    session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
 
     def __init__(self, data: dict, **kwargs):
         """Class for phone number enrichment.
@@ -258,7 +264,7 @@ class PhoneNumberFinder:
                 or (self.data.postalCode and self.data.houseNumber)):
             raise NoMatch("Not enough data to match on.")
 
-        # Store one ES query for each search type using the data.
+        # Store one ES query for each search type
         if self.data.postalCode and self.data.houseNumber:
             q = [{"match": {f"{a}houseNumber": self.data.houseNumber}},
                  {"match": {f"{a}postalCode": self.data.postalCode}}]
@@ -290,9 +296,10 @@ class PhoneNumberFinder:
                         q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
                     self.queries["initial"] = {"query": {"bool": {"must": q}}}
 
-        q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
-             {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
-        self.queries["name_only"] = {"query": {"bool": {"must": q}}}
+        if self.data.lastname and self.data.initials:
+            q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                 {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
+            self.queries["name_only"] = {"query": {"bool": {"must": q}}}
 
     @staticmethod
     def sleep_or_continue():
@@ -320,8 +327,9 @@ class PhoneNumberFinder:
             result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
             if result:
                 return result["valid"]
-            valid = loads(get(f"http://94.168.87.210:4000/call/+31{phone}",
-                              auth=("datateam", "matrixian")).text)
+            valid = loads(self.session.get(
+                f"http://94.168.87.210:4000/call/+31{phone}",
+                auth=("datateam", "matrixian")).text)
         return valid
 
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
