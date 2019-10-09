@@ -73,7 +73,7 @@ class ESClient(Elasticsearch):
         else:
             index = self.es_index
         if not query:
-            size = kwargs.pop("size") if "size" in kwargs else 1
+            size = kwargs.pop("size", 1)
             return self.search(index=index, size=size, body={}, *args, **kwargs)
         if isinstance(query, dict):
             query = [query]
@@ -82,7 +82,7 @@ class ESClient(Elasticsearch):
         if source_only and not hits_only:
             warn("Returning hits only if any([source_only, first_only])")
             hits_only = True
-        size = kwargs.pop("size") if "size" in kwargs else 10_000
+        size = kwargs.pop("size", 10_000)
         results = []
         for q in query:
             if not q:
@@ -94,15 +94,14 @@ class ESClient(Elasticsearch):
                     break
                 except (ElasticsearchException, OSError, ConnectionError, timeout):
                     warn("Retrying", ConnectionWarning)
-            if hits_only:
-                result = result["hits"]["hits"]
-            if source_only:
-                result = [doc["_source"] for doc in result]
-            if first_only:
-                try:
-                    result = result[0]
-                except IndexError:
-                    result = []
+            if size != 0:
+                if hits_only:
+                    result = result["hits"]["hits"]
+                if source_only:
+                    result = [doc["_source"] for doc in result]
+                if first_only:
+                    with suppress(IndexError):
+                        result = result[0]
             results.append(result)
         if len(results) == 1:
             results = results[0]
@@ -192,7 +191,8 @@ class ESClient(Elasticsearch):
 
         return results
 
-    def query(self, field: str = None, value: Union[str, int] = None, **kwargs) -> List[dict]:
+    def query(self, field: str = None, value: Union[str, int] = None,
+              **kwargs) -> Union[List[dict], Dict[str, Union[Any, dict]]]:
         """Perform a simple ElasticSearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
@@ -209,24 +209,24 @@ class ESClient(Elasticsearch):
             {"query": {"bool": {"must": [{"match": {"lastname": "Saalbrink"}},
                                          {"match": {"address.postalCode": "1014AK"}}]}}}
         """
-        if kwargs:
-            sort = kwargs.pop("sort", None)
-            track_scores = kwargs.pop("track_scores", None)
-            args = {}
-            for k in kwargs:
-                if "_" in k and not k.startswith("_"):
-                    args[k.replace("_", ".")] = kwargs[k]
-            if len(args) == 1:
-                q = {"query": {"bool": {"must": [{"match": args}]}}}
-                return self.find(q, sort=sort, track_scores=track_scores)
-            else:
-                q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
-                return self.find(q, sort=sort, track_scores=track_scores)
+        size = kwargs.pop("size", 10_000)
+        sort = kwargs.pop("sort", None)
+        track_scores = kwargs.pop("track_scores", None)
         if field and value:
             q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
-            return self.find(q)
+            return self.find(q, sort=sort, size=size, track_scores=track_scores)
+        args = {}
+        for k in kwargs:
+            if "_" in k and not k.startswith("_"):
+                args[k.replace("_", ".")] = kwargs[k]
+        if len(args) == 1:
+            q = {"query": {"bool": {"must": [{"match": args}]}}}
+            return self.find(q, sort=sort, size=size, track_scores=track_scores)
+        elif len(args) > 1:
+            q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
+            return self.find(q, sort=sort, size=size, track_scores=track_scores)
         else:
-            return self.find()
+            return self.find(sort=sort, size=size, track_scores=track_scores)
 
 
 class EmailClient:
