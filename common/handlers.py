@@ -42,7 +42,7 @@ class Log:
         debug to stderr."""
         import sys
         import logging
-        level = {
+        self.level = {
             """CRITICAL = 50
                 FATAL = CRITICAL
                 ERROR = 40
@@ -60,7 +60,13 @@ class Log:
             "fatal": logging.FATAL,
             "critical": logging.FATAL,
         }.get(level, logging.DEBUG)
-        logging.basicConfig(stream=sys.stderr, level=level)
+        logging.basicConfig(stream=sys.stderr, level=self.level)
+
+    def __repr__(self):
+        return f"Log({self.level})"
+
+    def __str__(self):
+        return f"Log({self.level})"
 
 
 class ZipData:
