@@ -14,10 +14,10 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
-from pymongo.operations import UpdateOne
 from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
+from pymongo.operations import UpdateOne, UpdateMany
 from elasticsearch import Elasticsearch, ElasticsearchException
 from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Union
 
@@ -336,6 +336,11 @@ class MongoDB(MongoClient):
     @staticmethod
     def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):
         return UpdateOne(filter, update, upsert, collation, array_filters)
+
+    # noinspection PyPep8Naming, PyShadowingBuiltins
+    @staticmethod
+    def UpdateMany(filter, update, upsert=False, collation=None, array_filters=None):
+        return UpdateMany(filter, update, upsert, collation, array_filters)
 
     def find_last(self) -> dict:
         """Return the last document in a collection.
