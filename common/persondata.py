@@ -296,10 +296,10 @@ class PhoneNumberFinder:
                         q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
                     self.queries["initial"] = {"query": {"bool": {"must": q}}}
 
-        if self.data.lastname and self.data.initials:
-            q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
-                 {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
-            self.queries["name_only"] = {"query": {"bool": {"must": q}}}
+        # if self.data.lastname and self.data.initials:
+        #     q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+        #          {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
+        #     self.queries["name_only"] = {"query": {"bool": {"must": q}}}
 
     @staticmethod
     def sleep_or_continue():
@@ -472,7 +472,8 @@ class PhoneNumberFinder:
                             " return fixed and mobile; pick either."
 
         # Get the ES response for each query
-        for q in ["initial", "name", "fuzzy", "address", "name_only"]:
+        # for q in ["initial", "name", "fuzzy", "address", "name_only"]:
+        for q in ["initial", "name", "fuzzy", "address"]:
             query = self.queries.get(q)
             if query:
                 response = self.es.find(query, size=10,
