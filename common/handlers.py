@@ -71,7 +71,11 @@ class Log:
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
-    def __init__(self, file_path: Union[PurePath, str], data_as_dicts: bool = True, **kwargs):
+    def __init__(self,
+                 file_path: Union[PurePath, str],
+                 data_as_dicts: bool = True,
+                 assure_columns: bool = False,
+                 **kwargs):
         """Create a ZipData class instance.
 
         Examples:
@@ -85,9 +89,11 @@ class ZipData:
         self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
+        self.assure_columns = assure_columns
         self.data = {}
         self._encoding = kwargs.get("encoding", "utf-8")
         self._delimiter = kwargs.get("delimiter", ";")
+        self.fieldnames = []
         self.columns = set()
         self.count = 0
 
@@ -97,14 +103,22 @@ class ZipData:
                 if file.endswith(".csv"):
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
-                        if self._dicts:
-                            self.data[file] = [
-                                {col: row[col] if col in row else None for col in self.columns}
-                                for row in islice(csv, n_lines)]
+                        self.fieldnames = csv.fieldnames
+                        if self.assure_columns:
+                            if self._dicts:
+                                self.data[file] = [
+                                    {col: row[col] if col in row else None for col in self.columns}
+                                    for row in islice(csv, n_lines)]
+                            else:
+                                self.data[file] = [csv.fieldnames] + [
+                                    list({col: row[col] if col in row else None for col in self.columns}.values())
+                                    for row in islice(csv, n_lines)]
                         else:
-                            self.data[file] = [csv.fieldnames] + [
-                                list({col: row[col] if col in row else None for col in self.columns}.values())
-                                for row in islice(csv, n_lines)]
+                            if self._dicts:
+                                self.data[file] = [row for row in islice(csv, n_lines)]
+                            else:
+                                self.data[file] = [csv.fieldnames] + [
+                                    list(row.values()) for row in islice(csv, n_lines)]
                     if self.remove:
                         check_call(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
@@ -117,10 +131,21 @@ class ZipData:
                 if file.endswith(".csv"):
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
-                        for row in islice(csv, n_lines):
-                            yield {col: row[col] if col in row else None for col in self.columns} \
-                                if self._dicts else \
-                                list({col: row[col] if col in row else None for col in self.columns}.values())
+                        self.fieldnames = csv.fieldnames
+                        if self.assure_columns:
+                            if self._dicts:
+                                for row in islice(csv, n_lines):
+                                    yield {col: row[col] if col in row else None for col in self.columns}
+                            else:
+                                for row in islice(csv, n_lines):
+                                    yield list({col: row[col] if col in row else None for col in self.columns}.values())
+                        else:
+                            if self._dicts:
+                                for row in islice(csv, n_lines):
+                                    yield row
+                            else:
+                                for row in islice(csv, n_lines):
+                                    yield list(row.values())
                     if self.remove:
                         check_call(["zip", "-d", zipfile.filename, file])
 
