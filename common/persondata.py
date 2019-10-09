@@ -30,6 +30,7 @@ class PersonMatch:
         self._strictness = strictness
         self.validate_phone = validate_phone
         self.es = ESClient()
+        self.vn = MongoDB("dev_peter.validated_numbers")
 
     def match(self, data: dict, strictness: int = None):
         if not strictness:
@@ -127,8 +128,12 @@ class PersonMatch:
         for result in self.results:
             number = result["phoneNumber"]["number"]
             if number:
-                valid = loads(get(f"http://94.168.87.210:4000/call/+31{number}",
-                                  auth=("datateam", "matrixian")).text)
+                result = self.vn.find_one({"phoneNumber": number}, {"_id": False, "valid": True})
+                if result:
+                    valid = result["valid"]
+                else:
+                    valid = loads(get(f"http://94.168.87.210:4000/call/+31{number}",
+                                      auth=("datateam", "matrixian")).text)
                 if not valid:
                     result["phoneNumber"]["number"] = None
         return self.results
@@ -185,7 +190,8 @@ class PhoneNumberFinder:
         "occurring",
         "moved",
     ])
-    es = ESClient("dev_peter.person_data_20190716")
+    es = ESClient()
+    vn = MongoDB("dev_peter.validated_numbers")
 
     def __init__(self, data: dict, **kwargs):
         """Class for phone number enrichment.
@@ -297,8 +303,7 @@ class PhoneNumberFinder:
             sleep(60)
             t = localtime().tm_hour
 
-    @staticmethod
-    def validate(phone: str) -> bool:
+    def validate(self, phone: str) -> bool:
         """Offline (i.e., very basic) and online (i.e., paid) phone
         number validation.
 
@@ -312,6 +317,9 @@ class PhoneNumberFinder:
         valid = is_valid_number(parse(phone, "NL"))
         if valid and not phone.startswith("6"):
             # We will only use our API if it's a landline
+            result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
+            if result:
+                return result["valid"]
             valid = loads(get(f"http://94.168.87.210:4000/call/+31{phone}",
                               auth=("datateam", "matrixian")).text)
         return valid
