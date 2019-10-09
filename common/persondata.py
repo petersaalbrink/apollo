@@ -187,7 +187,7 @@ class PhoneNumberFinder:
     ])
     es = ESClient("dev_peter.person_data_20190716")
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, **kwargs):
         """Class for phone number enrichment.
         Also take a look at this class's find method.
 
@@ -224,6 +224,8 @@ class PhoneNumberFinder:
         self.index = self.data = None
         self.queries = {}
         self.result = {}
+
+        self.respect_hours = kwargs.pop("respect_hours", True)
 
         # Get phone numbers for data
         self.load(data)
@@ -318,7 +320,8 @@ class PhoneNumberFinder:
         for number_type in number_types:
             number = record["phoneNumber"][number_type]
             if result is None and number is not None:
-                self.sleep_or_continue()
+                if self.respect_hours:
+                    self.sleep_or_continue()
                 if self.validate(f"{number}"):
                     result = number
                     source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
