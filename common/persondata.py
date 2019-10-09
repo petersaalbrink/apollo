@@ -325,7 +325,6 @@ class PhoneNumberFinder:
                 if self.validate(f"{number}"):
                     result = number
                     source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
-                    numbers = self.es.query(field=f"phoneNumber.{number_type}", value=int(number))
                     score = self.Score(
                         record["source"],
                         record["dateOfRecord"][:4],
@@ -335,7 +334,8 @@ class PhoneNumberFinder:
                         record["birth"]["year"],
                         len(set(d["phoneNumber"]["number"] for d in records)),
                         fuzzy,
-                        len(numbers),
+                        self.es.query(field=f"phoneNumber.{number_type}",
+                                      value=int(number), size=0)["hits"]["total"],
                         record["address"]["moved"] != "1900-01-01T00:00:00Z",
                     )
         return result, source, score
@@ -459,7 +459,9 @@ class PhoneNumberFinder:
         for q in ["initial", "name", "fuzzy", "address", "name_only"]:
             query = self.queries.get(q)
             if query:
-                response = self.es.find(query, source_only=True)
+                response = self.es.find(query, size=10,
+                                        source_only=True,
+                                        sort="dateOfRecord:desc")
                 if response:
                     if n == 1:
                         result, source, score = self.get_result(
