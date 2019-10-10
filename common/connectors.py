@@ -92,8 +92,8 @@ class ESClient(Elasticsearch):
                 try:
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
-                except (ElasticsearchException, OSError, ConnectionError, timeout):
-                    warn("Retrying", ConnectionWarning)
+                except (ElasticsearchException, OSError, ConnectionError, timeout) as e:
+                    raise ElasticsearchException(q) from e
             if size != 0:
                 if hits_only:
                     result = result["hits"]["hits"]
@@ -384,10 +384,6 @@ class Query(str):
     pass
 
 
-class ConnectionWarning(Warning):
-    pass
-
-
 class MySQLClient:
     """Client for MySQL
 
@@ -578,7 +574,7 @@ class MySQLClient:
                             table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
                             break
                         except DatabaseError as e:
-                            warn(f"Retrying: {e}: {q}", ConnectionWarning)
+                            raise DatabaseError(q) from e
                 else:
                     table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
                 if len(table) == 0:
