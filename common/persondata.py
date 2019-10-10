@@ -34,6 +34,7 @@ class PersonMatch:
         self.vn = MongoDB("dev_peter.validated_numbers")
         self.session = Session()
         self.session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
+        self.url = "http://localhost:5000/call/+31"
 
     def match(self, data: dict, strictness: int = None):
         if not strictness:
@@ -135,9 +136,14 @@ class PersonMatch:
                 if result:
                     valid = result["valid"]
                 else:
-                    valid = loads(self.session.get(
-                        f"http://94.168.87.210:4000/call/+31{number}",
-                        auth=("datateam", "matrixian")).text)
+                    while True:
+                        try:
+                            valid = loads(self.session.get(
+                                f"{self.url}{number}",
+                                auth=("datateam", "matrixian")).text)
+                            break
+                        except IOError:
+                            self.url = "http://94.168.87.210:4000/call/+31"
                 if not valid:
                     result["phoneNumber"]["number"] = None
         return self.results
@@ -198,6 +204,7 @@ class PhoneNumberFinder:
     vn = MongoDB("dev_peter.validated_numbers")
     session = Session()
     session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
+    url = "http://localhost:5000/call/+31"
 
     def __init__(self, data: dict, **kwargs):
         """Class for phone number enrichment.
@@ -327,9 +334,14 @@ class PhoneNumberFinder:
             result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
             if result:
                 return result["valid"]
-            valid = loads(self.session.get(
-                f"http://94.168.87.210:4000/call/+31{phone}",
-                auth=("datateam", "matrixian")).text)
+            while True:
+                try:
+                    valid = loads(self.session.get(
+                        f"{self.url}{phone}",
+                        auth=("datateam", "matrixian")).text)
+                    break
+                except IOError:
+                    self.url = "http://94.168.87.210:4000/call/+31"
         return valid
 
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
