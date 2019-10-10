@@ -21,6 +21,7 @@ setuptools.setup(
         "elasticsearch",
         "tqdm",
         "pandas",
+        "xlrd",
         "numpy",
         "matplotlib",
         "requests",
