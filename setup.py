@@ -22,6 +22,7 @@ setuptools.setup(
         "tqdm",
         "pandas",
         "xlrd",
+        "openpyxl",
         "numpy",
         "matplotlib",
         "requests",
