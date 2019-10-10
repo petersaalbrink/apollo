@@ -24,6 +24,7 @@ setuptools.setup(
         "numpy",
         "matplotlib",
         "requests",
+        "pycountry",
     ],
     package_data={"common": ["certificates/*.pem"]},
     classifiers=[
