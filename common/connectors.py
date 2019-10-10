@@ -552,7 +552,9 @@ class MySQLClient:
         order_by = kwargs.pop("order_by", None)
         fieldnames = kwargs.pop("fieldnames", None)
         if query is None:
-            query = self.build(select_fields=select_fields, order_by=order_by)
+            query = self.build(select_fields=select_fields,
+                               order_by=order_by,
+                               *args, **kwargs)
         if size <= 0:
             raise ValueError("Chunk size must be > 0")
         elif size is None:
