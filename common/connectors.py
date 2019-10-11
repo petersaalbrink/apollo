@@ -738,7 +738,7 @@ class MySQLClient:
     def build(self, table: str = None, select_fields: Union[List[str], str] = None,
               field: str = None, value: Union[str, int] = None, distinct: str = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              order_by: Union[str, List[str]] = None, **kwargs) -> Query:
+              order_by: Union[str, List[str]] = None, and_or: str = None, **kwargs) -> Query:
         """Build a MySQL query"""
 
         def search_for(k, v):
@@ -764,6 +764,11 @@ class MySQLClient:
                     key = f"{k} {v}"
             return key
 
+        if not and_or:
+            and_or = "AND"
+        else:
+            assert and_or in {"AND", "OR"}
+
         if not distinct:
             distinct = ""
         if table is None:
@@ -785,13 +790,13 @@ class MySQLClient:
             keys = []
             for field, value in kwargs.items():
                 if isinstance(value, list):
-                    skey = " AND ".join([search_for(field, skey) for skey in value])
+                    skey = f" {and_or} ".join([search_for(field, skey) for skey in value])
                 else:
                     skey = search_for(field, value)
                 keys.append(skey)
-            keys = " AND ".join(keys)
+            keys = f" {and_or} ".join(keys)
             if "WHERE" in query:
-                query = f"{query} AND {keys}"
+                query = f"{query} {and_or} {keys}"
             else:
                 query = f"{query} WHERE {keys}"
         if order_by:
