@@ -77,6 +77,8 @@ class ZipData:
             zipt.transform(function=custom_func)
             zipt.write(replace=("_In", "_Uit"))
         """
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
         assert file_path.suffix == ".zip"
         self.remove = False
         self.file_path = file_path
