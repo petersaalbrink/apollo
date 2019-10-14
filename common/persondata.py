@@ -447,9 +447,9 @@ class PhoneNumberFinder:
 
         def categorize(score: float):
             if score is not None:
-                if score >= 3/4:
+                if score >= 2/3:
                     score = 3
-                elif score >= 2/4:
+                elif score >= 1/3:
                     score = 2
                 else:
                     score = 1
