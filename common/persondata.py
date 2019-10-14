@@ -247,9 +247,6 @@ class PhoneNumberFinder:
         self.respect_hours = kwargs.pop("respect_hours", True)
 
         # Get phone numbers for data
-        if not isinstance(data, MutableMapping):
-            # noinspection PyProtectedMember
-            data = data._asdict()
         self.load(data)
 
     def __repr__(self):
@@ -258,7 +255,7 @@ class PhoneNumberFinder:
     def __str__(self):
         return f"PhoneNumberFinder(result={self.result})"
 
-    def load(self, data: dict, a: str = "address.current."):
+    def load(self, data: Union[MutableMapping, NamedTuple], a: str = "address.current."):
         """Load queries from data. Used keys:
         initials, lastname, postalCode, houseNumber, houseNumberExt"""
 
@@ -268,7 +265,8 @@ class PhoneNumberFinder:
             int(float(data.get("houseNumber", 0))),
             data.get("houseNumberExt"),
             Checks.str_or_empty(data.get("initials")).replace(".", ""),
-            data.get("lastname"))
+            data.get("lastname")
+        ) if isinstance(data, MutableMapping) else data
 
         if not ((self.data.initials and self.data.lastname)
                 or (self.data.postalCode and self.data.houseNumber)):
