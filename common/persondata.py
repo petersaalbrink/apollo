@@ -234,7 +234,7 @@ class PhoneNumberFinder:
                 "postalCode": "1071XB",
                 "houseNumber": "71",
                 "houseNumberExt": "B",
-            }).find()
+            }).find(n=2)
             :return:
                 {'mobile': {'number': 649978891, 'source': 'N', 'score': 3},
                 'number': {'number': 203345554, 'source': 'N', 'score': 1}}
