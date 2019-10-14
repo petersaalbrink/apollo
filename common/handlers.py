@@ -6,7 +6,42 @@ from subprocess import check_call
 from pathlib import PurePath, Path
 from collections import OrderedDict
 from csv import DictReader, DictWriter
-from typing import Callable, Dict, List, MutableMapping, Tuple, Union
+from requests import Session
+from requests.adapters import HTTPAdapter
+from concurrent.futures import ThreadPoolExecutor, wait
+from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
+
+session = Session()
+session.mount('http://', HTTPAdapter(
+    pool_connections=100,
+    pool_maxsize=100))
+get = session.get
+
+
+def thread(function: Callable, data: Iterable, process: Callable = None):
+    """Thread :param data: with :param function: and optionally do :param process:.
+
+    Example:
+        from common import get, thread
+        thread(
+            function=lambda _: get("http://example.org"),
+            data=range(2000),
+            process=lambda results: [print(f.result().status_code) for f in results]
+        )"""
+    if process is None:
+        with ThreadPoolExecutor() as executor:
+            return [f.result() for f in wait({executor.submit(function, row) for row in data}).done]
+    else:
+        futures = set()
+        with ThreadPoolExecutor() as executor:
+            for row in data:
+                futures.add(executor.submit(function, row))
+                if len(futures) == 1000:
+                    done, futures = wait(futures)
+                    process(done)
+            done, futures = wait(futures)
+            if done:
+                process(done)
 
 
 def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
