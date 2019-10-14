@@ -15,7 +15,16 @@ session = Session()
 session.mount('http://', HTTPAdapter(
     pool_connections=100,
     pool_maxsize=100))
-get = session.get
+
+
+def get(url, **kwargs):
+    """Sends a GET request. Returns :class:`Response` object.
+
+    :param url: URL for the new :class:`Request` object.
+    :param kwargs: Optional arguments that ``request`` takes.
+    :rtype: requests.Response
+    """
+    return session.get(url, **kwargs)
 
 
 def thread(function: Callable, data: Iterable, process: Callable = None):
