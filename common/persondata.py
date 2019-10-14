@@ -2,7 +2,7 @@ import re
 from json import loads
 from requests import Session
 from requests.adapters import HTTPAdapter
-from typing import Union
+from typing import Union, MutableMapping, NamedTuple
 from datetime import datetime
 from time import localtime, sleep
 from collections import namedtuple
@@ -206,7 +206,7 @@ class PhoneNumberFinder:
     session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
     url = "http://localhost:5000/call/+31"
 
-    def __init__(self, data: dict, **kwargs):
+    def __init__(self, data: Union[MutableMapping, NamedTuple], **kwargs):
         """Class for phone number enrichment.
         Also take a look at this class's find method.
 
@@ -247,6 +247,9 @@ class PhoneNumberFinder:
         self.respect_hours = kwargs.pop("respect_hours", True)
 
         # Get phone numbers for data
+        if not isinstance(data, MutableMapping):
+            # noinspection PyProtectedMember
+            data = data._asdict()
         self.load(data)
 
     def __repr__(self):
