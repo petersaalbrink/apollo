@@ -35,7 +35,7 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
         thread(
             function=lambda _: get("http://example.org"),
             data=range(2000),
-            process=lambda results: [print(f.result().status_code) for f in results]
+            process=lambda result: print(result.status_code)
         )"""
     if process is None:
         with ThreadPoolExecutor() as executor:
@@ -47,10 +47,10 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
                 futures.add(executor.submit(function, row))
                 if len(futures) == 1000:
                     done, futures = wait(futures)
-                    process(done)
+                    [process(f.result()) for f in done]
             done, futures = wait(futures)
             if done:
-                process(done)
+                [process(f.result()) for f in done]
 
 
 def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
