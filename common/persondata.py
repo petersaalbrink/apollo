@@ -130,22 +130,24 @@ class PersonMatch:
 
     def _validate_phone(self):
         for result in self.results:
-            number = result["phoneNumber"]["number"]
-            if number:
-                result = self.vn.find_one({"phoneNumber": number}, {"_id": False, "valid": True})
-                if result:
-                    valid = result["valid"]
-                else:
-                    while True:
-                        try:
-                            valid = loads(self.session.get(
-                                f"{self.url}{number}",
-                                auth=("datateam", "matrixian")).text)
-                            break
-                        except IOError:
-                            self.url = "http://94.168.87.210:4000/call/+31"
-                if not valid:
-                    result["phoneNumber"]["number"] = None
+            for phone_type in ["number", "mobile"]:
+                number = result["phoneNumber"][phone_type]
+                if number:
+                    result = self.vn.find_one({"phoneNumber": number},
+                                              {"_id": False, "valid": True})
+                    if result:
+                        valid = result["valid"]
+                    else:
+                        while True:
+                            try:
+                                valid = loads(self.session.get(
+                                    f"{self.url}{number}",
+                                    auth=("datateam", "matrixian")).text)
+                                break
+                            except IOError:
+                                self.url = "http://94.168.87.210:4000/call/+31"
+                    if not valid:
+                        result["phoneNumber"]["number"] = None
         return self.results
 
     def _update_result(self):
@@ -330,8 +332,7 @@ class PhoneNumberFinder:
 
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
-        if valid and not phone.startswith("6"):
-            # We will only use our API if it's a landline
+        if valid:
             result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
             if result:
                 return result["valid"]
