@@ -1,3 +1,4 @@
+from json import loads
 from zipfile import ZipFile
 from io import TextIOWrapper
 from itertools import islice
@@ -17,14 +18,15 @@ session.mount('http://', HTTPAdapter(
     pool_maxsize=100))
 
 
-def get(url, **kwargs):
+def get(url, text_only: bool = False, **kwargs):
     """Sends a GET request. Returns :class:`Response` object.
 
+    :param text_only: return JSON data from :class:`Response` as dictionary.
     :param url: URL for the new :class:`Request` object.
     :param kwargs: Optional arguments that ``request`` takes.
     :rtype: requests.Response
     """
-    return session.get(url, **kwargs)
+    return loads(session.get(url, **kwargs).text) if text_only else session.get(url, **kwargs)
 
 
 def thread(function: Callable, data: Iterable, process: Callable = None):
