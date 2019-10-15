@@ -7,7 +7,7 @@ from subprocess import check_call
 from pathlib import PurePath, Path
 from collections import OrderedDict
 from csv import DictReader, DictWriter
-from requests import Session
+from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
@@ -18,13 +18,12 @@ session.mount('http://', HTTPAdapter(
     pool_maxsize=100))
 
 
-def get(url, text_only: bool = False, **kwargs):
+def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
     """Sends a GET request. Returns :class:`Response` object.
 
     :param text_only: return JSON data from :class:`Response` as dictionary.
     :param url: URL for the new :class:`Request` object.
     :param kwargs: Optional arguments that ``request`` takes.
-    :rtype: requests.Response
     """
     return loads(session.get(url, **kwargs).text) if text_only else session.get(url, **kwargs)
 
