@@ -31,9 +31,13 @@ def change_secret(name: str) -> Credentials:
 def get_secret(name: str) -> Credentials:
     # Funtion imports
     from pathlib import Path
-    from getpass import getpass, GetPassWarning
-    from warnings import simplefilter
+    from getpass import getpass
     from base64 import b64encode, b64decode
+    try:
+        import termios
+        termios.tcgetattr, termios.tcsetattr
+    except (ImportError, AttributeError):
+        getpass = input
 
     # Set defaults
     file = Path(Path.home() / ".common/.secrets")
@@ -72,12 +76,8 @@ def get_secret(name: str) -> Credentials:
                     return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
 
     # Ask secret, if needed
-    simplefilter("error")
     usr = input(f"{names.get(name, name)} username: ")
-    try:
-        pwd = getpass(f"{names.get(name, name)} password: ")
-    except GetPassWarning:
-        pwd = input(f"{names.get(name, name)} password: ")
+    pwd = getpass(f"{names.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
     if pwd:
         with open(file, "a") as f:
