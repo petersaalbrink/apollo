@@ -18,12 +18,11 @@ class NoMatch(Exception):
 
 class PersonMatch:
     """Base Match class"""
-    drop_fields = {"source", "previous", "common", "country", "place", "fax", "id", "year",
-                   "postalCodeMin", "purposeOfUse", "latitude", "longitude", "title", "state", "dateOfRecord"}
-    title_data = {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
-                  "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
-
     def __init__(self, strictness: int = 3, validate_phone: bool = False):
+        self.drop_fields = {"source", "previous", "common", "country", "place", "fax", "id", "year",
+                            "postalCodeMin", "purposeOfUse", "latitude", "longitude", "title", "state", "dateOfRecord"}
+        self.title_data = {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
+                           "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
         self.data = {}
         self.result = {}
         self.results = []
@@ -183,30 +182,7 @@ class PersonMatch:
 
 class PhoneNumberFinder:
     """Class for phone number enrichment."""
-    Data = namedtuple("Data", [
-        "postalCode",
-        "houseNumber",
-        "houseNumberExt",
-        "initials",
-        "lastname"
-    ])
-    Score = namedtuple("Score", [
-        "source",
-        "yearOfRecord",
-        "deceased",
-        "lastNameNumber",
-        "gender",
-        "dateOfBirth",
-        "phoneNumberNumber",
-        "isFuzzy",
-        "occurring",
-        "moved",
-    ])
-    session = Session()
-    session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
-    url = "http://localhost:5000/call/+31"
-
-    def __init__(self, data: Union[MutableMapping, NamedTuple], **kwargs):
+    def __init__(self, **kwargs):
         """Class for phone number enrichment.
         Also take a look at this class's find method.
 
@@ -219,38 +195,61 @@ class PhoneNumberFinder:
             mobile, source, and score.
 
         Examples:
-            PhoneNumberFinder({
+            pnf = PhoneNumberFinder()
+            pnf.load({
                 "initials": "P",
                 "lastname": "Saalbrink",
                 "postalCode": "1071XB",
                 "houseNumber": "71",
                 "houseNumberExt": "B",
-            }).find()
+            })
+            pnf.find()
             :return: {'number': 649978891, 'source': 'N', 'score': 3}
 
-            PhoneNumberFinder({
+            pnf = PhoneNumberFinder()
+            pnf.load({
                 "initials": "P",
                 "lastname": "Saalbrink",
                 "postalCode": "1071XB",
                 "houseNumber": "71",
                 "houseNumberExt": "B",
-            }).find(n=2)
+            })
+            pnf.find(n=2)
             :return:
                 {'mobile': {'number': 649978891, 'source': 'N', 'score': 3},
                 'number': {'number': 203345554, 'source': 'N', 'score': 1}}
         """
+        self.Data = namedtuple("Data", [
+            "postalCode",
+            "houseNumber",
+            "houseNumberExt",
+            "initials",
+            "lastname"
+        ])
+        self.Score = namedtuple("Score", [
+            "source",
+            "yearOfRecord",
+            "deceased",
+            "lastNameNumber",
+            "gender",
+            "dateOfBirth",
+            "phoneNumberNumber",
+            "isFuzzy",
+            "occurring",
+            "moved",
+        ])
+        self.session = Session()
+        self.session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
+        self.url = "http://localhost:5000/call/+31"
 
         self.es = ESClient()
         self.vn = MongoDB("dev_peter.validated_numbers")
 
-        self.index = self.data = None
+        self.data = ()
         self.queries = {}
         self.result = {}
 
         self.respect_hours = kwargs.pop("respect_hours", True)
-
-        # Get phone numbers for data
-        self.load(data)
 
     def __repr__(self):
         return f"PhoneNumberFinder(result={self.result})"
@@ -261,6 +260,11 @@ class PhoneNumberFinder:
     def load(self, data: Union[MutableMapping, NamedTuple], a: str = "address.current."):
         """Load queries from data. Used keys:
         initials, lastname, postalCode, houseNumber, houseNumberExt"""
+
+        # Start clean
+        self.data = ()
+        self.queries = {}
+        self.result = {}
 
         # Load data
         self.data = self.Data(
