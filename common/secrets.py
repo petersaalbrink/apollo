@@ -24,6 +24,10 @@ class Credentials(AbstractContextManager):
 del AbstractContextManager
 
 
+def change_secret(name: str) -> Credentials:
+    pass  # TODO: Create this function
+
+
 def get_secret(name: str) -> Credentials:
     # Funtion imports
     from pathlib import Path
@@ -75,6 +79,8 @@ def get_secret(name: str) -> Credentials:
     except GetPassWarning:
         pwd = input(f"{names.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
-    with open(file, "a") as f:
-        f.write(f"{name}::{usr}::{pwd}\n")
+    if pwd:
+        with open(file, "a") as f:
+            f.write(f"{name}::{usr}::{pwd}\n")
+
     return Credentials(usr, b64decode(bytes(pwd.encode())).decode())

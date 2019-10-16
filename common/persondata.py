@@ -202,8 +202,6 @@ class PhoneNumberFinder:
         "occurring",
         "moved",
     ])
-    es = ESClient()
-    vn = MongoDB("dev_peter.validated_numbers")
     session = Session()
     session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
     url = "http://localhost:5000/call/+31"
@@ -242,6 +240,9 @@ class PhoneNumberFinder:
                 'number': {'number': 203345554, 'source': 'N', 'score': 1}}
         """
 
+        self.es = ESClient()
+        self.vn = MongoDB("dev_peter.validated_numbers")
+
         self.index = self.data = None
         self.queries = {}
         self.result = {}
@@ -261,7 +262,7 @@ class PhoneNumberFinder:
         """Load queries from data. Used keys:
         initials, lastname, postalCode, houseNumber, houseNumberExt"""
 
-        # Load address data from file
+        # Load data
         self.data = self.Data(
             data.get("postalCode"),
             int(float(data.get("houseNumber", 0))),
@@ -374,7 +375,7 @@ class PhoneNumberFinder:
         if not number_types:
             number_types = ["number", "mobile"]
         # Get the records that were found for this query (or address), and sort them (most recent first)
-        records = sorted(response, key=lambda d: d["dateOfRecord"], reverse=True)
+        records = sorted(response, key=lambda d: d["dateOfRecord"], reverse=True)  # TODO: Why do I sort on dateOfRecord again? I do that in .find() as well
         # Loop over the results for a query, from recent to old
         for record in records:
             # Get fixed and mobile number from records (most recent first) and perform validation
@@ -386,10 +387,10 @@ class PhoneNumberFinder:
 
     def calculate_score(self, result_tuple: namedtuple) -> float:
         """Calculate a quality score for the found number."""
-        x = 100
+        x = 100  # TODO: Why this factor? Alle gewichten moeten onderbouwd worden!
 
         def date_score(var: str, score: float) -> float:
-            return (1 - ((datetime.now().year - int(var)) / (x / 2))) * score
+            return (1 - ((datetime.now().year - int(var)) / (x / 2))) * score  # TODO: datetime.now in __init__
 
         def source_score(var: str, score: float) -> float:
             return (1 - (({"Kadaster_4": 1,
@@ -410,16 +411,16 @@ class PhoneNumberFinder:
                            }[var] - 1) / (x * 2))) * score
 
         def death_score(var: int, score: float) -> float:
-            return score if var is None else .5 * score
+            return score if var is None else .5 * score  # TODO: the factor .5 can be dependent on age of the person
 
         def name_score(var: int, score: float) -> float:
             return score * (1 - ((var - 1) / x))
 
         def fuzzy_score(var: bool, score: float) -> float:
-            return score * .5 if var else score
+            return score * .5 if var else score  # TODO: change to .75 ? Levenshtein
 
         def missing_score(result: namedtuple, score: float) -> float:
-            if result.dateOfBirth is None:
+            if result.dateOfBirth is None:  # TODO: are these too low?
                 score = .975 * score
             if result.gender is None:
                 score = .975 * score
@@ -429,10 +430,10 @@ class PhoneNumberFinder:
             return score * (1 - ((var - 1) / x))
 
         def occurring_score(var: int, score: float) -> float:
-            return score * (1 + ((var - 1) / x))
+            return score * (1 + ((var - 1) / x))  # TODO: maybe use max ? in the future.
 
         def moved_score(var: bool, score: float) -> float:
-            return 0 if var else score
+            return 0 if var else score  # TODO: only for landlines (.75 would be more appropriate). For mobile phones, this doesn't matter.
 
         def data_score(data: namedtuple, score: float) -> float:
             return 0 if not data.lastname else score
@@ -501,7 +502,7 @@ class PhoneNumberFinder:
                             self.result = {
                                 "number": result,
                                 "source": source,
-                                "score": self.calculate_score(score)
+                                "score": self.calculate_score(score)  # TODO: move this to .get_result()
                             }
                             break
                     elif n == 2:
