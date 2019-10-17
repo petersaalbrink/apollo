@@ -532,7 +532,7 @@ class MySQLClient:
 
     def chunk(self, query: Union[str, Query] = None, size: int = None,
               use_tqdm: bool = False, retry_on_error: bool = False,
-              *args, **kwargs) -> List[list]:
+              *args, **kwargs) -> List[Union[dict, list]]:
         """Returns a generator for downloading a table in chunks
 
         Example:
