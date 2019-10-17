@@ -40,16 +40,18 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
         )"""
     if process is None:
         with ThreadPoolExecutor() as executor:
-            return [f.result() for f in wait({executor.submit(function, row) for row in data}).done]
+            return [f.result() for f in
+                    wait({executor.submit(function, row) for row in data},
+                         return_when='FIRST_EXCEPTION').done]
     else:
         futures = set()
         with ThreadPoolExecutor() as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == 1000:
-                    done, futures = wait(futures)
+                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
                     [process(f.result()) for f in done]
-            done, futures = wait(futures)
+            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
             if done:
                 [process(f.result()) for f in done]
 
