@@ -39,7 +39,17 @@ class Credentials:
 
 
 def change_secret(name: str) -> Credentials:
-    pass  # TODO: Create this function
+
+    file = Path(Path.home() / ".common/.secrets")
+
+    # Remove the line from the file and re-write it
+    with open(file) as f:
+        data = [line for line in f if not line.startswith(name)]
+    with open(file, "w") as f:
+        f.writelines(data)
+
+    # Add new secret
+    return get_secret(name=name)
 
 
 def get_secret(name: str) -> Credentials:
