@@ -245,7 +245,7 @@ class PhoneNumberFinder:
         self.es = ESClient()
         self.vn = MongoDB("dev_peter.validated_numbers")
 
-        self.data = ()
+        self.data = None
         self.queries = {}
         self.result = {}
 
@@ -262,17 +262,17 @@ class PhoneNumberFinder:
         initials, lastname, postalCode, houseNumber, houseNumberExt"""
 
         # Start clean
-        self.data = ()
+        self.data = None
         self.queries = {}
         self.result = {}
 
         # Load data
         self.data = self.Data(
-            data.get("postalCode"),
+            Checks.str_or_empty(data.get("postalCode")),
             int(float(data.get("houseNumber", 0))),
-            data.get("houseNumberExt"),
+            Checks.str_or_empty(data.get("houseNumberExt")),
             Checks.str_or_empty(data.get("initials")).replace(".", ""),
-            data.get("lastname")
+            Checks.str_or_empty(data.get("lastname"))
         ) if isinstance(data, MutableMapping) else data
 
         if not ((self.data.initials and self.data.lastname)
