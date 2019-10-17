@@ -1,7 +1,30 @@
-from contextlib import AbstractContextManager
+from pathlib import Path
+from getpass import getpass
+from base64 import b64encode, b64decode
+try:
+    import termios
+    termios.tcgetattr, termios.tcsetattr
+except (ImportError, AttributeError):
+    getpass = input
+
+NAMES = {
+    "es": "Elasticsearch dev server",
+    "mongo": "MongoDB dev server",
+    "addr": "MongoDB addressvalidation server",
+    "sql": "MySQL dev server",
+    "ccv": "CCV FTP server",
+    "bk": "BuurtKadoos FTP server",
+    "ng": "NutsGroep FTP server",
+    "ftp": "VPS11 FTP server",
+    "mongo_stg": "MongoDB stg server",
+    "bstorage": "Matrixian Synaman File Transfer",
+    "da": "DigitalAudience FTP server",
+    "platform": "Matrixian Platform",
+    "dev_platform": "Matrixian Platform (development)",
+}
 
 
-class Credentials(AbstractContextManager):
+class Credentials:
     __slots__ = ["usr", "pwd"]
 
     def __init__(self, usr: str, pwd: str):
@@ -14,48 +37,14 @@ class Credentials(AbstractContextManager):
     def __repr__(self):
         return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
-
-
-del AbstractContextManager
-
 
 def change_secret(name: str) -> Credentials:
     pass  # TODO: Create this function
 
 
 def get_secret(name: str) -> Credentials:
-    # Funtion imports
-    from pathlib import Path
-    from getpass import getpass
-    from base64 import b64encode, b64decode
-    try:
-        import termios
-        termios.tcgetattr, termios.tcsetattr
-    except (ImportError, AttributeError):
-        getpass = input
 
-    # Set defaults
     file = Path(Path.home() / ".common/.secrets")
-    names = {
-        "es": "Elasticsearch dev server",
-        "mongo": "MongoDB dev server",
-        "addr": "MongoDB addressvalidation server",
-        "sql": "MySQL dev server",
-        "ccv": "CCV FTP server",
-        "bk": "BuurtKadoos FTP server",
-        "ng": "NutsGroep FTP server",
-        "ftp": "VPS11 FTP server",
-        "mongo_stg": "MongoDB stg server",
-        "bstorage": "Matrixian Synaman File Transfer",
-        "da": "DigitalAudience FTP server",
-        "platform": "Matrixian Platform",
-        "dev_platform": "Matrixian Platform (development)",
-    }
 
     # Create secrets, if it doesn't exist yet
     if not file.exists():
@@ -76,8 +65,8 @@ def get_secret(name: str) -> Credentials:
                     return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
 
     # Ask secret, if needed
-    usr = input(f"{names.get(name, name)} username: ")
-    pwd = getpass(f"{names.get(name, name)} password: ")
+    usr = input(f"{NAMES.get(name, name)} username: ")
+    pwd = getpass(f"{NAMES.get(name, name)} password: ")
     pwd = b64encode(bytes(pwd.encode())).decode()
     if pwd:
         with open(file, "a") as f:
