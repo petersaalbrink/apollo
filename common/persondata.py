@@ -238,6 +238,7 @@ class PhoneNumberFinder:
             "occurring",
             "moved",
         ])
+        self.year = datetime.now().year
         self.session = Session()
         self.session.mount('http://', HTTPAdapter(pool_connections=100, pool_maxsize=100))
         self.url = "http://localhost:5000/call/+31"
@@ -360,7 +361,7 @@ class PhoneNumberFinder:
                 if self.validate(f"{number}"):
                     result = number
                     source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
-                    score = self.Score(
+                    score = self.calculate_score(self.Score(
                         record["source"],
                         record["dateOfRecord"][:4],
                         record["death"]["year"],
@@ -372,14 +373,12 @@ class PhoneNumberFinder:
                         self.es.query(field=f"phoneNumber.{number_type}",
                                       value=int(number), size=0)["hits"]["total"],
                         record["address"]["moved"] != "1900-01-01T00:00:00Z",
-                    )
+                    ))
         return result, source, score
 
-    def get_result(self, data, response, fuzzy: bool, result=None, source=None, score=None, number_types: list = None):
+    def get_result(self, data, records, fuzzy: bool, result=None, source=None, score=None, number_types: list = None):
         if not number_types:
             number_types = ["number", "mobile"]
-        # Get the records that were found for this query (or address), and sort them (most recent first)
-        records = sorted(response, key=lambda d: d["dateOfRecord"], reverse=True)  # TODO: Why do I sort on dateOfRecord again? I do that in .find() as well
         # Loop over the results for a query, from recent to old
         for record in records:
             # Get fixed and mobile number from records (most recent first) and perform validation
@@ -392,9 +391,10 @@ class PhoneNumberFinder:
     def calculate_score(self, result_tuple: namedtuple) -> float:
         """Calculate a quality score for the found number."""
         x = 100  # TODO: Why this factor? Alle gewichten moeten onderbouwd worden!
+        year = self.year
 
         def date_score(var: str, score: float) -> float:
-            return (1 - ((datetime.now().year - int(var)) / (x / 2))) * score  # TODO: datetime.now in __init__
+            return (1 - ((year - int(var)) / (x / 2))) * score
 
         def source_score(var: str, score: float) -> float:
             return (1 - (({"Kadaster_4": 1,
@@ -506,7 +506,7 @@ class PhoneNumberFinder:
                             self.result = {
                                 "number": result,
                                 "source": source,
-                                "score": self.calculate_score(score)  # TODO: move this to .get_result()
+                                "score": score,
                             }
                             break
                     elif n == 2:
@@ -519,7 +519,7 @@ class PhoneNumberFinder:
                                     self.result[number_type] = {
                                         "number": result,
                                         "source": source,
-                                        "score": self.calculate_score(score)
+                                        "score": score,
                                     }
                         if self.result.get("number") and self.result.get("mobile"):
                             break
