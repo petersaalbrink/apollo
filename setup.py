@@ -19,6 +19,7 @@ setuptools.setup(
         "pymongo",
         "text_unidecode",
         "elasticsearch",
+        "phonenumbers",
         "tqdm",
         "pandas",
         "xlrd",
