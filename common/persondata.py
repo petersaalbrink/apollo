@@ -1,5 +1,6 @@
 import re
 from json import loads
+from logging import info, debug
 from requests import Session
 from requests.adapters import HTTPAdapter
 from typing import Union, MutableMapping, NamedTuple
@@ -9,6 +10,7 @@ from collections import namedtuple
 from text_unidecode import unidecode
 from phonenumbers import is_valid_number, parse
 from common.parsers import Checks
+from common.handlers import Timer
 from common.connectors import ESClient, MongoDB
 
 
@@ -36,16 +38,20 @@ class PersonMatch:
         self.url = "http://localhost:5000/call/+31"
 
     def match(self, data: dict, strictness: int = None):
+        t = Timer()
         if not strictness:
             strictness = self._strictness
         self.data = data
+        debug("Data = %s", data)
         self.build_query(strictness=strictness)
         self.find_match()
         if self.result:
+            info("End time = %s", t.end())
             return self.result
         else:
             self.build_query(strictness=strictness, fuzzy=True)
             self.find_match()
+            info("End time = %s", t.end())
             return self.result
 
     def build_query(self, strictness: int, fuzzy: bool = False):
@@ -78,22 +84,30 @@ class PersonMatch:
             self.query["query"]["bool"]["should"] = should_list
             # noinspection PyTypeChecker
             self.query["query"]["bool"]["minimum_should_match"] = min(strictness, len(should_list))
+        debug("query = %s", self.query)
 
     def find_match(self):
         # Find all matches
-        self.results = self.es.find(self.query, source_only=True, sort="dateOfRecord:desc")
+        self.results = self.es.find(self.query, source_only=True, size=10, sort="dateOfRecord:desc")
         if not self.results:
+            info("NoMatch")
             raise NoMatch
         if self.validate_phone:
+            t = Timer()
             self._validate_phone()
+            debug("Validated phone numbers in %s", t.end())
 
         # Get the most recent match but update missing data
+        info("Number of results: %s", len(self.results))
         self.result = self.results.pop(0)
+        debug("Raw result: %s", self.result)
         self._update_result()
+        debug("Updated result: %s", self.result)
 
         # Run twice to flatten nested address dicts
         self._flatten_result()
         self._flatten_result()
+        debug("Final result: %s", self.result)
 
     def _clean_lastname(self, name: str) -> str:
         """Keep only letters; hyphens become spaces. Remove all special characters and titles"""
@@ -258,6 +272,16 @@ class PhoneNumberFinder:
     def __str__(self):
         return f"PhoneNumberFinder(result={self.result})"
 
+    def match(self, data: Union[MutableMapping, NamedTuple]):
+        t = Timer()
+        self.load(data)
+        debug("Data = %s", self.data)
+        debug("Queries = %s", self.queries)
+        result = self.find()
+        debug("Result = %s", self.result)
+        info("End time = %s", t.end())
+        return result
+
     def load(self, data: Union[MutableMapping, NamedTuple], a: str = "address.current."):
         """Load queries from data. Used keys:
         initials, lastname, postalCode, houseNumber, houseNumberExt"""
@@ -336,10 +360,13 @@ class PhoneNumberFinder:
             NumberParseException: On parse error.
             ValueError: On parse error."""
 
+        t = Timer()
+
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
         if valid:
             result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
+            debug("MongoDB lookup: %s", t.end())
             if result:
                 return result["valid"]
             while True:
@@ -347,18 +374,23 @@ class PhoneNumberFinder:
                     valid = loads(self.session.get(
                         f"{self.url}{phone}",
                         auth=("datateam", "matrixian")).text)
+                    debug("Request: %s", t.end())
                     break
                 except IOError:
                     self.url = "http://94.168.87.210:4000/call/+31"
+                debug("First try: %s", t.end())
         return valid
 
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
+        t = Timer()
         for number_type in number_types:
             number = record["phoneNumber"][number_type]
             if result is None and number is not None:
                 if self.respect_hours:
                     self.sleep_or_continue()
+                debug("Before validating: %s", t.end())
                 if self.validate(f"{number}"):
+                    debug("After validating: %s", t.end())
                     result = number
                     source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
                     score = self.calculate_score(self.Score(
@@ -373,10 +405,13 @@ class PhoneNumberFinder:
                         self.es.query(field=f"phoneNumber.{number_type}",
                                       value=int(number), size=0)["hits"]["total"],
                         record["address"]["moved"] != "1900-01-01T00:00:00Z",
-                    ))
+                        ))
+                debug("Total for %s: %s", number_type, t.end())
+        debug("Took %s, result: %s", t.end(), result)
         return result, source, score
 
     def get_result(self, data, records, fuzzy: bool, result=None, source=None, score=None, number_types: list = None):
+        t = Timer()
         if not number_types:
             number_types = ["number", "mobile"]
         # Loop over the results for a query, from recent to old
@@ -385,7 +420,10 @@ class PhoneNumberFinder:
             result, source, score = self.extract_number(
                 data, records, record, result, source, score, fuzzy, number_types)
             if result:
+                debug("Got result in: %s", t.end())
                 break
+        else:
+            debug("Got no result in: %s", t.end())
         return result, source, score
 
     def calculate_score(self, result_tuple: namedtuple) -> float:
@@ -487,6 +525,8 @@ class PhoneNumberFinder:
         If n=1, returns a dict with the best number.
         If n=2, returns a dict with two dicts."""
 
+        t = Timer()
+
         assert n in {1, 2}, "n=1 will return any number and n=2 will" \
                             " return fixed and mobile; pick either."
 
@@ -523,6 +563,8 @@ class PhoneNumberFinder:
                                     }
                         if self.result.get("number") and self.result.get("mobile"):
                             break
+            debug("Elapsed time after %s query: %s", q, t.end())
+        info("Elapsed time after %s query: %s", q, t.end())
 
         # Return the found phone numbers for this query
         return self.result
