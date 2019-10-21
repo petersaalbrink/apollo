@@ -496,8 +496,8 @@ class MySQLClient:
                 if "." in word:
                     self.database, self.table_name = word.split(".")
                     break
-        if not isinstance(fieldnames, list) and fieldnames:
-            fieldnames = self.column()
+        if fieldnames is True:
+            fieldnames = self._get_fieldnames(query)
         if query is None:
             query = self.build()
         self.connect()
@@ -512,10 +512,8 @@ class MySQLClient:
             fieldnames: Union[bool, List[str]] = False,
             *args, **kwargs) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
-        if isinstance(fieldnames, list):
-            pass
-        elif fieldnames:
-            fieldnames = self.column()
+        if fieldnames is True:
+            fieldnames = self._get_fieldnames(query)
         if query is None:
             query = self.build(limit=1, offset=self._iter)
             if self._iter is None:
@@ -738,6 +736,21 @@ class MySQLClient:
         self.add_index(table, list(fields))
         return self.insert(table, data)
 
+    def _get_fieldnames(self, query: Union[str, Query]) -> List[str]:
+        if "*" in query:
+            fieldnames = self.column()
+        else:
+            for select_ in {"SELECT", "Select", "select"}:
+                if select_ in query:
+                    break
+            fieldnames = query.split(select_)[1]
+            for from_ in {"FROM", "From", "from"}:
+                if from_ in query:
+                    break
+            fieldnames = fieldnames.split(from_)[0]
+            fieldnames = [fieldname.replace("`", "").strip() for fieldname in fieldnames.split(",")]
+        return fieldnames
+
     def build(self, table: str = None, select_fields: Union[List[str], str] = None,
               field: str = None, value: Union[str, int] = None, distinct: str = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
@@ -858,12 +871,8 @@ class MySQLClient:
             self.database, table = table.split(".")
         if table and not self.table_name:
             self.table_name = table
-        if isinstance(fieldnames, list):
-            pass
-        elif fieldnames and not select_fields:
-            fieldnames = self.column()
-        elif fieldnames and select_fields:
-            fieldnames = select_fields
+        if fieldnames is True:
+            fieldnames = select_fields or self.column()
         self.connect()
         try:
             self.execute(query)
