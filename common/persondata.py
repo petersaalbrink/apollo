@@ -265,6 +265,12 @@ class PhoneNumberFinder:
         self.result = {}
 
         self.respect_hours = kwargs.pop("respect_hours", True)
+        self.name_only = kwargs.pop("name_only_query", False)
+        self.query_types = [
+            "initial", "name", "fuzzy", "address", "name_only"
+        ] if self.name_only else [
+            "initial", "name", "fuzzy", "address"
+        ]
 
     def __repr__(self):
         return f"PhoneNumberFinder(result={self.result})"
@@ -272,12 +278,12 @@ class PhoneNumberFinder:
     def __str__(self):
         return f"PhoneNumberFinder(result={self.result})"
 
-    def match(self, data: Union[MutableMapping, NamedTuple]):
+    def match(self, data: Union[MutableMapping, NamedTuple], n: int = 1):
         t = Timer()
-        self.load(data)
+        self.load(data=data)
         debug("Data = %s", self.data)
         debug("Queries = %s", self.queries)
-        result = self.find()
+        result = self.find(n=n)
         debug("Result = %s", self.result)
         info("End time = %s", t.end())
         return result
@@ -336,10 +342,10 @@ class PhoneNumberFinder:
                         q.append({"match": {f"{a}houseNumberExt": self.data.houseNumberExt}})
                     self.queries["initial"] = {"query": {"bool": {"must": q}}}
 
-        # if self.data.lastname and self.data.initials:
-        #     q = [{"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
-        #          {"match": {"initials": {"query": self.data.initials, "fuzziness": 2}}}]
-        #     self.queries["name_only"] = {"query": {"bool": {"must": q}}}
+        if self.name_only and self.data.lastname and self.data.initials:
+            q = [{"wildcard": {"lastname": f"*{self.data.lastname.lower()}"}},
+                 {"match": {"initials": {"query": self.data.initials}}}]
+            self.queries["name_only"] = {"query": {"bool": {"must": q}}}
 
     @staticmethod
     def sleep_or_continue():
@@ -359,9 +365,7 @@ class PhoneNumberFinder:
             JSONDecodeError: On API error.
             NumberParseException: On parse error.
             ValueError: On parse error."""
-
         t = Timer()
-
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
         if valid:
@@ -392,7 +396,9 @@ class PhoneNumberFinder:
                 if self.validate(f"{number}"):
                     debug("After validating: %s", t.end())
                     result = number
-                    source = "N" if record["lastname"] and record["lastname"] in data.lastname else "A"
+                    source = "N" if record["lastname"] and (
+                            record["lastname"] in data.lastname
+                            or data.lastname in record["lastname"]) else "A"
                     score = self.calculate_score(self.Score(
                         record["source"],
                         record["dateOfRecord"][:4],
@@ -531,14 +537,14 @@ class PhoneNumberFinder:
                             " return fixed and mobile; pick either."
 
         # Get the ES response for each query
-        # for q in ["initial", "name", "fuzzy", "address", "name_only"]:
-        for q in ["initial", "name", "fuzzy", "address"]:
+        for q in self.query_types:
             query = self.queries.get(q)
             if query:
                 response = self.es.find(query, size=10,
                                         source_only=True,
                                         sort="dateOfRecord:desc")
                 if response:
+                    debug("Response %s query: %s", q, response)
                     if n == 1:
                         result, source, score = self.get_result(
                             self.data, response, q in {"fuzzy", "name_only"})
