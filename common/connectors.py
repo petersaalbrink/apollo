@@ -319,7 +319,8 @@ class MongoDB(MongoClient):
         elif host == "stg":
             mongo = get_secret("mongo_stg")
             host = "136.144.189.123"
-        # noinspection PyUnboundLocalVariable
+        else:
+            raise ValueError(f"Host `{host}` not recognized")
         mongo_client = MongoClient(host=f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}",
                                    connectTimeoutMS=None)
         if not client and not database:
@@ -525,8 +526,10 @@ class MySQLClient:
         try:
             self.execute(query, *args, **kwargs)
             row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
-        except (DatabaseError, IndexError) as e:
+        except DatabaseError as e:
             raise DatabaseError(query) from e
+        except IndexError:
+            row = {} if fieldnames else []
         self.disconnect()
         return row
 
@@ -555,10 +558,10 @@ class MySQLClient:
             query = self.build(select_fields=select_fields,
                                order_by=order_by,
                                *args, **kwargs)
-        if size <= 0:
-            raise ValueError("Chunk size must be > 0")
-        elif size is None:
+        if size is None:
             size = 1
+        elif size <= 0:
+            raise ValueError("Chunk size must be > 0")
         if size == 1:
             for i in range_func(0, count, size):
                 q = f"{query} LIMIT {i}, {size}"
@@ -872,7 +875,9 @@ class MySQLClient:
             else:
                 result = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
                     else [list(row) for row in self.fetchall()]
-        except (DatabaseError, IndexError) as e:
+        except DatabaseError as e:
             raise DatabaseError(query) from e
+        except IndexError:
+            result = {} if fieldnames else []
         self.disconnect()
         return result
