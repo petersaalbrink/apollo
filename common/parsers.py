@@ -1,42 +1,23 @@
-from json import loads
-from requests import get
 from datetime import datetime
 from pycountry import countries
 from urllib.parse import quote_plus
+from common.handlers import get
 from common.connectors import EmailClient
-from address_checker.Global.address_parser import parser_final as global_parser
-from address_checker.BE.Parser.address_parser_BE import parser_final as belgium_parser
-from address_checker.DE.Parser.address_parser_DE import parser_final as german_parser
-from address_checker.FR.Parser.address_parser_FR import parser as french_parser
-from address_checker.IT.Parser.address_parser_IT import parser as italian_parser
-from address_checker.NL.Parser.address_parser_NL import parser_final as dutch_parser
-from address_checker.UK.Parser.address_parser_UK import parser as english_parser
 
 
-def parse(address: str, country: str = "NL", api: bool = True):
-    if api:
-        params = {
-            "address": quote_plus(address),
-            "country": country if country == "UK" else countries.lookup(country).name
-        }
-        response = loads(get(f"http://37.97.136.149:5000/parsers/", params=params).text)
-        if "status" in response:
-            EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
-                                                 "psaalbrink@matrixiangroup.com"],
-                                     subject="VPS11 Address Parser error",
-                                     message=f"params = {params}\n"
-                                             f"response = {response}")
-        return response
-    else:
-        return {
-            "global": global_parser(address),
-            "BE": belgium_parser(address),
-            "DE": german_parser(address),
-            "FR": french_parser(address),
-            "IT": italian_parser(address),
-            "NL": dutch_parser(address),
-            "UK": english_parser(address),
-        }.get(country, "global")
+def parse(address: str, country: str = "NL"):
+    params = {
+        "address": quote_plus(address),
+        "country": country if country == "UK" else countries.lookup(country).name
+    }
+    response = get(f"http://37.97.136.149:5000/parsers/", params=params, text_only=True)
+    if "status" in response:
+        EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
+                                             "psaalbrink@matrixiangroup.com"],
+                                 subject="VPS11 Address Parser error",
+                                 message=f"params = {params}\n"
+                                         f"response = {response}")
+    return response
 
 
 class Checks:
