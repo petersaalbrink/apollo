@@ -768,6 +768,9 @@ class MySQLClient:
                     key = f"{k} IS NULL"
                 elif v == "!NULL":
                     key = f"{k} IS NOT NULL"
+                elif "!IN " in v:
+                    v = v.replace("!", "NOT ")
+                    key = f"{k} {v}"
                 elif v.startswith("!"):
                     key = f"{k} != '{v[1:]}'"
                 elif v.startswith((">", "<")):
@@ -798,10 +801,7 @@ class MySQLClient:
         else:
             query = f"SELECT {distinct} {select_fields} FROM {table}"
         if not all([field is None, value is None]):
-            if isinstance(value, str):
-                query = f"{query} WHERE {field} = '{value}'"
-            elif isinstance(value, int):
-                query = f"{query} WHERE {field} = {value}"
+            query = f"{query} WHERE {search_for(field, value)}"
         if kwargs:
             keys = []
             for field, value in kwargs.items():
