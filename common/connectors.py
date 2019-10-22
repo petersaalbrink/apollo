@@ -454,6 +454,13 @@ class MySQLClient:
     def fetchone(self) -> List[tuple]:
         return self.cursor.fetchone()
 
+    def exists(self) -> bool:
+        try:
+            self.query(select_fields="1", limit=1)
+            return True
+        except DatabaseError:
+            return False
+
     def truncate(self):
         self.query(query=f"TRUNCATE TABLE {self.database}.{self.table_name}")
 
@@ -656,11 +663,20 @@ class MySQLClient:
                                         f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
                                         f" = '{table}' AND COLUMN_NAME = '{field}'")
         field_type, field_len = field_type.split("(")
-        field_len = int(field_len.strip(")"))
+        field_len = field_len.strip(")")
+        is_float = "," in field_len
+        field_len = int(field_len.split(",")[0]) if is_float else int(field_len)
         position -= 1  # MySQL starts counting at 1, Python at 0
-        new_len = max(len(str(row[position])) for row in chunk)
-        assert new_len > field_len
-        field_type = f"{field_type}({new_len})"
+        new_len = max(len(f"{row[position]}") for row in chunk)
+        if is_float:
+            if new_len == field_len:
+                data = [f"{row[position]}".split(".") for row in chunk]
+                field_len = max(sum(map(len, values)) for values in data)
+                new_len = max(len(values[1]) for values in data)
+            field_type = f"{field_type}({field_len},{new_len})"
+        else:
+            assert new_len > field_len
+            field_type = f"{field_type}({new_len})"
         self.connect()
         self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
         self.disconnect()
