@@ -1,4 +1,5 @@
 from json import loads
+from functools import wraps
 from zipfile import ZipFile
 from io import TextIOWrapper
 from itertools import islice
@@ -11,6 +12,7 @@ from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
+from common.connectors import EmailClient
 
 session = Session()
 session.mount('http://', HTTPAdapter(
@@ -106,6 +108,22 @@ class Log:
 
     def __str__(self):
         return f"Log({self.level})"
+
+
+def send_email(function: Callable):
+    """Function decorator to send emails!"""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        ec = EmailClient()
+        try:
+            function(*args, **kwargs)
+            ec.send_email(to_address="psaalbrink@matrixiangroup.com",
+                          message=f"Program finished successfully.")
+        except Exception:
+            ec.send_email(to_address="psaalbrink@matrixiangroup.com",
+                          error_message=True)
+            raise
+    return wrapped
 
 
 class ZipData:
