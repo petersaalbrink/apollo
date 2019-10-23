@@ -110,20 +110,29 @@ class Log:
         return f"Log({self.level})"
 
 
-def send_email(function: Callable):
+def send_email(function: Callable = None, *,
+               to_address: Union[str, list] = None):
     """Function decorator to send emails!"""
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        ec = EmailClient()
-        try:
-            function(*args, **kwargs)
-            ec.send_email(to_address="psaalbrink@matrixiangroup.com",
-                          message=f"Program finished successfully.")
-        except Exception:
-            ec.send_email(to_address="psaalbrink@matrixiangroup.com",
-                          error_message=True)
-            raise
-    return wrapped
+    if not to_address:
+        to_address = "psaalbrink@matrixiangroup.com"
+
+    def decorate(f: Callable = None):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            ec = EmailClient()
+            try:
+                f(*args, **kwargs)
+                ec.send_email(to_address=to_address,
+                              message=f"Program finished successfully.")
+            except Exception:
+                ec.send_email(to_address=to_address,
+                              error_message=True)
+                raise
+        return wrapped
+
+    if function:
+        return decorate(function)
+    return decorate
 
 
 class ZipData:
