@@ -1,7 +1,7 @@
 import re
 from json import loads
 from logging import info, debug
-from requests import Session
+from requests import Session, get
 from requests.adapters import HTTPAdapter
 from typing import Union, MutableMapping, NamedTuple
 from datetime import datetime
@@ -9,6 +9,7 @@ from time import localtime, sleep
 from collections import namedtuple
 from text_unidecode import unidecode
 from phonenumbers import is_valid_number, parse
+from numpy import zeros
 from common.parsers import Checks
 from common.handlers import Timer
 from common.connectors import ESClient, MongoDB
@@ -251,6 +252,8 @@ class PhoneNumberFinder:
             "isFuzzy",
             "occurring",
             "moved",
+            "mobile",
+            "matchedNames",
         ])
         self.year = datetime.now().year
         self.session = Session()
@@ -259,6 +262,7 @@ class PhoneNumberFinder:
 
         self.es = ESClient()
         self.vn = MongoDB("dev_peter.validated_numbers")
+        self.local = get('https://api.ipify.org').text == "94.168.87.210"
 
         self.data = None
         self.queries = {}
@@ -266,6 +270,7 @@ class PhoneNumberFinder:
 
         self.respect_hours = kwargs.pop("respect_hours", True)
         self.name_only = kwargs.pop("name_only_query", False)
+        self.score_testing = kwargs.pop("score_testing", False)
         self.query_types = [
             "initial", "name", "fuzzy", "address", "name_only"
         ] if self.name_only else [
@@ -369,10 +374,13 @@ class PhoneNumberFinder:
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
         if valid:
-            result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
-            debug("MongoDB lookup: %s", t.end())
-            if result:
-                return result["valid"]
+            if self.local:
+                result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
+                debug("MongoDB lookup: %s", t.end())
+                if result:
+                    return result["valid"]
+            if self.respect_hours:
+                self.sleep_or_continue()
             while True:
                 try:
                     valid = loads(self.session.get(
@@ -390,8 +398,6 @@ class PhoneNumberFinder:
         for number_type in number_types:
             number = record["phoneNumber"][number_type]
             if result is None and number is not None:
-                if self.respect_hours:
-                    self.sleep_or_continue()
                 debug("Before validating: %s", t.end())
                 if self.validate(f"{number}"):
                     debug("After validating: %s", t.end())
@@ -411,7 +417,9 @@ class PhoneNumberFinder:
                         self.es.query(field=f"phoneNumber.{number_type}",
                                       value=int(number), size=0)["hits"]["total"],
                         record["address"]["moved"] != "1900-01-01T00:00:00Z",
-                        ))
+                        number_type == "mobile",
+                        (data.lastname, record["lastname"])
+                    ))
                 debug("Total for %s: %s", number_type, t.end())
         debug("Took %s, result: %s", t.end(), result)
         return result, source, score
@@ -434,65 +442,103 @@ class PhoneNumberFinder:
 
     def calculate_score(self, result_tuple: namedtuple) -> float:
         """Calculate a quality score for the found number."""
-        x = 100  # TODO: Why this factor? Alle gewichten moeten onderbouwd worden!
+        # Set constants
+        x = 100
         year = self.year
 
-        def date_score(var: str, score: float) -> float:
-            return (1 - ((year - int(var)) / (x / 2))) * score
+        def date_score(result: namedtuple, score: float) -> float:
+            return 2 * (1 - ((year - int(result.yearOfRecord)) / x)) * score
 
-        def source_score(var: str, score: float) -> float:
-            return (1 - (({"Kadaster_4": 1,
-                           "Kadaster_3": 2,
-                           "Kadaster_2": 3,
-                           "Kadaster_1": 4,
-                           "company_data_NL_contact": 5,
-                           "shop_data_nl_main": 5,
-                           "whitepages_nl_2019": 6,
-                           "whitepages_nl_2018": 7,
-                           "YP_CDs_Consumer_main": 8,
-                           "car_data_names_only_dob": 9,
-                           "yp_2004_2005": 10,
-                           "postregister_dm": 11,
-                           "Insolventies_main": 12,
-                           "GevondenCC": 13,
-                           "consumer_table_distinct_indexed": 14
-                           }[var] - 1) / (x * 2))) * score
+        def source_score(result: namedtuple, score: float) -> float:
+            source = {
+                "Kadaster_4": 1,
+                "Kadaster_3": 2,
+                "Kadaster_2": 3,
+                "Kadaster_1": 4,
+                "company_data_NL_contact": 5,
+                "shop_data_nl_main": 5,
+                "whitepages_nl_2019": 6,
+                "whitepages_nl_2018": 7,
+                "YP_CDs_Consumer_main": 8,
+                "car_data_names_only_dob": 9,
+                "yp_2004_2005": 10,
+                "postregister_dm": 11,
+                "Insolventies_main": 12,
+                "GevondenCC": 13,
+                "consumer_table_distinct_indexed": 14
+            }
+            return (1 - ((source[result.source] - 1) / (x * 2))) * score
 
-        def death_score(var: int, score: float) -> float:
-            return score if var is None else .5 * score  # TODO: the factor .5 can be dependent on age of the person
+        def death_score(result: namedtuple, score: float) -> float:
+            _x = max((year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
+            return score if result.deceased is None else _x * score
 
-        def name_score(var: int, score: float) -> float:
-            return score * (1 - ((var - 1) / x))
-
-        def fuzzy_score(var: bool, score: float) -> float:
-            return score * .5 if var else score  # TODO: change to .75 ? Levenshtein
-
-        def missing_score(result: namedtuple, score: float) -> float:
-            if result.dateOfBirth is None:  # TODO: are these too low?
-                score = .975 * score
-            if result.gender is None:
-                score = .975 * score
+        def n_score(result: namedtuple, score: float) -> float:
+            for var in [result.phoneNumberNumber, result.lastNameNumber]:
+                score = score * (1 - ((var - 1) / x))
             return score
 
-        def number_score(var: int, score: float) -> float:
-            return score * (1 - ((var - 1) / x))
+        def fuzzy_score(result: namedtuple, score: float) -> float:
+            """Uses name_input and name_output, before and after fuzzy
+            matching, taking into account the number of changes in name."""
+            def levenshtein(seq1, seq2):
+                size_x = len(seq1) + 1
+                size_y = len(seq2) + 1
+                matrix = zeros((size_x, size_y))
+                for _x in range(size_x):
+                    matrix[_x, 0] = _x
+                for _y in range(size_y):
+                    matrix[0, _y] = _y
+                for _x in range(1, size_x):
+                    for _y in range(1, size_y):
+                        if seq1[_x - 1] == seq2[_y - 1]:
+                            matrix[_x, _y] = min(
+                                matrix[_x - 1, _y] + 1,
+                                matrix[_x - 1, _y - 1],
+                                matrix[_x, _y - 1] + 1
+                            )
+                        else:
+                            matrix[_x, _y] = min(
+                                matrix[_x - 1, _y] + 1,
+                                matrix[_x - 1, _y - 1] + 1,
+                                matrix[_x, _y - 1] + 1
+                            )
+                return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+            return levenshtein(*result.matchedNames) * score if result.isFuzzy else score
 
-        def occurring_score(var: int, score: float) -> float:
-            return score * (1 + ((var - 1) / x))  # TODO: maybe use max ? in the future.
+        def missing_score(result: namedtuple, score: float) -> float:
+            if result.dateOfBirth is None:
+                score = .9 * score
+            if result.gender is None:
+                score = .9 * score
+            return score
 
-        def moved_score(var: bool, score: float) -> float:
-            return 0 if var else score  # TODO: only for landlines (.75 would be more appropriate). For mobile phones, this doesn't matter.
+        def occurring_score(result: namedtuple, score: float) -> float:
+            """THis should be the last step."""
+            return min(score * (1 + ((result.occurring - 1) / x)), 1)
 
-        def data_score(data: namedtuple, score: float) -> float:
-            return 0 if not data.lastname else score
+        def moved_score(result: namedtuple, score: float) -> float:
+            if result.moved:
+                return 0.9 * score if result.mobile else 0.2 * score
+            else:
+                return score
 
-        def full_score(data: namedtuple, result: namedtuple) -> Union[float, None]:
+        def data_score(result: namedtuple, score: float) -> float:
+            return 0 if not result.matchedNames[0] else score
+
+        def full_score(result: namedtuple, score: int = 1) -> Union[float, None]:
             if result is None:
                 return
-            score = data_score(data, moved_score(result.moved, occurring_score(result.occurring, number_score(
-                result.phoneNumberNumber, missing_score(result, fuzzy_score(result.isFuzzy, name_score(
-                    result.lastNameNumber, death_score(result.deceased, source_score(result.source, date_score(
-                        result.yearOfRecord, 1))))))))))
+            for func in [data_score,
+                         moved_score,
+                         n_score,
+                         missing_score,
+                         fuzzy_score,
+                         death_score,
+                         source_score,
+                         date_score,
+                         occurring_score]:
+                score = func(result, score)
             return score
 
         def categorize(score: float):
@@ -506,7 +552,11 @@ class PhoneNumberFinder:
             return score
 
         # Calculate score
-        return categorize(full_score(self.data, result_tuple))
+        score_percentage = full_score(result_tuple)
+        if self.score_testing:
+            return score_percentage
+        categorized_score = categorize(score_percentage)
+        return categorized_score
 
     def find(self, n: int = 1) -> dict:
         """Download matching records from ES,
@@ -570,6 +620,7 @@ class PhoneNumberFinder:
                         if self.result.get("number") and self.result.get("mobile"):
                             break
             debug("Elapsed time after %s query: %s", q, t.end())
+        # noinspection PyUnboundLocalVariable
         info("Elapsed time after %s query: %s", q, t.end())
 
         # Return the found phone numbers for this query
