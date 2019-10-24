@@ -447,7 +447,7 @@ class PhoneNumberFinder:
         year = self.year
 
         def date_score(result: namedtuple, score: float) -> float:
-            return 2 * (1 - ((year - int(result.yearOfRecord)) / x)) * score
+            return (1 - ((year - int(result.yearOfRecord)) / (x / 2))) * score
 
         def source_score(result: namedtuple, score: float) -> float:
             source = {
@@ -514,7 +514,7 @@ class PhoneNumberFinder:
             return score
 
         def occurring_score(result: namedtuple, score: float) -> float:
-            """THis should be the last step."""
+            """This should be the last step."""
             return min(score * (1 + ((result.occurring - 1) / x)), 1)
 
         def moved_score(result: namedtuple, score: float) -> float:
