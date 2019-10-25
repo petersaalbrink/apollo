@@ -662,20 +662,14 @@ class MySQLClient:
         field_type, position = self.row(f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
                                         f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
                                         f" = '{table}' AND COLUMN_NAME = '{field}'")
-        field_type, field_len = field_type.split("(")
-        field_len = field_len.strip(")")
-        is_float = "," in field_len
-        field_len = int(field_len.split(",")[0]) if is_float else int(field_len)
+        field_type, field_len = field_type.strip(")").split("(")
         position -= 1  # MySQL starts counting at 1, Python at 0
-        new_len = max(len(f"{row[position]}") for row in chunk)
-        if is_float:
-            if new_len == field_len:
-                data = [f"{row[position]}".split(".") for row in chunk]
-                field_len = max(sum(map(len, values)) for values in data)
-                new_len = max(len(values[1]) for values in data)
+        if "," in field_len:
+            field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
+            new_len = max(len(f"{row[position]}".split(".")[1]) for row in chunk)
             field_type = f"{field_type}({field_len},{new_len})"
         else:
-            assert new_len > field_len
+            new_len = max(len(f"{row[position]}") for row in chunk)
             field_type = f"{field_type}({new_len})"
         self.connect()
         self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
