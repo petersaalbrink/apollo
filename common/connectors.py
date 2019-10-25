@@ -606,23 +606,20 @@ class MySQLClient:
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
             fieldnames = list(data[0].keys())
-        i = 0
-        test_row = data[i].values() if isinstance(data[i], dict) else data[i]
-        try:
-            while None in test_row:
-                i += 1
-                test_row = data[i].values() if isinstance(data[i], dict) else data[i]
-        except IndexError:
-            test_row = ["" if row is None else row for row in test_row]
+        for row in data:
+            if None not in row.values() if isinstance(row, dict) else row:
+                break
+        else:
+            row = ["" if v is None else v for v in row]
         if isinstance(data[0], (list, tuple)):
-            types = list(zip([type(value) for value in test_row],
+            types = list(zip([type(value) for value in row],
                              list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
         elif isinstance(data[0], dict):
-            types = list(zip([type(value) for value in test_row],
+            types = list(zip([type(value) for value in row],
                              list(map(max, zip(*[[len(str(value)) for value in row.values()] for row in data])))))
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
-        types = [(type_, float(f"{prec}.{2}")) if type_ is float else (type_, prec)
+        types = [(type_, float(f"{prec}.2")) if type_ is float else (type_, prec)
                  for type_, prec in types]  # Change default precision for floats...
         types = [(type_, 6) if type_ == datetime else (type_, prec) for type_, prec in types]  # ...and datetimes
         if len(types) != len(fieldnames):
