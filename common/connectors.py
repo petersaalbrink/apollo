@@ -622,7 +622,7 @@ class MySQLClient:
                              list(map(max, zip(*[[len(str(value)) for value in row.values()] for row in data])))))
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
-        types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
+        types = [(type_, float(f"{prec}.{2}")) if type_ is float else (type_, prec)
                  for type_, prec in types]  # Change default precision for floats...
         types = [(type_, 6) if type_ == datetime else (type_, prec) for type_, prec in types]  # ...and datetimes
         if len(types) != len(fieldnames):
@@ -712,7 +712,7 @@ class MySQLClient:
                     break
                 except DatabaseError as e:
                     e = f"{e}"
-                    if "truncated" in e:
+                    if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table, chunk)
                     else:
                         print(chunk)
