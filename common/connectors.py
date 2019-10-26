@@ -610,7 +610,7 @@ class MySQLClient:
             if None not in row.values() if isinstance(row, dict) else row:
                 break
         else:
-            row = ["" if v is None else v for v in row]
+            row = ["" if v is None else v for v in data[0]]
         if isinstance(data[0], (list, tuple)):
             types = list(zip([type(value) for value in row],
                              list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
@@ -724,7 +724,7 @@ class MySQLClient:
         self.disconnect()
 
     def insert_new(self, table: str, data: List[Union[list, tuple, dict]],
-                   fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]] = None) -> int:
+                   fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
