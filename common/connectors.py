@@ -640,7 +640,7 @@ class MySQLClient:
         types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
                  timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
         fields = [f"`{name}` {types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else f"{name} {types[type_]}"
+                  if type_ not in [date, datetime.date] else f"`{name}` {types[type_]}"
                   for name, (type_, length) in fields.items()]
         if "." in table:
             self.database, table = table.split(".")
