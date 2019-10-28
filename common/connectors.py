@@ -503,10 +503,10 @@ class MySQLClient:
                 if "." in word:
                     self.database, self.table_name = word.split(".")
                     break
-        if fieldnames is True:
-            fieldnames = self._get_fieldnames(query)
         if query is None:
             query = self.build()
+        if fieldnames is True:
+            fieldnames = self._get_fieldnames(query)
         self.connect()
         self.execute(query, *args, **kwargs)
         table = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
