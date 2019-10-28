@@ -111,10 +111,23 @@ class Log:
 
 
 def send_email(function: Callable = None, *,
-               to_address: Union[str, list] = None):
+               to_address: Union[str, list] = None,
+               message: str = None):
     """Function decorator to send emails!"""
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
+
+    def make_message(m: str, f: Callable, args, kwargs):
+        if not m:
+            m = f"{f.__name__}("
+            if args:
+                m = f"{m}{', '.join(map(str, args))}"
+                if kwargs:
+                    m = f"{m}, "
+            if kwargs:
+                m = f"{m}{', '.join([f'{k}={v}' for k,v in kwargs.items()])}"
+            m = f"{m})"
+        return m
 
     def decorate(f: Callable = None):
         @wraps(f)
@@ -123,9 +136,11 @@ def send_email(function: Callable = None, *,
             try:
                 f(*args, **kwargs)
                 ec.send_email(to_address=to_address,
-                              message=f"Program finished successfully.")
+                              message=f"Program finished successfully:\n\n"
+                                      f"{make_message(message, f, args, kwargs)}")
             except Exception:
                 ec.send_email(to_address=to_address,
+                              message=make_message(message, f, args, kwargs),
                               error_message=True)
                 raise
         return wrapped
