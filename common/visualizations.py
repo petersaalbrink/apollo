@@ -31,6 +31,7 @@ class DistributionPlot:
         self.fieldname = fieldname
         self.grid = grid
         self.name_figure = "figure"
+        self.xtick_labels = self.ytick_labels = None
 
         # Visualization defaults
         self.color_bars = '#20b2aa'
@@ -61,8 +62,8 @@ class DistributionPlot:
         plt.ylabel("Count")
 
         # Get the ticks
-        xticks, xtick_labels = plt.xticks()
-        yticks, ytick_labels = plt.yticks()
+        xticks, self.xtick_labels = plt.xticks()
+        yticks, self.ytick_labels = plt.yticks()
         ticks = {"x": xticks, "y": yticks}
 
         # Show the figure
@@ -100,8 +101,8 @@ class DistributionPlot:
         plt.ylabel("Count")
 
         # Get the ticks
-        xticks, xtick_labels = plt.xticks()
-        yticks, ytick_labels = plt.yticks()
+        xticks, self.xtick_labels = plt.xticks()
+        yticks, self.ytick_labels = plt.yticks()
         ticks = {"x": xticks, "y": yticks}
 
         # Show the figure

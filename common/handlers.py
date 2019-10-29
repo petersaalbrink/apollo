@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from io import TextIOWrapper
 from itertools import islice
 from datetime import datetime
-from subprocess import check_call
+from subprocess import run
 from pathlib import PurePath, Path
 from collections import OrderedDict
 from csv import DictReader, DictWriter
@@ -52,10 +52,10 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
                 futures.add(executor.submit(function, row))
                 if len(futures) == 1000:
                     done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-                    [process(f.result()) for f in done]
+                    _ = [process(f.result()) for f in done]
             done, futures = wait(futures, return_when='FIRST_EXCEPTION')
             if done:
-                [process(f.result()) for f in done]
+                _ = [process(f.result()) for f in done]
 
 
 def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
@@ -168,7 +168,8 @@ class ZipData:
         """
         if isinstance(file_path, str):
             file_path = Path(file_path)
-        assert file_path.suffix == ".zip"
+        if file_path.suffix != ".zip":
+            raise TypeError(f"File '{file_path}' should be a .zip file.")
         self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
@@ -203,7 +204,7 @@ class ZipData:
                                 self.data[file] = [csv.fieldnames] + [
                                     list(row.values()) for row in islice(csv, n_lines)]
                     if self.remove:
-                        check_call(["zip", "-d", zipfile.filename, file])
+                        run(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
             self.data = self.data[list(self.data)[0]]
         return self.data
@@ -230,7 +231,7 @@ class ZipData:
                                 for row in islice(csv, n_lines):
                                     yield list(row.values())
                     if self.remove:
-                        check_call(["zip", "-d", zipfile.filename, file])
+                        run(["zip", "-d", zipfile.filename, file])
 
     def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
             -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
@@ -260,8 +261,7 @@ class ZipData:
 
         if remove:
             from sys import platform
-            assert "x" in platform
-            self.remove = True
+            self.remove = "x" in platform
 
         # Load the data
         return self._open_gen(n_lines) if as_generator else self._open_all(n_lines)

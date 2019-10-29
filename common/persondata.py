@@ -583,8 +583,9 @@ class PhoneNumberFinder:
 
         t = Timer()
 
-        assert n in {1, 2}, "n=1 will return any number and n=2 will" \
-                            " return fixed and mobile; pick either."
+        if n not in {1, 2}:
+            raise ValueError("n=1 will return any number and n=2 will"
+                             " return fixed and mobile; pick either.")
 
         # Get the ES response for each query
         for q in self.query_types:

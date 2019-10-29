@@ -792,8 +792,8 @@ class MySQLClient:
 
         if not and_or:
             and_or = "AND"
-        else:
-            assert and_or in {"AND", "OR"}
+        elif and_or not in {"AND", "OR"}:
+            raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
 
         if not distinct:
             distinct = ""
