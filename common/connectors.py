@@ -883,7 +883,7 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
+            if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) == 0):
                 result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
                           for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
             elif limit == 1:

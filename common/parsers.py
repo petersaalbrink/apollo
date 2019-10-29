@@ -48,7 +48,10 @@ class Checks:
 
     @staticmethod
     def float_or_null(var):
-        return float(var) if var is not None else None
+        try:
+            return float(var) if var is not None else None
+        except ValueError:
+            return None
 
     @staticmethod
     def date_or_null(var, f):

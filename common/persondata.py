@@ -305,7 +305,7 @@ class PhoneNumberFinder:
         # Load data
         self.data = self.Data(
             Checks.str_or_empty(data.get("postalCode")),
-            int(float(data.get("houseNumber", 0))),
+            Checks.int_or_null(Checks.float_or_null(data.get("houseNumber"))),
             Checks.str_or_empty(data.get("houseNumberExt")),
             Checks.str_or_empty(data.get("initials")).replace(".", ""),
             Checks.str_or_empty(data.get("lastname"))

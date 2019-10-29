@@ -1,11 +1,15 @@
-import setuptools
+from setuptools import setup
+from common import __version__
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+with open("README.md") as f:
+    long_description = f.read()
 
-setuptools.setup(
+with open("requirements.txt") as f:
+    pkgs = [p.strip("\r\n") for p in f.readlines()]
+
+setup(
     name="common_classes_mx",
-    version="0.0.1",
+    version=__version__,
     author="Peter Saalbrink",
     author_email="psaalbrink@matrixiangroup.com",
     keywords="common classes matrixian group mx",
@@ -13,22 +17,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
-    packages=setuptools.find_packages(),
-    install_requires=[
-        "mysql-connector-python",
-        "pymongo",
-        "text_unidecode",
-        "elasticsearch",
-        "phonenumbers",
-        "tqdm",
-        "pandas",
-        "xlrd",
-        "openpyxl",
-        "numpy",
-        "matplotlib",
-        "requests",
-        "pycountry",
-    ],
+    packages=["common"],
+    install_requires=pkgs,
     package_data={"common": ["certificates/*.pem"]},
     classifiers=[
         "Programming Language :: Python :: 3",
