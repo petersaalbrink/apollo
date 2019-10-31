@@ -1,5 +1,6 @@
 from setuptools import setup
-from common import __version__
+
+exec(open("common/_version.py").read())
 
 with open("README.md") as f:
     long_description = f.read()
