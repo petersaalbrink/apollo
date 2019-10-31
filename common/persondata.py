@@ -272,7 +272,7 @@ class PhoneNumberFinder:
         self.name_only = kwargs.pop("name_only_query", False)
         self.score_testing = kwargs.pop("score_testing", False)
         self.call_to_validate = kwargs.pop("call_to_validate", True)
-        self.save_matching_records = kwargs.pop("/var/git/cbs/called_numbers", False)
+        self.save_matching_records = kwargs.pop("save_matching_records", False)
 
         if self.save_matching_records:
             with open(self.save_matching_records) as f:
