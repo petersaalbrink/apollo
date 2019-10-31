@@ -9,9 +9,9 @@ Match and NamesData classes in common.persondata, csv_read and
 csv_write functions in common.handlers, and much more. Enjoy!
 
 Install:  
-`pip install git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git#egg=common_classes_mx`  
+`pip install git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git`  
 
 Upgrade:  
-`pip install --upgrade common_classes_mx`  
+`pip install --upgrade git+ssh://git@bitbucket.org/matrixiangroup_dev/common_classes_mx.git`  
 
 © _Matrixian Group, created by Peter Saalbrink._
