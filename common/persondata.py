@@ -1,5 +1,5 @@
 import re
-from json import loads
+from json import loads, dumps
 from logging import info, debug
 from requests import Session, get
 from requests.adapters import HTTPAdapter
@@ -271,6 +271,16 @@ class PhoneNumberFinder:
         self.respect_hours = kwargs.pop("respect_hours", True)
         self.name_only = kwargs.pop("name_only_query", False)
         self.score_testing = kwargs.pop("score_testing", False)
+        self.call_to_validate = kwargs.pop("call_to_validate", True)
+        self.save_matching_records = kwargs.pop("/var/git/cbs/called_numbers", False)
+
+        if self.save_matching_records:
+            with open(self.save_matching_records) as f:
+                self.matching_numbers = {int(n) for n in f.read().split(",")}
+            self.save_matching_records = f"{self.save_matching_records}_records"
+        else:
+            self.matching_numbers = set()
+
         self.query_types = [
             "initial", "name", "fuzzy", "address", "name_only"
         ] if self.name_only else [
@@ -381,16 +391,17 @@ class PhoneNumberFinder:
                     return result["valid"]
             if self.respect_hours:
                 self.sleep_or_continue()
-            while True:
-                try:
-                    valid = loads(self.session.get(
-                        f"{self.url}{phone}",
-                        auth=("datateam", "matrixian")).text)
-                    debug("Request: %s", t.end())
-                    break
-                except IOError:
-                    self.url = "http://94.168.87.210:4000/call/+31"
-                debug("First try: %s", t.end())
+            if self.call_to_validate:
+                while True:
+                    try:
+                        valid = loads(self.session.get(
+                            f"{self.url}{phone}",
+                            auth=("datateam", "matrixian")).text)
+                        debug("Request: %s", t.end())
+                        break
+                    except IOError:
+                        self.url = "http://94.168.87.210:4000/call/+31"
+                        debug("First try: %s", t.end())
         return valid
 
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
@@ -435,6 +446,10 @@ class PhoneNumberFinder:
                 data, records, record, result, source, score, fuzzy, number_types)
             if result:
                 debug("Got result in: %s", t.end())
+                if self.save_matching_records:
+                    if result in self.matching_numbers:
+                        with open(self.save_matching_records, "a", encoding="utf-8") as f:
+                            f.write(f"{dumps(record, ensure_ascii=False)},\n")
                 break
         else:
             debug("Got no result in: %s", t.end())
