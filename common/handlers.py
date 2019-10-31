@@ -58,22 +58,24 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
                 _ = [process(f.result()) for f in done]
 
 
-def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
-              encoding: str = "utf-8", delimiter: str = ",", mode: str = "w") -> None:
+def csv_write(data: Union[List[dict], dict],
+              filename: Union[PurePath, str],
+              **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
-    write_header = True if mode == "w" or mode == "a" and not Path(filename).exists() else False
-    if isinstance(data, list):
-        with open(filename, mode, encoding=encoding, newline="") as f:
-            csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
-            if write_header:
-                csv.writeheader()
-            csv.writerows(data)
-    elif isinstance(data, dict):
-        with open(filename, mode, encoding=encoding, newline="") as f:
-            csv = DictWriter(f, fieldnames=list(data.keys()), delimiter=delimiter)
-            if write_header:
-                csv.writeheader()
-            csv.writerow(data)
+    encoding: str = kwargs.pop("encoding", "utf-8")
+    delimiter: str = kwargs.pop("delimiter", ",")
+    mode: str = kwargs.pop("mode", "w")
+    extrasaction: str = kwargs.pop("extrasaction", "raise")
+    fieldnames = list(data[0].keys()) if isinstance(data, list) else list(data.keys())
+    with open(filename, mode, encoding=encoding, newline="") as f:
+        csv = DictWriter(f,
+                         fieldnames=fieldnames,
+                         delimiter=delimiter,
+                         extrasaction=extrasaction,
+                         **kwargs)
+        if mode == "w" or mode == "a" and not Path(filename).exists():
+            csv.writeheader()
+        csv.writerow(data)
 
 
 def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
