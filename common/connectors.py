@@ -165,28 +165,35 @@ class ESClient(Elasticsearch):
 
         return results
 
-    def findall(self, query: Dict[Any, Any], index: str = None) -> List[Dict[Any, Any]]:
+    def findall(self,
+                query: Dict[Any, Any],
+                index: str = None,
+                **kwargs,
+                ) -> List[Dict[Any, Any]]:
         """Used for elastic search queries that are larger than the max
         window size of 10,000.
         :param query: Dict[Any, Any]
         :param index: str
+        :param kwargs: scroll: str
         :return: List[Dict[Any, Any]]
         """
+        
+        scroll = kwargs.pop("scroll", "10m")
 
         if not index:
             index = "dev_realestate.realestate"
 
-        data = self.search(index=index, scroll='1m', size=10_000, body=query)
+        data = self.search(index=index, scroll=scroll, size=10_000, body=query)
 
-        sid = data['_scroll_id']
-        scroll_size = len(data['hits']['hits'])
+        sid = data["_scroll_id"]
+        scroll_size = len(data["hits"]["hits"])
         results = data["hits"]["hits"]
 
         # We scroll over the results until nothing is returned
         while scroll_size > 0:
-            data = self.scroll(scroll_id=sid, scroll='1m')
+            data = self.scroll(scroll_id=sid, scroll=scroll)
             results.extend(data["hits"]["hits"])
-            sid = data['_scroll_id']
+            sid = data["_scroll_id"]
             scroll_size = len(data["hits"]["hits"])
 
         return results
