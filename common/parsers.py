@@ -1,8 +1,8 @@
 from datetime import datetime
 from pycountry import countries
 from urllib.parse import quote_plus
-from common.handlers import get
-from common.connectors import EmailClient
+from .handlers import get
+from .connectors import EmailClient
 
 
 def parse(address: str, country: str = "NL"):

@@ -10,9 +10,9 @@ from collections import namedtuple
 from text_unidecode import unidecode
 from phonenumbers import is_valid_number, parse
 from numpy import zeros
-from common.parsers import Checks
-from common.handlers import Timer
-from common.connectors import ESClient, MongoDB
+from .parsers import Checks
+from .handlers import Timer
+from .connectors import ESClient, MongoDB
 
 
 class NoMatch(Exception):

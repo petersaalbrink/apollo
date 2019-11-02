@@ -12,7 +12,7 @@ from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
-from common.connectors import EmailClient
+from .connectors import EmailClient
 
 session = Session()
 session.mount('http://', HTTPAdapter(
