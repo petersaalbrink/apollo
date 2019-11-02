@@ -78,7 +78,10 @@ def csv_write(data: Union[List[dict], dict],
                          **kwargs)
         if mode == "w" or mode == "a" and not Path(filename).exists():
             csv.writeheader()
-        csv.writerows(data) if multiple_rows else csv.writerow(data)
+        if multiple_rows:
+            csv.writerows(data)
+        else:
+            csv.writerow(data)
 
 
 def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
