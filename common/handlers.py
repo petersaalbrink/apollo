@@ -66,7 +66,10 @@ def csv_write(data: Union[List[dict], dict],
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
     extrasaction: str = kwargs.pop("extrasaction", "raise")
-    fieldnames = list(data[0].keys()) if isinstance(data, list) else list(data.keys())
+
+    multiple_rows = isinstance(data, list)
+    fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
+
     with open(filename, mode, encoding=encoding, newline="") as f:
         csv = DictWriter(f,
                          fieldnames=fieldnames,
@@ -75,7 +78,7 @@ def csv_write(data: Union[List[dict], dict],
                          **kwargs)
         if mode == "w" or mode == "a" and not Path(filename).exists():
             csv.writeheader()
-        csv.writerow(data)
+        csv.writerows(data) if multiple_rows else csv.writerow(data)
 
 
 def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
