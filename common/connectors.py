@@ -177,7 +177,7 @@ class ESClient(Elasticsearch):
         :param kwargs: scroll: str
         :return: List[Dict[Any, Any]]
         """
-        
+
         scroll = kwargs.pop("scroll", "10m")
 
         if not index:
@@ -770,7 +770,7 @@ class MySQLClient:
         return fieldnames
 
     def build(self, table: str = None, select_fields: Union[List[str], str] = None,
-              field: str = None, value: Union[str, int] = None, distinct: str = None,
+              field: str = None, value: Union[str, int] = None, distinct: Union[bool, str] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               order_by: Union[str, List[str]] = None, and_or: str = None, **kwargs) -> Query:
         """Build a MySQL query"""
@@ -806,7 +806,9 @@ class MySQLClient:
         elif and_or not in {"AND", "OR"}:
             raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
 
-        if not distinct:
+        if distinct is True:
+            distinct = "DISTINCT"
+        elif not distinct:
             distinct = ""
         if table is None:
             table = f"{self.database}.{self.table_name}"
