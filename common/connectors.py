@@ -326,9 +326,13 @@ class MongoDB(MongoClient):
         elif host == "stg":
             mongo = get_secret("mongo_stg")
             host = "136.144.189.123"
+        elif host == "prod":
+            mongo = get_secret("mongo_prod")
+            host = "37.97.169.90"
         else:
             raise ValueError(f"Host `{host}` not recognized")
-        mongo_client = MongoClient(host=f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}",
+        uri = f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}"
+        mongo_client = MongoClient(host=uri,
                                    connectTimeoutMS=None)
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
@@ -684,7 +688,7 @@ class MySQLClient:
                data: List[Union[list, tuple, dict]] = None,
                ignore: bool = False,
                _limit: int = 10_000,
-               use_tqdm: bool = True
+               use_tqdm: bool = False,
                ) -> int:
         """Insert a data array into a SQL table.
 
