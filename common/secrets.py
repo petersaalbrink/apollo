@@ -17,6 +17,7 @@ NAMES = {
     "ng": "NutsGroep FTP server",
     "ftp": "VPS11 FTP server",
     "mongo_stg": "MongoDB stg server",
+    "mongo_prod": "MongoDB prod server",
     "bstorage": "Matrixian Synaman File Transfer",
     "da": "DigitalAudience FTP server",
     "platform": "Matrixian Platform",
