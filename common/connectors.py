@@ -307,35 +307,31 @@ class MongoDB(MongoClient):
         """Client for MongoDB
 
         Usage:
-            client = MongoDB()
-            db = MongoDB('dev_peter')
-            coll = MongoDB('dev_peter', 'person_data_20190606')
-            coll = MongoDB()['dev_peter']['person_data_20190606']
+            client = MongoDB(client=True)
+            db = MongoDB("dev_peter")
+            coll = MongoDB("dev_peter", "person_data_20190606")
+            coll = MongoDB("dev_peter.person_data_20190606")
+            coll = MongoDB()["dev_peter"]["person_data_20190606"]
         """
-        from common.secrets import get_secret
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
-        if not host:
+        if database and not host:
             host = "address" if database and "addressvalidation" in database else "dev"
-        if host == "address":
-            mongo = get_secret("addr")
-            host = "149.210.164.50"
-        elif host == "dev":
-            mongo = get_secret("mongo")
-            host = "136.144.173.2"
-        elif host == "stg":
-            mongo = get_secret("mongo_stg")
-            host = "136.144.189.123"
-        elif host == "prod":
-            mongo = get_secret("mongo_prod")
-            host = "37.97.169.90"
-        else:
-            raise ValueError(f"Host `{host}` not recognized")
-        uri = f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}"
-        mongo_client = MongoClient(host=uri,
-                                   connectTimeoutMS=None)
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
+        hosts = {
+            "address": ("149.210.164.50", "addr"),
+            "dev": ("136.144.173.2", "mongo"),
+            "stg": ("136.144.189.123", "mongo_stg"),
+            "prod": ("37.97.169.90", "mongo_prod"),
+        }
+        if host not in hosts:
+            raise ValueError(f"Host `{host}` not recognized")
+        host, secret = hosts[host]
+        from common.secrets import get_secret
+        cred = get_secret(secret)
+        uri = f"mongodb://{quote_plus(cred.usr)}:{quote_plus(cred.pwd)}@{host}"
+        mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:
                 database, collection = database.split(".")
