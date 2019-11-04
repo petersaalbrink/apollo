@@ -315,7 +315,7 @@ class MongoDB(MongoClient):
         """
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
-        if database and not host:
+        if not host:
             host = "address" if database and "addressvalidation" in database else "dev"
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
