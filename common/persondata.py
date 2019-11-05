@@ -1,5 +1,5 @@
 import re
-from json import loads, dumps
+from json import dumps
 from logging import info, debug
 from requests import Session, get
 from requests.adapters import HTTPAdapter
@@ -154,9 +154,9 @@ class PersonMatch:
                     else:
                         while True:
                             try:
-                                valid = loads(self.session.get(
+                                valid = self.session.get(
                                     f"{self.url}{number}",
-                                    auth=("datateam", "matrixian")).text)
+                                    auth=("datateam", "matrixian")).json()
                                 break
                             except IOError:
                                 self.url = "http://94.168.87.210:4000/call/+31"
@@ -394,9 +394,9 @@ class PhoneNumberFinder:
             if self.call_to_validate:
                 while True:
                     try:
-                        valid = loads(self.session.get(
+                        valid = self.session.get(
                             f"{self.url}{phone}",
-                            auth=("datateam", "matrixian")).text)
+                            auth=("datateam", "matrixian")).json()
                         debug("Request: %s", t.end())
                         break
                     except IOError:

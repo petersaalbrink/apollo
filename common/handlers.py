@@ -1,4 +1,3 @@
-from json import loads
 from functools import wraps
 from zipfile import ZipFile
 from io import TextIOWrapper
@@ -27,7 +26,7 @@ def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
     :param url: URL for the new :class:`Request` object.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    return loads(session.get(url, **kwargs).text) if text_only else session.get(url, **kwargs)
+    return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
 
 
 def thread(function: Callable, data: Iterable, process: Callable = None):
