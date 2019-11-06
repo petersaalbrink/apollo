@@ -68,6 +68,7 @@ def csv_write(data: Union[List[dict], dict],
 
     multiple_rows = isinstance(data, list)
     fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
+    not_exists = mode == "w" or (mode == "a" and not Path(filename).exists())
 
     with open(filename, mode, encoding=encoding, newline="") as f:
         csv = DictWriter(f,
@@ -75,7 +76,7 @@ def csv_write(data: Union[List[dict], dict],
                          delimiter=delimiter,
                          extrasaction=extrasaction,
                          **kwargs)
-        if mode == "w" or mode == "a" and not Path(filename).exists():
+        if not_exists:
             csv.writeheader()
         if multiple_rows:
             csv.writerows(data)
