@@ -11,7 +11,7 @@ pipelines:
             - git commit -m "[skip CI]"
             - git push
   default:
-      - step:
+    - step:
         name: Setup
         caches:
             - pip
