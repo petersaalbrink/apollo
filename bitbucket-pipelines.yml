@@ -8,6 +8,13 @@ pipelines:
           - pip
         script:
           - echo "$(cat common/_version.py) + \".$BITBUCKET_BUILD_NUMBER\"" > common/_version.py
+          - git config --global push.default simple
+          - git remote set-url origin git@bitbucket.org:matrixiangroup_dev/common_classes_mx.git
+          - git config --global user.email "psaalbrink@matrixiangroup.com"
+          - git config --global user.name "Peter Saalbrink"
+          - git add common/_version.py
+          - git commit -m "[skip CI]"
+          - git push origin dev
           - pip install -r requirements.txt
           - python setup.py develop
           - python -c "from common import *"
