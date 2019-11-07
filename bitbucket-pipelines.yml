@@ -1,17 +1,22 @@
 image: python:3.7.4
 
 pipelines:
+  branches:
+    master:
+      - step:
+          name: Version
+          script:
+            - echo "$(cat common/_version.py) + \".$BITBUCKET_BUILD_NUMBER\"" > common/_version.py
+            - git add common/_version.py
+            - git commit -m "[skip CI]"
+            - git push
   default:
-    - step:
+      - step:
         name: Setup
         caches:
-          - pip
+            - pip
         script:
-          - echo "$(cat common/_version.py) + \".$BITBUCKET_BUILD_NUMBER\"" > common/_version.py
-          - git add common/_version.py
-          - git commit -m "[skip CI]"
-          - git push
-          - pip install -r requirements.txt
-          - python setup.py develop
-          - python -c "from common import *"
-          - python -c "from common import __version__ as v; print('common_classes_mx, version:', v)"
+            - pip install -r requirements.txt
+            - python setup.py develop
+            - python -c "from common import *"
+            - python -c "from common import __version__ as v; print('common_classes_mx, version:', v)"
