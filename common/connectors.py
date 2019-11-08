@@ -699,7 +699,11 @@ class MySQLClient:
         position -= 1  # MySQL starts counting at 1, Python at 0
         if "," in field_len:
             field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
-            new_len = max(len(f"{row[position]}".split(".")[1]) for row in chunk)
+            new_len = []
+            for row in chunk:
+                if "." in f"{row[position]}":
+                    new_len.append(len(f"{row[position]}".split(".")[1]))
+            new_len = max(new_len)
             field_type = f"{field_type}({field_len},{new_len})"
         else:
             new_len = max(len(f"{row[position]}") for row in chunk)
