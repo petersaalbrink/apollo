@@ -609,33 +609,55 @@ class MySQLClient:
             fields = sql.create_definition(data=data, fieldnames=fieldnames)
             sql.create_table(table="employees", fields=fields)
         """
-        if not fieldnames and not isinstance(data[0], dict):
+
+        # Setup
+        if not data:
+            raise ValueError("Provide non-empty data")
+        elif not fieldnames and not isinstance(data[0], dict):
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
-            fieldnames = list(data[0].keys())
-        for row in data:
-            if None not in row.values() if isinstance(row, dict) else row:
-                break
-        else:
-            row = ["" if v is None else v for v in data[0]]
-        if isinstance(data[0], (list, tuple)):
-            types = list(zip([type(value) for value in row],
-                             list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
-        elif isinstance(data[0], dict):
-            types = list(zip([type(value) for value in row],
-                             list(map(max, zip(*[[len(str(value)) for value in row.values()] for row in data])))))
+            fieldnames = data[0].keys()
+        elif isinstance(data[0], (list, tuple)):
+            data = [dict(zip(fieldnames, row)) for row in data]
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
-        types = [(type_, float(f"{prec}.2")) if type_ is float else (type_, prec)
-                 for type_, prec in types]  # Change default precision for floats...
-        types = [(type_, 6) if type_ == datetime else (type_, prec) for type_, prec in types]  # ...and datetimes
+
+        # Create the type dict
+        type_dict = {}
+        for row in data:
+            for field in row:
+                if field not in type_dict and row[field] is not None:
+                    type_dict[field] = type(row[field])
+            if len(type_dict) == len(row):
+                break
+        else:
+            for field in data[0]:
+                if field not in type_dict:
+                    type_dict[field] = str
+        type_dict = {field: type_dict[field] for field in data[0]}
+
+        # Get the field lenghts for each type
+        types = list(zip(
+            type_dict.values(),
+            list(map(max, zip(
+                *[[len(str(value)) for value in row.values()] for row in data])))
+        ))
+        # Change default precision for floats and datetimes
+        types = [
+            (type_, 6) if type_ is datetime else (
+                (type_, float(f"{prec}.2")) if type_ is float else (
+                    type_, prec
+                ))
+            for type_, prec in types
+        ]
         if len(types) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
     def create_table(self, table: str,
                      fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
-                     drop_existing: bool = False):
+                     drop_existing: bool = False,
+                     raise_on_error: bool = True):
         """Create a SQL table in MySQLClient.database.
 
         :param table: The name of the table to be created.
@@ -643,6 +665,7 @@ class MySQLClient:
         and precision. For example:
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
         :param drop_existing: If the table already exists, delete it (default: False).
+        :param raise_on_error: Raise on error during creating (default: True).
         """
         types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
                  timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
@@ -654,11 +677,17 @@ class MySQLClient:
         self.connect()
         if drop_existing:
             query = f"DROP TABLE {self.database}.{table}"
+            if raise_on_error:
+                self.execute(query)
+            else:
+                with suppress(DatabaseError):
+                    self.execute(query)
+        query = f"CREATE TABLE {table} ({', '.join(fields)})"
+        if raise_on_error:
+            self.execute(query)
+        else:
             with suppress(DatabaseError):
                 self.execute(query)
-        query = f"CREATE TABLE {table} ({', '.join(fields)})"
-        with suppress(DatabaseError):
-            self.execute(query)
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
