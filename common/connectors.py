@@ -430,6 +430,7 @@ class MySQLClient:
             "ssl_cert": f'{path / "client-cert.pem"}',
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
+        self._max_errors = 100
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -731,6 +732,7 @@ class MySQLClient:
         query = f"INSERT {'IGNORE' if ignore else ''} INTO " \
                 f"{self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
         range_func = trange if use_tqdm else range
+        errors = 0
         for offset in range_func(0, len(data), _limit):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
@@ -742,6 +744,9 @@ class MySQLClient:
                     self.executemany(query, chunk)
                     break
                 except DatabaseError as e:
+                    errors += 1
+                    if errors >= self._max_errors:
+                        raise
                     e = f"{e}"
                     if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table, chunk)
