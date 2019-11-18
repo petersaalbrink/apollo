@@ -84,7 +84,10 @@ def csv_write(data: Union[List[dict], dict],
             csv.writerow(data)
 
 
-def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
+def csv_read(filename: Union[PurePath, str],
+             encoding: str = "utf-8",
+             delimiter: str = ","
+             ) -> MutableMapping:
     """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
     with open(filename, encoding=encoding) as f:
         for row in DictReader(f, delimiter=delimiter):
