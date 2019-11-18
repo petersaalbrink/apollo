@@ -11,3 +11,4 @@ numpy
 matplotlib
 requests
 pycountry
+translate
