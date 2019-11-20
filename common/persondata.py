@@ -644,6 +644,7 @@ class PersonData(SourceMatch, SourceScore):
         return valid
 
     def _get_score(self):
+        # TODO: implement possibility for using CBS scoring system (or ask them to switch)
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
