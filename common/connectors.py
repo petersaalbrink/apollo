@@ -327,6 +327,8 @@ class MongoDB(MongoClient):
         }
         if host not in hosts:
             raise ValueError(f"Host `{host}` not recognized")
+        elif host == "stg":
+            raise DeprecationWarning("Staging database is not used anymore.")
         host, secret = hosts[host]
         from common.secrets import get_secret
         cred = get_secret(secret)
