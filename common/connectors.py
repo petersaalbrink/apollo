@@ -165,28 +165,35 @@ class ESClient(Elasticsearch):
 
         return results
 
-    def findall(self, query: Dict[Any, Any], index: str = None) -> List[Dict[Any, Any]]:
+    def findall(self,
+                query: Dict[Any, Any],
+                index: str = None,
+                **kwargs,
+                ) -> List[Dict[Any, Any]]:
         """Used for elastic search queries that are larger than the max
         window size of 10,000.
         :param query: Dict[Any, Any]
         :param index: str
+        :param kwargs: scroll: str
         :return: List[Dict[Any, Any]]
         """
+
+        scroll = kwargs.pop("scroll", "10m")
 
         if not index:
             index = "dev_realestate.realestate"
 
-        data = self.search(index=index, scroll='1m', size=10_000, body=query)
+        data = self.search(index=index, scroll=scroll, size=10_000, body=query)
 
-        sid = data['_scroll_id']
-        scroll_size = len(data['hits']['hits'])
+        sid = data["_scroll_id"]
+        scroll_size = len(data["hits"]["hits"])
         results = data["hits"]["hits"]
 
         # We scroll over the results until nothing is returned
         while scroll_size > 0:
-            data = self.scroll(scroll_id=sid, scroll='1m')
+            data = self.scroll(scroll_id=sid, scroll=scroll)
             results.extend(data["hits"]["hits"])
-            sid = data['_scroll_id']
+            sid = data["_scroll_id"]
             scroll_size = len(data["hits"]["hits"])
 
         return results
@@ -300,31 +307,31 @@ class MongoDB(MongoClient):
         """Client for MongoDB
 
         Usage:
-            client = MongoDB()
-            db = MongoDB('dev_peter')
-            coll = MongoDB('dev_peter', 'person_data_20190606')
-            coll = MongoDB()['dev_peter']['person_data_20190606']
+            client = MongoDB(client=True)
+            db = MongoDB("dev_peter")
+            coll = MongoDB("dev_peter", "person_data_20190606")
+            coll = MongoDB("dev_peter.person_data_20190606")
+            coll = MongoDB()["dev_peter"]["person_data_20190606"]
         """
-        from common.secrets import get_secret
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
         if not host:
             host = "address" if database and "addressvalidation" in database else "dev"
-        if host == "address":
-            mongo = get_secret("addr")
-            host = "149.210.164.50"
-        elif host == "dev":
-            mongo = get_secret("mongo")
-            host = "136.144.173.2"
-        elif host == "stg":
-            mongo = get_secret("mongo_stg")
-            host = "136.144.189.123"
-        else:
-            raise ValueError(f"Host `{host}` not recognized")
-        mongo_client = MongoClient(host=f"mongodb://{quote_plus(mongo.usr)}:{quote_plus(mongo.pwd)}@{host}",
-                                   connectTimeoutMS=None)
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
+        hosts = {
+            "address": ("149.210.164.50", "addr"),
+            "dev": ("136.144.173.2", "mongo"),
+            "stg": ("136.144.189.123", "mongo_stg"),
+            "prod": ("37.97.169.90", "mongo_prod"),
+        }
+        if host not in hosts:
+            raise ValueError(f"Host `{host}` not recognized")
+        host, secret = hosts[host]
+        from common.secrets import get_secret
+        cred = get_secret(secret)
+        uri = f"mongodb://{quote_plus(cred.usr)}:{quote_plus(cred.pwd)}@{host}"
+        mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:
                 database, collection = database.split(".")
@@ -423,6 +430,7 @@ class MySQLClient:
             "ssl_cert": f'{path / "client-cert.pem"}',
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
+        self._max_errors = 100
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -503,10 +511,10 @@ class MySQLClient:
                 if "." in word:
                     self.database, self.table_name = word.split(".")
                     break
-        if fieldnames is True:
-            fieldnames = self._get_fieldnames(query)
         if query is None:
             query = self.build()
+        if fieldnames is True:
+            fieldnames = self._get_fieldnames(query)
         self.connect()
         self.execute(query, *args, **kwargs)
         table = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
@@ -602,36 +610,55 @@ class MySQLClient:
             fields = sql.create_definition(data=data, fieldnames=fieldnames)
             sql.create_table(table="employees", fields=fields)
         """
-        if not fieldnames and not isinstance(data[0], dict):
+
+        # Setup
+        if not data:
+            raise ValueError("Provide non-empty data")
+        elif not fieldnames and not isinstance(data[0], dict):
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
-            fieldnames = list(data[0].keys())
-        i = 0
-        test_row = data[i].values() if isinstance(data[i], dict) else data[i]
-        try:
-            while None in test_row:
-                i += 1
-                test_row = data[i].values() if isinstance(data[i], dict) else data[i]
-        except IndexError:
-            test_row = ["" if row is None else row for row in test_row]
-        if isinstance(data[0], (list, tuple)):
-            types = list(zip([type(value) for value in test_row],
-                             list(map(max, zip(*[[len(str(value)) for value in row] for row in data])))))
-        elif isinstance(data[0], dict):
-            types = list(zip([type(value) for value in test_row],
-                             list(map(max, zip(*[[len(str(value)) for value in row.values()] for row in data])))))
+            fieldnames = data[0].keys()
+        elif isinstance(data[0], (list, tuple)):
+            data = [dict(zip(fieldnames, row)) for row in data]
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
-        types = [(type_, float(f"{prec}.{round(prec / 2)}")) if type_ is float else (type_, prec)
-                 for type_, prec in types]  # Change default precision for floats...
-        types = [(type_, 6) if type_ == datetime else (type_, prec) for type_, prec in types]  # ...and datetimes
+
+        # Create the type dict
+        type_dict = {}
+        for row in data:
+            for field in row:
+                if field not in type_dict and row[field] is not None:
+                    type_dict[field] = type(row[field])
+            if len(type_dict) == len(row):
+                break
+        else:
+            for field in data[0]:
+                if field not in type_dict:
+                    type_dict[field] = str
+        type_dict = {field: type_dict[field] for field in data[0]}
+
+        # Get the field lenghts for each type
+        types = list(zip(
+            type_dict.values(),
+            list(map(max, zip(
+                *[[len(str(value)) for value in row.values()] for row in data])))
+        ))
+        # Change default precision for floats and datetimes
+        types = [
+            (type_, 6) if type_ is datetime else (
+                (type_, float(f"{prec}.2")) if type_ is float else (
+                    type_, prec
+                ))
+            for type_, prec in types
+        ]
         if len(types) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
     def create_table(self, table: str,
                      fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
-                     drop_existing: bool = False):
+                     drop_existing: bool = False,
+                     raise_on_error: bool = True):
         """Create a SQL table in MySQLClient.database.
 
         :param table: The name of the table to be created.
@@ -639,22 +666,29 @@ class MySQLClient:
         and precision. For example:
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
         :param drop_existing: If the table already exists, delete it (default: False).
+        :param raise_on_error: Raise on error during creating (default: True).
         """
         types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
                  timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
         fields = [f"`{name}` {types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else f"{name} {types[type_]}"
+                  if type_ not in [date, datetime.date] else f"`{name}` {types[type_]}"
                   for name, (type_, length) in fields.items()]
         if "." in table:
             self.database, table = table.split(".")
         self.connect()
         if drop_existing:
             query = f"DROP TABLE {self.database}.{table}"
+            if raise_on_error:
+                self.execute(query)
+            else:
+                with suppress(DatabaseError):
+                    self.execute(query)
+        query = f"CREATE TABLE {table} ({', '.join(fields)})"
+        if raise_on_error:
+            self.execute(query)
+        else:
             with suppress(DatabaseError):
                 self.execute(query)
-        query = f"CREATE TABLE {table} ({', '.join(fields)})"
-        with suppress(DatabaseError):
-            self.execute(query)
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
@@ -662,20 +696,18 @@ class MySQLClient:
         field_type, position = self.row(f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
                                         f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
                                         f" = '{table}' AND COLUMN_NAME = '{field}'")
-        field_type, field_len = field_type.split("(")
-        field_len = field_len.strip(")")
-        is_float = "," in field_len
-        field_len = int(field_len.split(",")[0]) if is_float else int(field_len)
+        field_type, field_len = field_type.strip(")").split("(")
         position -= 1  # MySQL starts counting at 1, Python at 0
-        new_len = max(len(f"{row[position]}") for row in chunk)
-        if is_float:
-            if new_len == field_len:
-                data = [f"{row[position]}".split(".") for row in chunk]
-                field_len = max(sum(map(len, values)) for values in data)
-                new_len = max(len(values[1]) for values in data)
+        if "," in field_len:
+            field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
+            new_len = []
+            for row in chunk:
+                if "." in f"{row[position]}":
+                    new_len.append(len(f"{row[position]}".split(".")[1]))
+            new_len = max(new_len)
             field_type = f"{field_type}({field_len},{new_len})"
         else:
-            assert new_len > field_len
+            new_len = max(len(f"{row[position]}") for row in chunk)
             field_type = f"{field_type}({new_len})"
         self.connect()
         self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
@@ -686,7 +718,7 @@ class MySQLClient:
                data: List[Union[list, tuple, dict]] = None,
                ignore: bool = False,
                _limit: int = 10_000,
-               use_tqdm: bool = True
+               use_tqdm: bool = False,
                ) -> int:
         """Insert a data array into a SQL table.
 
@@ -700,6 +732,7 @@ class MySQLClient:
         query = f"INSERT {'IGNORE' if ignore else ''} INTO " \
                 f"{self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
         range_func = trange if use_tqdm else range
+        errors = 0
         for offset in range_func(0, len(data), _limit):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
@@ -711,8 +744,11 @@ class MySQLClient:
                     self.executemany(query, chunk)
                     break
                 except DatabaseError as e:
+                    errors += 1
+                    if errors >= self._max_errors:
+                        raise
                     e = f"{e}"
-                    if "truncated" in e:
+                    if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table, chunk)
                     else:
                         print(chunk)
@@ -733,7 +769,7 @@ class MySQLClient:
         self.disconnect()
 
     def insert_new(self, table: str, data: List[Union[list, tuple, dict]],
-                   fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]] = None) -> int:
+                   fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
@@ -768,7 +804,7 @@ class MySQLClient:
         return fieldnames
 
     def build(self, table: str = None, select_fields: Union[List[str], str] = None,
-              field: str = None, value: Union[str, int] = None, distinct: str = None,
+              field: str = None, value: Union[str, int] = None, distinct: Union[bool, str] = None,
               limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
               order_by: Union[str, List[str]] = None, and_or: str = None, **kwargs) -> Query:
         """Build a MySQL query"""
@@ -801,10 +837,12 @@ class MySQLClient:
 
         if not and_or:
             and_or = "AND"
-        else:
-            assert and_or in {"AND", "OR"}
+        elif and_or not in {"AND", "OR"}:
+            raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
 
-        if not distinct:
+        if distinct is True:
+            distinct = "DISTINCT"
+        elif not distinct:
             distinct = ""
         if table is None:
             table = f"{self.database}.{self.table_name}"
@@ -892,7 +930,7 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) is 0):
+            if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) == 0):
                 result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
                           for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
             elif limit == 1:

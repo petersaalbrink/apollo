@@ -1,0 +1,14 @@
+mysql-connector-python
+pymongo
+text_unidecode
+elasticsearch
+phonenumbers
+tqdm
+pandas
+xlrd
+openpyxl
+numpy
+matplotlib
+requests
+pycountry
+translate

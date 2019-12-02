@@ -3,7 +3,7 @@ from getpass import getpass
 from base64 import b64encode, b64decode
 try:
     import termios
-    termios.tcgetattr, termios.tcsetattr
+    _ = termios.tcgetattr, termios.tcsetattr
 except (ImportError, AttributeError):
     getpass = input
 
@@ -17,6 +17,7 @@ NAMES = {
     "ng": "NutsGroep FTP server",
     "ftp": "VPS11 FTP server",
     "mongo_stg": "MongoDB stg server",
+    "mongo_prod": "MongoDB prod server",
     "bstorage": "Matrixian Synaman File Transfer",
     "da": "DigitalAudience FTP server",
     "platform": "Matrixian Platform",

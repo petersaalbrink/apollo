@@ -1,10 +1,9 @@
-from json import loads
 from functools import wraps
 from zipfile import ZipFile
 from io import TextIOWrapper
 from itertools import islice
 from datetime import datetime
-from subprocess import check_call
+from subprocess import run
 from pathlib import PurePath, Path
 from collections import OrderedDict
 from csv import DictReader, DictWriter
@@ -12,7 +11,7 @@ from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
-from common.connectors import EmailClient
+from .connectors import EmailClient
 
 session = Session()
 session.mount('http://', HTTPAdapter(
@@ -27,7 +26,7 @@ def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
     :param url: URL for the new :class:`Request` object.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    return loads(session.get(url, **kwargs).text) if text_only else session.get(url, **kwargs)
+    return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
 
 
 def thread(function: Callable, data: Iterable, process: Callable = None):
@@ -52,31 +51,43 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
                 futures.add(executor.submit(function, row))
                 if len(futures) == 1000:
                     done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-                    [process(f.result()) for f in done]
+                    _ = [process(f.result()) for f in done]
             done, futures = wait(futures, return_when='FIRST_EXCEPTION')
             if done:
-                [process(f.result()) for f in done]
+                _ = [process(f.result()) for f in done]
 
 
-def csv_write(data: Union[List[dict], dict], filename: Union[PurePath, str],
-              encoding: str = "utf-8", delimiter: str = ",", mode: str = "w") -> None:
+def csv_write(data: Union[List[dict], dict],
+              filename: Union[PurePath, str],
+              **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
-    write_header = True if mode == "w" or mode == "a" and not Path(filename).exists() else False
-    if isinstance(data, list):
-        with open(filename, mode, encoding=encoding, newline="") as f:
-            csv = DictWriter(f, fieldnames=list(data[0].keys()), delimiter=delimiter)
-            if write_header:
-                csv.writeheader()
+    encoding: str = kwargs.pop("encoding", "utf-8")
+    delimiter: str = kwargs.pop("delimiter", ",")
+    mode: str = kwargs.pop("mode", "w")
+    extrasaction: str = kwargs.pop("extrasaction", "raise")
+
+    multiple_rows = isinstance(data, list)
+    fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
+    not_exists = mode == "w" or (mode == "a" and not Path(filename).exists())
+
+    with open(filename, mode, encoding=encoding, newline="") as f:
+        csv = DictWriter(f,
+                         fieldnames=fieldnames,
+                         delimiter=delimiter,
+                         extrasaction=extrasaction,
+                         **kwargs)
+        if not_exists:
+            csv.writeheader()
+        if multiple_rows:
             csv.writerows(data)
-    elif isinstance(data, dict):
-        with open(filename, mode, encoding=encoding, newline="") as f:
-            csv = DictWriter(f, fieldnames=list(data.keys()), delimiter=delimiter)
-            if write_header:
-                csv.writeheader()
+        else:
             csv.writerow(data)
 
 
-def csv_read(filename: Union[PurePath, str], encoding: str = "utf-8", delimiter: str = ",") -> MutableMapping:
+def csv_read(filename: Union[PurePath, str],
+             encoding: str = "utf-8",
+             delimiter: str = ","
+             ) -> MutableMapping:
     """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
     with open(filename, encoding=encoding) as f:
         for row in DictReader(f, delimiter=delimiter):
@@ -111,10 +122,23 @@ class Log:
 
 
 def send_email(function: Callable = None, *,
-               to_address: Union[str, list] = None):
+               to_address: Union[str, list] = None,
+               message: str = None):
     """Function decorator to send emails!"""
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
+
+    def make_message(m: str, f: Callable, args, kwargs):
+        if not m:
+            m = f"{f.__name__}("
+            if args:
+                m = f"{m}{', '.join(map(str, args))}"
+                if kwargs:
+                    m = f"{m}, "
+            if kwargs:
+                m = f"{m}{', '.join([f'{k}={v}' for k,v in kwargs.items()])}"
+            m = f"{m})"
+        return m
 
     def decorate(f: Callable = None):
         @wraps(f)
@@ -123,9 +147,11 @@ def send_email(function: Callable = None, *,
             try:
                 f(*args, **kwargs)
                 ec.send_email(to_address=to_address,
-                              message=f"Program finished successfully.")
+                              message=f"Program finished successfully:\n\n"
+                                      f"{make_message(message, f, args, kwargs)}")
             except Exception:
                 ec.send_email(to_address=to_address,
+                              message=make_message(message, f, args, kwargs),
                               error_message=True)
                 raise
         return wrapped
@@ -153,7 +179,8 @@ class ZipData:
         """
         if isinstance(file_path, str):
             file_path = Path(file_path)
-        assert file_path.suffix == ".zip"
+        if file_path.suffix != ".zip":
+            raise TypeError(f"File '{file_path}' should be a .zip file.")
         self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
@@ -188,7 +215,7 @@ class ZipData:
                                 self.data[file] = [csv.fieldnames] + [
                                     list(row.values()) for row in islice(csv, n_lines)]
                     if self.remove:
-                        check_call(["zip", "-d", zipfile.filename, file])
+                        run(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
             self.data = self.data[list(self.data)[0]]
         return self.data
@@ -215,7 +242,7 @@ class ZipData:
                                 for row in islice(csv, n_lines):
                                     yield list(row.values())
                     if self.remove:
-                        check_call(["zip", "-d", zipfile.filename, file])
+                        run(["zip", "-d", zipfile.filename, file])
 
     def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
             -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
@@ -245,8 +272,7 @@ class ZipData:
 
         if remove:
             from sys import platform
-            assert "x" in platform
-            self.remove = True
+            self.remove = "x" in platform
 
         # Load the data
         return self._open_gen(n_lines) if as_generator else self._open_all(n_lines)
