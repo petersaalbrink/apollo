@@ -322,6 +322,17 @@ class PersonData(SourceMatch, SourceScore):
             "gender": "gender",
             "date_of_birth": "birth.date",
         }
+        self._out_mapping = {
+            "lastname": "lastname",
+            "initials": "initials",
+            "postalCode": "address_current_postalCode",
+            "houseNumber": "address_current_houseNumber",
+            "houseNumberExt": "address_current_houseNumberExt",
+            "mobile": "phoneNumber_mobile",
+            "number": "phoneNumber_number",
+            "gender": "gender",
+            "date_of_birth": "birth_date",
+        }
         self._score_mapping = {
             "lastname": "name_score",
             "phoneNumber_mobile": "mobile_score",
@@ -358,8 +369,6 @@ class PersonData(SourceMatch, SourceScore):
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
-                "phoneNumber_valid_mobile",
-                "phoneNumber_valid_number",
             )
         elif self._response_type == "name":
             return (
@@ -388,8 +397,6 @@ class PersonData(SourceMatch, SourceScore):
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
-                "phoneNumber_valid_mobile",
-                "phoneNumber_valid_number",
             )
 
     @property
@@ -591,7 +598,7 @@ class PersonData(SourceMatch, SourceScore):
         }
 
     def _find(self):
-        self.result = {}
+        self.result = {"match_keys": set()}
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
@@ -616,6 +623,9 @@ class PersonData(SourceMatch, SourceScore):
                             continue
                         self.result[key] = response[key]
                         self._responses[key] = response
+                        self.result["match_keys"] = self.result["match_keys"].union(
+                            {k for k, v in self.result.items()
+                             if v and v in response.values()})
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
                         self.result["date"] = response["dateOfRecord"].split("T")[0]
@@ -683,13 +693,15 @@ class PersonData(SourceMatch, SourceScore):
                 ))
                 self.result[self._score_mapping[key]] = f"{source}{score}"
 
-    def match(self, data: dict):
+    def match(self, data: dict) -> dict:
         self.data = self._clean(Data(**data))
         debug("Data = %s", self.data)
         self._find()
         if self._responses:
             self._get_score()
-        return self.result
+            return self.result
+        else:
+            raise NoMatch
 
 
 class PersonMatch:
