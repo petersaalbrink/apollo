@@ -116,6 +116,27 @@ class SourceMatch:
                 and self.data.date_of_birth
                 and _response["birth_date"] == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z"))
 
+    @property
+    def _match_sources(self):
+        yield "A", lambda _response: (
+                self._lastname_match(_response)
+                and self._address_match(_response)
+                and self._dob_match(_response)
+                and self._phone_match(_response))
+        yield "B", lambda _response: (
+                self._lastname_match(_response)
+                and ((self._address_match(_response)
+                      and self._dob_match(_response))
+                     or (self._dob_match(_response)
+                         and self._phone_match(_response))
+                     or (self._address_match(_response)
+                         and self._phone_match(_response))))
+        yield "C", lambda _response: (
+                self._lastname_match(_response)
+                and (self._address_match(_response)
+                     or self._phone_match(_response)
+                     or self._dob_match(_response)))
+
 
 class SourceScore:
     _year = datetime.now().year
@@ -380,27 +401,6 @@ class PersonData(SourceMatch, SourceScore):
         else:
             return ("lastname", "address_current_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
-
-    @property
-    def _match_sources(self):
-        yield "A", lambda _response: (
-                self._lastname_match(_response)
-                and self._address_match(_response)
-                and self._dob_match(_response)
-                and self._phone_match(_response))
-        yield "B", lambda _response: (
-                self._lastname_match(_response)
-                and ((self._address_match(_response)
-                      and self._dob_match(_response))
-                     or (self._dob_match(_response)
-                         and self._phone_match(_response))
-                     or (self._address_match(_response)
-                         and self._phone_match(_response))))
-        yield "C", lambda _response: (
-                self._lastname_match(_response)
-                and (self._address_match(_response)
-                     or self._phone_match(_response)
-                     or self._dob_match(_response)))
 
     @property
     def _queries(self) -> Tuple[str, dict]:
