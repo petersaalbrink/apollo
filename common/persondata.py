@@ -285,9 +285,11 @@ class PersonData(SourceMatch, SourceScore):
         self._es = ESClient("dev_peter.person_data_20190716")
         self._vn = ESClient("dev_peter.validated_numbers")
         if gethostname() == "matrixian":
-            self._url = "http://localhost:5000/call/"
+            self._phone_url = "http://localhost:5000/call/"
         else:
-            self._url = "http://94.168.87.210:4000/call/"
+            self._phone_url = "http://94.168.87.210:4000/call/"
+        self._email_url = ("http://develop.platform.matrixiangroup.com"
+                           ":4000/email?email=")
         try:
             self._local = (rget("https://api.ipify.org").text
                            == "94.168.87.210")
@@ -609,6 +611,9 @@ class PersonData(SourceMatch, SourceScore):
                         if (key in ("address_moved", "birth_date", "death_date")
                                 and response[key] == "1900-01-01T00:00:00Z"):
                             continue
+                        if (key == "contact_email" and
+                                not self._email_valid(response[key])):
+                            continue
                         self.result[key] = response[key]
                         self._responses[key] = response
                         self.result["search_type"] = _type
@@ -637,13 +642,17 @@ class PersonData(SourceMatch, SourceScore):
                     t = localtime().tm_hour
             if self._call_to_validate:
                 while True:
-                    valid = get(f"{self._url}{phone}", auth=("datateam", "matrixian"))
-                    if not valid:
-                        self._url = "http://94.168.87.210:4000/call/"
+                    valid = get(f"{self._phone_url}{phone}", auth=("datateam", "matrixian"))
+                    if not valid.ok:
+                        self._phone_url = "http://94.168.87.210:4000/call/"
                     else:
                         valid = loads(valid.text)
                         break
         return valid
+
+    def _email_valid(self, email: str):
+        """Check validity of email address."""
+        return get(f"{self._email_url}{email}", text_only=True)
 
     def _get_score(self):
         # TODO: implement possibility for using CBS scoring system (or ask them to switch)
