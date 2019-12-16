@@ -622,6 +622,8 @@ class PersonData(SourceMatch, SourceScore):
         script is running then, just pause it."""
         phone = f"+31{number}"
         valid = is_valid_number(parse(phone, "NL"))
+        if f"{number}".startswith(("8", "9")):
+            valid = False
         if valid:
             if self._local:
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
@@ -790,10 +792,7 @@ class PersonMatch:
 
     @staticmethod
     def _clean_dob(dob: str) -> datetime:
-        try:
-            return datetime.strptime(dob, "%Y-%m-%d")
-        except ValueError:
-            return datetime.strptime(dob, "%d/%m/%Y")
+        return dateparse(dob)
 
     @staticmethod
     def _clean_phone(phone: Union[str, int]) -> (int, str):
@@ -1042,6 +1041,8 @@ class PhoneNumberFinder:
         t = Timer()
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
+        if phone.startswith(("8", "9")):
+            valid = False
         if valid:
             if self.local:
                 result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
