@@ -121,6 +121,31 @@ class SourceScore:
     _year = datetime.now().year
     _score_testing = False
 
+    @staticmethod
+    def levenshtein(seq1, seq2):
+        size_x = len(seq1) + 1
+        size_y = len(seq2) + 1
+        matrix = zeros((size_x, size_y))
+        for _x in range(size_x):
+            matrix[_x, 0] = _x
+        for _y in range(size_y):
+            matrix[0, _y] = _y
+        for _x in range(1, size_x):
+            for _y in range(1, size_y):
+                if seq1[_x - 1] == seq2[_y - 1]:
+                    matrix[_x, _y] = min(
+                        matrix[_x - 1, _y] + 1,
+                        matrix[_x - 1, _y - 1],
+                        matrix[_x, _y - 1] + 1
+                    )
+                else:
+                    matrix[_x, _y] = min(
+                        matrix[_x - 1, _y] + 1,
+                        matrix[_x - 1, _y - 1] + 1,
+                        matrix[_x, _y - 1] + 1
+                    )
+        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+
     def _calc_score(self, result_tuple: Score) -> Union[int, float]:
         """Calculate a quality score for the found number."""
         # Set constants
@@ -162,32 +187,7 @@ class SourceScore:
         def fuzzy_score(result: Score, score: float) -> float:
             """Uses name_input and name_output, before and after fuzzy
             matching, taking into account the number of changes in name."""
-
-            def levenshtein(seq1, seq2):
-                size_x = len(seq1) + 1
-                size_y = len(seq2) + 1
-                matrix = zeros((size_x, size_y))
-                for _x in range(size_x):
-                    matrix[_x, 0] = _x
-                for _y in range(size_y):
-                    matrix[0, _y] = _y
-                for _x in range(1, size_x):
-                    for _y in range(1, size_y):
-                        if seq1[_x - 1] == seq2[_y - 1]:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1],
-                                matrix[_x, _y - 1] + 1
-                            )
-                        else:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1] + 1,
-                                matrix[_x, _y - 1] + 1
-                            )
-                return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
-
-            return levenshtein(*result.matchedNames) * score if result.isFuzzy else score
+            return SourceScore.levenshtein(*result.matchedNames) * score if result.isFuzzy else score
 
         def missing_score(result: Score, score: float) -> float:
             if result.dateOfBirth is None:
