@@ -433,6 +433,8 @@ class MySQLClient:
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
         self._max_errors = 100
+        self._types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
+                       timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -561,8 +563,8 @@ class MySQLClient:
                 Province="Noord-Holland",
                 select_fields=['id', 'City']
             )
-            for row in sql.chunk(query=query, size=10):
-                print(row)
+            for rows in iter(sql.chunk(query=query, size=10)):
+                print(rows)
         """
         range_func = trange if use_tqdm else range
         count = self.count() if use_tqdm else 1_000_000_000
@@ -657,6 +659,12 @@ class MySQLClient:
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
+    def _fields(self, fields: dict) -> str:
+        fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
+                  if type_ not in [date, datetime.date] else f"`{name}` {self._types[type_]}"
+                  for name, (type_, length) in fields.items()]
+        return ", ".join(fields)
+
     def create_table(self, table: str,
                      fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
                      drop_existing: bool = False,
@@ -670,11 +678,6 @@ class MySQLClient:
         :param drop_existing: If the table already exists, delete it (default: False).
         :param raise_on_error: Raise on error during creating (default: True).
         """
-        types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
-                 timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
-        fields = [f"`{name}` {types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else f"`{name}` {types[type_]}"
-                  for name, (type_, length) in fields.items()]
         if "." in table:
             self.database, table = table.split(".")
         self.connect()
@@ -685,7 +688,7 @@ class MySQLClient:
             else:
                 with suppress(DatabaseError):
                     self.execute(query)
-        query = f"CREATE TABLE {table} ({', '.join(fields)})"
+        query = f"CREATE TABLE {table} ({self._fields(fields)})"
         if raise_on_error:
             self.execute(query)
         else:
@@ -707,7 +710,7 @@ class MySQLClient:
                 if "." in f"{row[position]}":
                     new_len.append(len(f"{row[position]}".split(".")[1]))
             new_len = max(new_len)
-            field_type = f"{field_type}({field_len},{new_len})"
+            field_type = f"{field_type}({field_len + 1},{new_len})"
         else:
             new_len = max(len(f"{row[position]}") for row in chunk)
             field_type = f"{field_type}({new_len})"
@@ -752,6 +755,19 @@ class MySQLClient:
                     e = f"{e}"
                     if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table, chunk)
+                    elif ("Column count doesn't match value count" in e
+                          and isinstance(data[0], dict)):
+                        cols = {col: self.create_definition([{col: data[0][col]}])[col]
+                                for col in set(self.column()).symmetric_difference(set(data[0]))}
+                        afters = [list(data[0])[list(data[0]).index(col) - 1]
+                                  for col in cols]
+                        cols = self._fields(cols)
+                        cols = ", ".join([f"ADD COLUMN {col} AFTER {after}"
+                                          for col, after
+                                          in zip(cols.split(", "), afters)])
+                        self.connect()
+                        self.execute(f"ALTER TABLE {table} {cols}")
+                        self.disconnect()
                     else:
                         print(chunk)
                         raise
