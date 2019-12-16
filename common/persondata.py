@@ -695,10 +695,17 @@ class PersonData(SourceMatch, SourceScore):
 
     def match(self, data: dict) -> dict:
         self.data = self._clean(Data(**data))
+        if ("country" in self.data
+                and self.data["country"].lower() not in
+                {"nederland", "netherlands", "nl", "nld"}):
+            raise NotImplementedError(
+                f"Not implemented for country "
+                f"{self.data['country']}.")
         debug("Data = %s", self.data)
         self._find()
         if self._responses:
             self._get_score()
+            debug("Result = %s", self.result)
             return self.result
         else:
             raise NoMatch
