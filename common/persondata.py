@@ -701,13 +701,13 @@ class PersonData(SourceMatch, SourceScore):
                 self.result[key] = dateparse(self.result[key])
 
     def match(self, data: dict) -> dict:
-        self.data = self._clean(Data(**data))
-        if ("country" in self.data
-                and self.data["country"].lower() not in
+        country = data.pop("country", "nl").lower()
+        if (country not in
                 {"nederland", "netherlands", "nl", "nld"}):
             raise NotImplementedError(
                 f"Not implemented for country "
-                f"{self.data['country']}.")
+                f"{country}.")
+        self.data = self._clean(Data(**data))
         debug("Data = %s", self.data)
         self._find()
         if self._responses:
