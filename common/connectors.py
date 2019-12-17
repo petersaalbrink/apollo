@@ -532,16 +532,22 @@ class MySQLClient:
             *args, **kwargs) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
         if fieldnames is True:
-            fieldnames = self._get_fieldnames(query)
+            if query:
+                fieldnames = self._get_fieldnames(query)
+            else:
+                fieldnames = self.column()
         if query is None:
-            query = self.build(limit=1, offset=self._iter)
+            query = self.build(
+                limit=1,
+                offset=self._iter,
+                *args, **kwargs)
             if self._iter is None:
                 self._iter = 1
             else:
                 self._iter += 1
         self.connect()
         try:
-            self.execute(query, *args, **kwargs)
+            self.execute(query)
             row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
         except DatabaseError as e:
             raise DatabaseError(query) from e
