@@ -325,13 +325,13 @@ class PersonData(SourceMatch, SourceScore):
         self._out_mapping = {
             "lastname": "lastname",
             "initials": "initials",
-            "postalCode": "address_current_postalCode",
-            "houseNumber": "address_current_houseNumber",
-            "houseNumberExt": "address_current_houseNumberExt",
-            "mobile": "phoneNumber_mobile",
-            "number": "phoneNumber_number",
+            "address_current_postalCode": "postalCode",
+            "address_current_houseNumber": "houseNumber",
+            "address_current_houseNumberExt": "houseNumberExt",
+            "phoneNumber_mobile": "mobile",
+            "phoneNumber_number": "number",
             "gender": "gender",
-            "date_of_birth": "birth_date",
+            "birth_date": "date_of_birth",
         }
         self._score_mapping = {
             "lastname": "name_score",
@@ -625,7 +625,8 @@ class PersonData(SourceMatch, SourceScore):
                         self._responses[key] = response
                         self.result["match_keys"] = self.result["match_keys"].union(
                             {k for k, v in self.result.items()
-                             if v and v in response.values()})
+                             if v and v in response.values()
+                             and self._out_mapping.get(k) in self.data})
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
                         self.result["date"] = response["dateOfRecord"].split("T")[0]
