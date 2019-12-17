@@ -117,7 +117,7 @@ class SourceMatch:
                 and _response["birth_date"] == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z"))
 
     @property
-    def _match_sources(self):
+    def _match_sources_def(self):
         yield "A", lambda _response: (
                 self._lastname_match(_response)
                 and self._address_match(_response)
@@ -136,6 +136,31 @@ class SourceMatch:
                 and (self._address_match(_response)
                      or self._phone_match(_response)
                      or self._dob_match(_response)))
+
+    @property
+    def _match_sources_cbs(self):
+        yield "N", lambda _response: (
+                self._lastname_match(_response)
+                and self._address_match(_response))
+        yield "A", lambda _response: (
+                    self._address_match(_response))
+
+    def _get_source_def(self, response: dict) -> str:
+        for source, match in self._match_sources_def:
+            if match(response):
+                break
+        else:
+            source = "D"
+        return source
+
+    def _get_source_cbs(self, response: dict) -> str:
+        for source, match in self._match_sources_cbs:
+            if match(response):
+                break
+        else:
+            raise RuntimeError(
+                "No source could be defined for this match!")
+        return source
 
 
 class SourceScore:
@@ -167,7 +192,7 @@ class SourceScore:
                     )
         return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
 
-    def _calc_score(self, result_tuple: Score) -> Union[int, float]:
+    def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
         # Set constants
         x = 100
@@ -249,23 +274,46 @@ class SourceScore:
                 score = func(result, score)
             return score
 
-        def categorize(score: float):
-            if score is not None:
-                if score >= 3 / 4:
-                    score = 1
-                elif score >= 2 / 4:
-                    score = 2
-                elif score >= 1 / 4:
-                    score = 3
-                else:
-                    score = 4
-            return score
-
         # Calculate score
         score_percentage = full_score(result_tuple)
+        return score_percentage
+
+    @staticmethod
+    def _categorize_def(score: float) -> int:
+        if score is not None:
+            if score >= 3 / 4:
+                score = 1
+            elif score >= 2 / 4:
+                score = 2
+            elif score >= 1 / 4:
+                score = 3
+            else:
+                score = 4
+        return score
+
+    @staticmethod
+    def _categorize_cbs(score: float) -> int:
+        if score is not None:
+            if score >= 2 / 3:
+                score = 3
+            elif score >= 1 / 3:
+                score = 2
+            else:
+                score = 1
+        return score
+
+    def _get_score_def(self, result_tuple: Score) -> Union[int, float]:
+        score_percentage = self._calc_score(result_tuple)
         if self._score_testing:
             return score_percentage
-        categorized_score = categorize(score_percentage)
+        categorized_score = self._categorize_def(score_percentage)
+        return categorized_score
+
+    def _get_score_cbs(self, result_tuple: Score) -> Union[int, float]:
+        score_percentage = self._calc_score(result_tuple)
+        if self._score_testing:
+            return score_percentage
+        categorized_score = self._categorize_cbs(score_percentage)
         return categorized_score
 
 
@@ -297,6 +345,7 @@ class PersonData(SourceMatch, SourceScore):
             self._local = False
 
         # kwargs  # TODO: Check if you use all of these!
+        self._cbs = kwargs.pop("cbs", False)
         self._use_id_query = kwargs.pop("id_query", False)
         self._strictness = kwargs.pop("strictness", 5)
         self._respect_hours = kwargs.pop("respect_hours", True)
@@ -309,6 +358,12 @@ class PersonData(SourceMatch, SourceScore):
                 not isinstance(self._response_type, (tuple, list))):
             raise ValueError(f"Requested fields should be one"
                              f" of {', '.join(categories)}")
+        if self._cbs:
+            self._get_source = self._get_source_cbs
+            self._score = self._get_score_cbs
+        else:
+            self._get_source = self._get_source_def
+            self._score = self._get_score_def
 
         # data structures
         self._es_mapping = {
@@ -597,7 +652,16 @@ class PersonData(SourceMatch, SourceScore):
             ]
         }
 
+    @staticmethod
+    def _check_country(country: str):
+        if (country not in
+                {"nederland", "netherlands", "nl", "nld"}):
+            raise NotImplementedError(
+                f"Not implemented for country "
+                f"{country}.")
+
     def _find(self):
+        debug("Data = %s", self.data)
         self.result = {"match_keys": set()}
         self._responses = {}
         for _type, q in self._queries:
@@ -666,16 +730,11 @@ class PersonData(SourceMatch, SourceScore):
         return get(f"{self._email_url}{email}", text_only=True)
 
     def _get_score(self):
-        # TODO: implement possibility for using CBS scoring system (or ask them to switch)
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
-                for source, match in self._match_sources:
-                    if match(response):
-                        break
-                else:
-                    source = "D"
-                score = self._calc_score(Score(
+                source = self._get_source(response)
+                score = self._score(Score(
                     response["source"],
                     response["dateOfRecord"][:4],
                     response["death_year"],
@@ -699,21 +758,15 @@ class PersonData(SourceMatch, SourceScore):
         for key in ("address_moved", "birth_date", "death_date"):
             if key in self.result:
                 self.result[key] = dateparse(self.result[key])
+        debug("Result = %s", self.result)
 
     def match(self, data: dict) -> dict:
-        country = data.pop("country", "nl").lower()
-        if (country not in
-                {"nederland", "netherlands", "nl", "nld"}):
-            raise NotImplementedError(
-                f"Not implemented for country "
-                f"{country}.")
+        self._check_country(data.pop("country", "nl").lower())
         self.data = self._clean(Data(**data))
-        debug("Data = %s", self.data)
         self._find()
         if self._responses:
             self._get_score()
             self._finalize()
-            debug("Result = %s", self.result)
             return self.result
         else:
             raise NoMatch
