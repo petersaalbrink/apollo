@@ -629,7 +629,7 @@ class PersonData(SourceMatch, SourceScore):
                              and self._out_mapping.get(k) in self.data})
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
-                        self.result["date"] = response["dateOfRecord"].split("T")[0]
+                        self.result["date"] = response["dateOfRecord"]
                 if all(map(self.result.get, self._main_fields)):
                     return
 
@@ -694,6 +694,12 @@ class PersonData(SourceMatch, SourceScore):
                 ))
                 self.result[self._score_mapping[key]] = f"{source}{score}"
 
+    def _finalize(self):
+        self.result["date"] = dateparse(self.result["date"])
+        for key in ("address_moved", "birth_date", "death_date"):
+            if key in self.result:
+                self.result[key] = dateparse(self.result[key])
+
     def match(self, data: dict) -> dict:
         self.data = self._clean(Data(**data))
         if ("country" in self.data
@@ -706,6 +712,7 @@ class PersonData(SourceMatch, SourceScore):
         self._find()
         if self._responses:
             self._get_score()
+            self._finalize()
             debug("Result = %s", self.result)
             return self.result
         else:
