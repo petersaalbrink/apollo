@@ -22,6 +22,12 @@ from .parsers import Checks, flatten
 
 
 class BaseDataClass:
+    def get(self, item, default=None):
+        try:
+            return self.__getitem__(item)
+        except KeyError:
+            return default
+
     def pop(self, item):
         value = self.__dict__[item]
         del self.__dict__[item]
@@ -688,9 +694,8 @@ class PersonData(SourceMatch, SourceScore):
                         self.result[key] = response[key]
                         self._responses[key] = response
                         self.result["match_keys"] = self.result["match_keys"].union(
-                            {k for k, v in self.result.items()
-                             if v and v in response.values()
-                             and self._out_mapping.get(k) in self.data})
+                            {k for k, v in response.items() if v
+                             and self.data.get(self._out_mapping.get(k)) == v})
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
                         self.result["date"] = response["dateOfRecord"]
