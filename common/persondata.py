@@ -727,7 +727,7 @@ class PersonData(SourceMatch, SourceScore):
 
     def _email_valid(self, email: str):
         """Check validity of email address."""
-        return get(f"{self._email_url}{email}", text_only=True)
+        return get(f"{self._email_url}{email}", text_only=True)["status"] == "OK"
 
     def _get_score(self):
         for key in self._main_fields:
