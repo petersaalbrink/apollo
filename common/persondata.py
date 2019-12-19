@@ -22,6 +22,12 @@ from .parsers import Checks, flatten
 
 
 class BaseDataClass:
+    def get(self, item, default=None):
+        try:
+            return self.__getitem__(item)
+        except KeyError:
+            return default
+
     def pop(self, item):
         value = self.__dict__[item]
         del self.__dict__[item]
@@ -116,12 +122,83 @@ class SourceMatch:
                 and self.data.date_of_birth
                 and _response["birth_date"] == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z"))
 
+    @property
+    def _match_sources_def(self):
+        yield "A", lambda _response: (
+                self._lastname_match(_response)
+                and self._address_match(_response)
+                and self._dob_match(_response)
+                and self._phone_match(_response))
+        yield "B", lambda _response: (
+                self._lastname_match(_response)
+                and ((self._address_match(_response)
+                      and self._dob_match(_response))
+                     or (self._dob_match(_response)
+                         and self._phone_match(_response))
+                     or (self._address_match(_response)
+                         and self._phone_match(_response))))
+        yield "C", lambda _response: (
+                self._lastname_match(_response)
+                and (self._address_match(_response)
+                     or self._phone_match(_response)
+                     or self._dob_match(_response)))
+
+    @property
+    def _match_sources_cbs(self):
+        yield "N", lambda _response: (
+                self._lastname_match(_response)
+                and self._address_match(_response))
+        yield "A", lambda _response: (
+                    self._address_match(_response))
+
+    def _get_source_def(self, response: dict) -> str:
+        for source, match in self._match_sources_def:
+            if match(response):
+                break
+        else:
+            source = "D"
+        return source
+
+    def _get_source_cbs(self, response: dict) -> str:
+        for source, match in self._match_sources_cbs:
+            if match(response):
+                break
+        else:
+            raise RuntimeError(
+                "No source could be defined for this match!")
+        return source
+
 
 class SourceScore:
     _year = datetime.now().year
     _score_testing = False
 
-    def _calc_score(self, result_tuple: Score) -> Union[int, float]:
+    @staticmethod
+    def levenshtein(seq1, seq2):
+        size_x = len(seq1) + 1
+        size_y = len(seq2) + 1
+        matrix = zeros((size_x, size_y))
+        for _x in range(size_x):
+            matrix[_x, 0] = _x
+        for _y in range(size_y):
+            matrix[0, _y] = _y
+        for _x in range(1, size_x):
+            for _y in range(1, size_y):
+                if seq1[_x - 1] == seq2[_y - 1]:
+                    matrix[_x, _y] = min(
+                        matrix[_x - 1, _y] + 1,
+                        matrix[_x - 1, _y - 1],
+                        matrix[_x, _y - 1] + 1
+                    )
+                else:
+                    matrix[_x, _y] = min(
+                        matrix[_x - 1, _y] + 1,
+                        matrix[_x - 1, _y - 1] + 1,
+                        matrix[_x, _y - 1] + 1
+                    )
+        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+
+    def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
         # Set constants
         x = 100
@@ -162,32 +239,7 @@ class SourceScore:
         def fuzzy_score(result: Score, score: float) -> float:
             """Uses name_input and name_output, before and after fuzzy
             matching, taking into account the number of changes in name."""
-
-            def levenshtein(seq1, seq2):
-                size_x = len(seq1) + 1
-                size_y = len(seq2) + 1
-                matrix = zeros((size_x, size_y))
-                for _x in range(size_x):
-                    matrix[_x, 0] = _x
-                for _y in range(size_y):
-                    matrix[0, _y] = _y
-                for _x in range(1, size_x):
-                    for _y in range(1, size_y):
-                        if seq1[_x - 1] == seq2[_y - 1]:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1],
-                                matrix[_x, _y - 1] + 1
-                            )
-                        else:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1] + 1,
-                                matrix[_x, _y - 1] + 1
-                            )
-                return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
-
-            return levenshtein(*result.matchedNames) * score if result.isFuzzy else score
+            return SourceScore.levenshtein(*result.matchedNames) * score if result.isFuzzy else score
 
         def missing_score(result: Score, score: float) -> float:
             if result.dateOfBirth is None:
@@ -228,23 +280,46 @@ class SourceScore:
                 score = func(result, score)
             return score
 
-        def categorize(score: float):
-            if score is not None:
-                if score >= 3 / 4:
-                    score = 1
-                elif score >= 2 / 4:
-                    score = 2
-                elif score >= 1 / 4:
-                    score = 3
-                else:
-                    score = 4
-            return score
-
         # Calculate score
         score_percentage = full_score(result_tuple)
+        return score_percentage
+
+    @staticmethod
+    def _categorize_def(score: float) -> int:
+        if score is not None:
+            if score >= 3 / 4:
+                score = 1
+            elif score >= 2 / 4:
+                score = 2
+            elif score >= 1 / 4:
+                score = 3
+            else:
+                score = 4
+        return score
+
+    @staticmethod
+    def _categorize_cbs(score: float) -> int:
+        if score is not None:
+            if score >= 2 / 3:
+                score = 3
+            elif score >= 1 / 3:
+                score = 2
+            else:
+                score = 1
+        return score
+
+    def _get_score_def(self, result_tuple: Score) -> Union[int, float]:
+        score_percentage = self._calc_score(result_tuple)
         if self._score_testing:
             return score_percentage
-        categorized_score = categorize(score_percentage)
+        categorized_score = self._categorize_def(score_percentage)
+        return categorized_score
+
+    def _get_score_cbs(self, result_tuple: Score) -> Union[int, float]:
+        score_percentage = self._calc_score(result_tuple)
+        if self._score_testing:
+            return score_percentage
+        categorized_score = self._categorize_cbs(score_percentage)
         return categorized_score
 
 
@@ -264,9 +339,11 @@ class PersonData(SourceMatch, SourceScore):
         self._es = ESClient("dev_peter.person_data_20190716")
         self._vn = ESClient("dev_peter.validated_numbers")
         if gethostname() == "matrixian":
-            self._url = "http://localhost:5000/call/"
+            self._phone_url = "http://localhost:5000/call/"
         else:
-            self._url = "http://94.168.87.210:4000/call/"
+            self._phone_url = "http://94.168.87.210:4000/call/"
+        self._email_url = ("http://develop.platform.matrixiangroup.com"
+                           ":4000/email?email=")
         try:
             self._local = (rget("https://api.ipify.org").text
                            == "94.168.87.210")
@@ -274,6 +351,7 @@ class PersonData(SourceMatch, SourceScore):
             self._local = False
 
         # kwargs  # TODO: Check if you use all of these!
+        self._cbs = kwargs.pop("cbs", False)
         self._use_id_query = kwargs.pop("id_query", False)
         self._strictness = kwargs.pop("strictness", 5)
         self._respect_hours = kwargs.pop("respect_hours", True)
@@ -286,6 +364,12 @@ class PersonData(SourceMatch, SourceScore):
                 not isinstance(self._response_type, (tuple, list))):
             raise ValueError(f"Requested fields should be one"
                              f" of {', '.join(categories)}")
+        if self._cbs:
+            self._get_source = self._get_source_cbs
+            self._score = self._get_score_cbs
+        else:
+            self._get_source = self._get_source_def
+            self._score = self._get_score_def
 
         # data structures
         self._es_mapping = {
@@ -298,6 +382,17 @@ class PersonData(SourceMatch, SourceScore):
             "number": "phoneNumber.number",
             "gender": "gender",
             "date_of_birth": "birth.date",
+        }
+        self._out_mapping = {
+            "lastname": "lastname",
+            "initials": "initials",
+            "address_current_postalCode": "postalCode",
+            "address_current_houseNumber": "houseNumber",
+            "address_current_houseNumberExt": "houseNumberExt",
+            "phoneNumber_mobile": "mobile",
+            "phoneNumber_number": "number",
+            "gender": "gender",
+            "birth_date": "date_of_birth",
         }
         self._score_mapping = {
             "lastname": "name_score",
@@ -335,8 +430,6 @@ class PersonData(SourceMatch, SourceScore):
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
-                "phoneNumber_valid_mobile",
-                "phoneNumber_valid_number",
             )
         elif self._response_type == "name":
             return (
@@ -365,8 +458,6 @@ class PersonData(SourceMatch, SourceScore):
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
-                "phoneNumber_valid_mobile",
-                "phoneNumber_valid_number",
             )
 
     @property
@@ -380,27 +471,6 @@ class PersonData(SourceMatch, SourceScore):
         else:
             return ("lastname", "address_current_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
-
-    @property
-    def _match_sources(self):
-        yield "A", lambda _response: (
-                self._lastname_match(_response)
-                and self._address_match(_response)
-                and self._dob_match(_response)
-                and self._phone_match(_response))
-        yield "B", lambda _response: (
-                self._lastname_match(_response)
-                and ((self._address_match(_response)
-                      and self._dob_match(_response))
-                     or (self._dob_match(_response)
-                         and self._phone_match(_response))
-                     or (self._address_match(_response)
-                         and self._phone_match(_response))))
-        yield "C", lambda _response: (
-                self._lastname_match(_response)
-                and (self._address_match(_response)
-                     or self._phone_match(_response)
-                     or self._dob_match(_response)))
 
     @property
     def _queries(self) -> Tuple[str, dict]:
@@ -588,8 +658,17 @@ class PersonData(SourceMatch, SourceScore):
             ]
         }
 
+    @staticmethod
+    def _check_country(country: str):
+        if (country not in
+                {"nederland", "netherlands", "nl", "nld"}):
+            raise NotImplementedError(
+                f"Not implemented for country "
+                f"{country}.")
+
     def _find(self):
-        self.result = {}
+        debug("Data = %s", self.data)
+        self.result = {"match_keys": set()}
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
@@ -609,11 +688,17 @@ class PersonData(SourceMatch, SourceScore):
                         if (key in ("address_moved", "birth_date", "death_date")
                                 and response[key] == "1900-01-01T00:00:00Z"):
                             continue
+                        if (key == "contact_email" and
+                                not self._email_valid(response[key])):
+                            continue
                         self.result[key] = response[key]
                         self._responses[key] = response
+                        self.result["match_keys"] = self.result["match_keys"].union(
+                            {k for k, v in response.items() if v
+                             and self.data.get(self._out_mapping.get(k)) == v})
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
-                        self.result["date"] = response["dateOfRecord"].split("T")[0]
+                        self.result["date"] = response["dateOfRecord"]
                 if all(map(self.result.get, self._main_fields)):
                     return
 
@@ -622,6 +707,8 @@ class PersonData(SourceMatch, SourceScore):
         script is running then, just pause it."""
         phone = f"+31{number}"
         valid = is_valid_number(parse(phone, "NL"))
+        if f"{number}".startswith(("8", "9")):
+            valid = False
         if valid:
             if self._local:
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
@@ -635,24 +722,24 @@ class PersonData(SourceMatch, SourceScore):
                     t = localtime().tm_hour
             if self._call_to_validate:
                 while True:
-                    valid = get(f"{self._url}{phone}", auth=("datateam", "matrixian"))
-                    if not valid:
-                        self._url = "http://94.168.87.210:4000/call/"
+                    valid = get(f"{self._phone_url}{phone}", auth=("datateam", "matrixian"))
+                    if not valid.ok:
+                        self._phone_url = "http://94.168.87.210:4000/call/"
                     else:
                         valid = loads(valid.text)
                         break
         return valid
 
+    def _email_valid(self, email: str):
+        """Check validity of email address."""
+        return get(f"{self._email_url}{email}", text_only=True)["status"] == "OK"
+
     def _get_score(self):
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
-                for source, match in self._match_sources:
-                    if match(response):
-                        break
-                else:
-                    source = "D"
-                score = self._calc_score(Score(
+                source = self._get_source(response)
+                score = self._score(Score(
                     response["source"],
                     response["dateOfRecord"][:4],
                     response["death_year"],
@@ -671,13 +758,23 @@ class PersonData(SourceMatch, SourceScore):
                 ))
                 self.result[self._score_mapping[key]] = f"{source}{score}"
 
-    def match(self, data: dict):
+    def _finalize(self):
+        self.result["date"] = dateparse(self.result["date"])
+        for key in ("address_moved", "birth_date", "death_date"):
+            if key in self.result:
+                self.result[key] = dateparse(self.result[key])
+        debug("Result = %s", self.result)
+
+    def match(self, data: dict) -> dict:
+        self._check_country(data.pop("country", "nl").lower())
         self.data = self._clean(Data(**data))
-        debug("Data = %s", self.data)
         self._find()
         if self._responses:
             self._get_score()
-        return self.result
+            self._finalize()
+            return self.result
+        else:
+            raise NoMatch
 
 
 class PersonMatch:
@@ -789,10 +886,7 @@ class PersonMatch:
 
     @staticmethod
     def _clean_dob(dob: str) -> datetime:
-        try:
-            return datetime.strptime(dob, "%Y-%m-%d")
-        except ValueError:
-            return datetime.strptime(dob, "%d/%m/%Y")
+        return dateparse(dob)
 
     @staticmethod
     def _clean_phone(phone: Union[str, int]) -> (int, str):
@@ -1041,6 +1135,8 @@ class PhoneNumberFinder:
         t = Timer()
         # Before calling our API, do basic (offline) validation
         valid = is_valid_number(parse(phone, "NL"))
+        if phone.startswith(("8", "9")):
+            valid = False
         if valid:
             if self.local:
                 result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
