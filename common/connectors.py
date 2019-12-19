@@ -2,6 +2,7 @@ import smtplib
 from sys import argv
 import mysql.connector
 from tqdm import trange
+from pandas import isna
 from warnings import warn
 from email import encoders
 from socket import timeout
@@ -14,11 +15,12 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
-from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
 from pymongo.operations import UpdateOne, UpdateMany
+from mysql.connector import DatabaseError, InterfaceError
 from elasticsearch import Elasticsearch, ElasticsearchException
+from pandas.core.arrays.datetimelike import NaTType, Timestamp, Timedelta
 from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Union
 
 
@@ -327,6 +329,8 @@ class MongoDB(MongoClient):
         }
         if host not in hosts:
             raise ValueError(f"Host `{host}` not recognized")
+        elif host == "stg":
+            raise DeprecationWarning("Staging database is not used anymore.")
         host, secret = hosts[host]
         from common.secrets import get_secret
         cred = get_secret(secret)
@@ -431,6 +435,19 @@ class MySQLClient:
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
         self._max_errors = 100
+        self._types = {
+            str: "CHAR",
+            int: "INT",
+            float: "DECIMAL",
+            bool: "TINYINT",
+            timedelta: "TIMESTAMP",
+            Timedelta: "DECIMAL",
+            Timestamp: "DATETIME",
+            NaTType: "DATETIME",
+            datetime: "DATETIME",
+            date: "DATE",
+            datetime.date: "DATE"
+        }
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -528,16 +545,22 @@ class MySQLClient:
             *args, **kwargs) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
         if fieldnames is True:
-            fieldnames = self._get_fieldnames(query)
+            if query:
+                fieldnames = self._get_fieldnames(query)
+            else:
+                fieldnames = self.column()
         if query is None:
-            query = self.build(limit=1, offset=self._iter)
+            query = self.build(
+                limit=1,
+                offset=self._iter,
+                *args, **kwargs)
             if self._iter is None:
                 self._iter = 1
             else:
                 self._iter += 1
         self.connect()
         try:
-            self.execute(query, *args, **kwargs)
+            self.execute(query)
             row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
         except DatabaseError as e:
             raise DatabaseError(query) from e
@@ -559,8 +582,8 @@ class MySQLClient:
                 Province="Noord-Holland",
                 select_fields=['id', 'City']
             )
-            for row in sql.chunk(query=query, size=10):
-                print(row)
+            for rows in iter(sql.chunk(query=query, size=10)):
+                print(rows)
         """
         range_func = trange if use_tqdm else range
         count = self.count() if use_tqdm else 1_000_000_000
@@ -645,8 +668,9 @@ class MySQLClient:
         ))
         # Change default precision for floats and datetimes
         types = [
-            (type_, 6) if type_ is datetime else (
-                (type_, float(f"{prec}.2")) if type_ is float else (
+            (type_, 6) if type_ in (
+                timedelta, datetime, Timedelta, Timestamp, NaTType) else (
+                (type_, float(f"{prec}.2")) if type_ in (float, Timedelta) else (
                     type_, prec
                 ))
             for type_, prec in types
@@ -654,6 +678,12 @@ class MySQLClient:
         if len(types) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
+
+    def _fields(self, fields: dict) -> str:
+        fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
+                  if type_ not in [date, datetime.date] else f"`{name}` {self._types[type_]}"
+                  for name, (type_, length) in fields.items()]
+        return ", ".join(fields)
 
     def create_table(self, table: str,
                      fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
@@ -668,11 +698,6 @@ class MySQLClient:
         :param drop_existing: If the table already exists, delete it (default: False).
         :param raise_on_error: Raise on error during creating (default: True).
         """
-        types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
-                 timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
-        fields = [f"`{name}` {types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else f"`{name}` {types[type_]}"
-                  for name, (type_, length) in fields.items()]
         if "." in table:
             self.database, table = table.split(".")
         self.connect()
@@ -683,12 +708,13 @@ class MySQLClient:
             else:
                 with suppress(DatabaseError):
                     self.execute(query)
-        query = f"CREATE TABLE {table} ({', '.join(fields)})"
-        if raise_on_error:
-            self.execute(query)
-        else:
-            with suppress(DatabaseError):
-                self.execute(query)
+        query = f"CREATE TABLE {table} ({self._fields(fields)})"
+        self.execute(query)
+        # if raise_on_error:
+        #     self.execute(query)
+        # else:
+        #     with suppress(DatabaseError):
+        #         self.execute(query)
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
@@ -705,7 +731,7 @@ class MySQLClient:
                 if "." in f"{row[position]}":
                     new_len.append(len(f"{row[position]}".split(".")[1]))
             new_len = max(new_len)
-            field_type = f"{field_type}({field_len},{new_len})"
+            field_type = f"{field_type}({field_len + 1},{new_len})"
         else:
             new_len = max(len(f"{row[position]}") for row in chunk)
             field_type = f"{field_type}({new_len})"
@@ -726,6 +752,8 @@ class MySQLClient:
         if not data:
             raise ValueError("No data provided.")
         if not table:
+            if not self.table_name:
+                raise ValueError("Provide a table name.")
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
@@ -743,13 +771,44 @@ class MySQLClient:
                 try:
                     self.executemany(query, chunk)
                     break
-                except DatabaseError as e:
+                except (DatabaseError, InterfaceError) as e:
                     errors += 1
                     if errors >= self._max_errors:
                         raise
                     e = f"{e}"
                     if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table, chunk)
+                    elif ("Column count doesn't match value count" in e
+                          and isinstance(data[0], dict)):
+                        cols = {col: self.create_definition([{col: data[0][col]}])[col]
+                                for col in set(self.column()).symmetric_difference(set(data[0]))}
+                        afters = [list(data[0])[list(data[0]).index(col) - 1]
+                                  for col in cols]
+                        cols = self._fields(cols)
+                        cols = ", ".join([f"ADD COLUMN {col} AFTER {after}"
+                                          for col, after
+                                          in zip(cols.split(", "), afters)])
+                        self.connect()
+                        self.execute(f"ALTER TABLE {table} {cols}")
+                        self.disconnect()
+                    elif ("Timestamp" in e
+                          or "Timedelta" in e
+                          or "NaTType" in e):
+                        for row in chunk:
+                            for field in row:
+                                if ("date" in field
+                                        or "time" in field
+                                        or "datum" in field):
+                                    if isinstance(row[field],
+                                                  (Timestamp,
+                                                   NaTType)):
+                                        row[field] = row[field].to_pydatetime()
+                                    elif isinstance(row[field], Timedelta):
+                                        row[field] = row[field].total_seconds()
+                    elif "Unknown column 'nan'" in e:
+                        chunk = [[None if value == "" or isna(value)
+                                  else value for value in row]
+                                 for row in chunk]
                     else:
                         print(chunk)
                         raise
@@ -768,7 +827,9 @@ class MySQLClient:
         self.execute(query.rstrip(","))
         self.disconnect()
 
-    def insert_new(self, table: str, data: List[Union[list, tuple, dict]],
+    def insert_new(self,
+                   table: str = None,
+                   data: List[Union[list, tuple, dict]] = None,
                    fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
@@ -780,12 +841,21 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload.
         """
-        if "." in table:
+        if not data:
+            raise ValueError("No data provided.")
+        if not table:
+            if not self.table_name:
+                raise ValueError("Provide a table name.")
+            table = self.table_name
+        elif "." in table:
             self.database, table = table.split(".")
         if not fields:
             fields = self.create_definition(data)
-        self.create_table(table, fields, drop_existing=True)
-        self.add_index(table, list(fields))
+        self.create_table(table, fields,
+                          drop_existing=True,
+                          raise_on_error=False)
+        with suppress(DatabaseError):
+            self.add_index(table, list(fields))
         return self.insert(table, data)
 
     def _get_fieldnames(self, query: Union[str, Query]) -> List[str]:
