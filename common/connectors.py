@@ -2,6 +2,7 @@ import smtplib
 from sys import argv
 import mysql.connector
 from tqdm import trange
+from pandas import isna
 from warnings import warn
 from email import encoders
 from socket import timeout
@@ -14,11 +15,12 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from pymongo.database import Database
 from pymongo.database import Collection
-from mysql.connector import DatabaseError
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
 from pymongo.operations import UpdateOne, UpdateMany
+from mysql.connector import DatabaseError, InterfaceError
 from elasticsearch import Elasticsearch, ElasticsearchException
+from pandas.core.arrays.datetimelike import NaTType, Timestamp, Timedelta
 from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Union
 
 
@@ -433,8 +435,19 @@ class MySQLClient:
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = self._iter = None
         self._max_errors = 100
-        self._types = {str: "CHAR", int: "INT", float: "DECIMAL", bool: "TINYINT",
-                       timedelta: "TIMESTAMP", datetime: "DATETIME", date: "DATE", datetime.date: "DATE"}
+        self._types = {
+            str: "CHAR",
+            int: "INT",
+            float: "DECIMAL",
+            bool: "TINYINT",
+            timedelta: "TIMESTAMP",
+            Timedelta: "DECIMAL",
+            Timestamp: "DATETIME",
+            NaTType: "DATETIME",
+            datetime: "DATETIME",
+            date: "DATE",
+            datetime.date: "DATE"
+        }
 
     def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
         """Connect to SQL server"""
@@ -655,8 +668,9 @@ class MySQLClient:
         ))
         # Change default precision for floats and datetimes
         types = [
-            (type_, 6) if type_ is datetime else (
-                (type_, float(f"{prec}.2")) if type_ is float else (
+            (type_, 6) if type_ in (
+                timedelta, datetime, Timedelta, Timestamp, NaTType) else (
+                (type_, float(f"{prec}.2")) if type_ in (float, Timedelta) else (
                     type_, prec
                 ))
             for type_, prec in types
@@ -695,11 +709,12 @@ class MySQLClient:
                 with suppress(DatabaseError):
                     self.execute(query)
         query = f"CREATE TABLE {table} ({self._fields(fields)})"
-        if raise_on_error:
-            self.execute(query)
-        else:
-            with suppress(DatabaseError):
-                self.execute(query)
+        self.execute(query)
+        # if raise_on_error:
+        #     self.execute(query)
+        # else:
+        #     with suppress(DatabaseError):
+        #         self.execute(query)
         self.disconnect()
 
     def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
@@ -756,7 +771,7 @@ class MySQLClient:
                 try:
                     self.executemany(query, chunk)
                     break
-                except DatabaseError as e:
+                except (DatabaseError, InterfaceError) as e:
                     errors += 1
                     if errors >= self._max_errors:
                         raise
@@ -776,6 +791,24 @@ class MySQLClient:
                         self.connect()
                         self.execute(f"ALTER TABLE {table} {cols}")
                         self.disconnect()
+                    elif ("Timestamp" in e
+                          or "Timedelta" in e
+                          or "NaTType" in e):
+                        for row in chunk:
+                            for field in row:
+                                if ("date" in field
+                                        or "time" in field
+                                        or "datum" in field):
+                                    if isinstance(row[field],
+                                                  (Timestamp,
+                                                   NaTType)):
+                                        row[field] = row[field].to_pydatetime()
+                                    elif isinstance(row[field], Timedelta):
+                                        row[field] = row[field].total_seconds()
+                    elif "Unknown column 'nan'" in e:
+                        chunk = [[None if value == "" or isna(value)
+                                  else value for value in row]
+                                 for row in chunk]
                     else:
                         print(chunk)
                         raise
@@ -818,8 +851,11 @@ class MySQLClient:
             self.database, table = table.split(".")
         if not fields:
             fields = self.create_definition(data)
-        self.create_table(table, fields, drop_existing=True)
-        self.add_index(table, list(fields))
+        self.create_table(table, fields,
+                          drop_existing=True,
+                          raise_on_error=False)
+        with suppress(DatabaseError):
+            self.add_index(table, list(fields))
         return self.insert(table, data)
 
     def _get_fieldnames(self, query: Union[str, Query]) -> List[str]:
