@@ -737,6 +737,8 @@ class MySQLClient:
         if not data:
             raise ValueError("No data provided.")
         if not table:
+            if not self.table_name:
+                raise ValueError("Provide a table name.")
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
@@ -792,7 +794,9 @@ class MySQLClient:
         self.execute(query.rstrip(","))
         self.disconnect()
 
-    def insert_new(self, table: str, data: List[Union[list, tuple, dict]],
+    def insert_new(self,
+                   table: str = None,
+                   data: List[Union[list, tuple, dict]] = None,
                    fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
@@ -804,7 +808,13 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload.
         """
-        if "." in table:
+        if not data:
+            raise ValueError("No data provided.")
+        if not table:
+            if not self.table_name:
+                raise ValueError("Provide a table name.")
+            table = self.table_name
+        elif "." in table:
             self.database, table = table.split(".")
         if not fields:
             fields = self.create_definition(data)
