@@ -7,8 +7,11 @@ from .connectors import EmailClient
 
 def parse(address: str, country: str = "NL"):
     params = {
-        "address": quote_plus(address),
-        "country": country if country == "UK" else countries.lookup(country).name
+        "address": quote_plus(address).replace("+", " "),
+        "country": {
+            "UK": "UK",
+            "United Kingdom": "UK"
+        }.get(country, countries.lookup(country).name)
     }
     response = get(f"http://37.97.136.149:5000/parsers/", params=params, text_only=True)
     if "status" in response:

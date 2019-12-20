@@ -352,6 +352,7 @@ class PersonData(SourceMatch, SourceScore):
 
         # kwargs  # TODO: Check if you use all of these!
         self._cbs = kwargs.pop("cbs", False)
+        self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
         self._strictness = kwargs.pop("strictness", 5)
         self._respect_hours = kwargs.pop("respect_hours", True)
@@ -421,6 +422,26 @@ class PersonData(SourceMatch, SourceScore):
                 "address_moved",
                 "birth_date",
                 "contact_email",
+                "death_date",
+                "firstname",
+                "gender",
+                "initials",
+                "lastname",
+                "middlename",
+                "phoneNumber_country",
+                "phoneNumber_mobile",
+                "phoneNumber_number",
+            ) if self._email else (
+                "address_current_city",
+                "address_current_country",
+                "address_current_houseNumber",
+                "address_current_houseNumberExt",
+                "address_current_location",
+                "address_current_postalCode",
+                "address_current_state",
+                "address_current_street",
+                "address_moved",
+                "birth_date",
                 "death_date",
                 "firstname",
                 "gender",
@@ -732,7 +753,10 @@ class PersonData(SourceMatch, SourceScore):
 
     def _email_valid(self, email: str):
         """Check validity of email address."""
-        return get(f"{self._email_url}{email}", text_only=True)["status"] == "OK"
+        return get(f"{self._email_url}{email}",
+                   text_only=True,
+                   timeout=10
+                   )["status"] == "OK"
 
     def _get_score(self):
         for key in self._main_fields:
