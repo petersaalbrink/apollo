@@ -21,6 +21,9 @@ from .handlers import Timer, get
 from .parsers import Checks, flatten
 
 
+# TODO: Make BaseDataClass a subclass of AbstractBaseClass MutableMapping:
+#  from collections.abc import MutableMapping
+#  class BaseDataClass(MutableMapping):
 class BaseDataClass:
     def get(self, item, default=None):
         try:
@@ -709,9 +712,9 @@ class PersonData(SourceMatch, SourceScore):
                         if (key in ("address_moved", "birth_date", "death_date")
                                 and response[key] == "1900-01-01T00:00:00Z"):
                             continue
-                        if (key == "contact_email" and
-                                not self._email_valid(response[key])):
-                            continue
+                        # if (key == "contact_email" and
+                        #         not self._email_valid(response[key])):
+                        #     continue
                         self.result[key] = response[key]
                         self._responses[key] = response
                         self.result["match_keys"] = self.result["match_keys"].union(
@@ -753,10 +756,14 @@ class PersonData(SourceMatch, SourceScore):
 
     def _email_valid(self, email: str):
         """Check validity of email address."""
-        return get(f"{self._email_url}{email}",
-                   text_only=True,
-                   timeout=10
-                   )["status"] == "OK"
+        try:
+            return get(f"{self._email_url}{email}",
+                       text_only=True,
+                       timeout=10
+                       )["status"] == "OK"
+        except Exception as e:
+            debug("Exception: %s: %s", email, e)
+            return False
 
     def _get_score(self):
         for key in self._main_fields:
