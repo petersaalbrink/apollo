@@ -210,10 +210,10 @@ class ESClient(Elasticsearch):
         Examples:
             from common.classes import ElasticSearch
             es = ElasticSearch()
-            results = es.simple(field="lastname", query="Saalbrink")
+            results = es.query(field="lastname", query="Saalbrink")
 
             # Add multiple search fields:
-            results = es.simple(lastname="Saalbrink", address_postalCode="1014AK")
+            results = es.query(lastname="Saalbrink", address_postalCode="1014AK")
             # This results in the query:
             {"query": {"bool": {"must": [{"match": {"lastname": "Saalbrink"}},
                                          {"match": {"address.postalCode": "1014AK"}}]}}}
