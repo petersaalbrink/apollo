@@ -97,7 +97,7 @@ def csv_read(filename: Union[PurePath, str],
 class Log:
     """Simple logger class that, when initiated, by default logs debug
     to stderr."""
-    def __init__(self, level: str = None):
+    def __init__(self, level: str = None, filename: str = None):
         """Simple logger class that, when initiated, by default logs
         debug to stderr."""
         import sys
@@ -111,14 +111,26 @@ class Log:
             "error": logging.ERROR,
             "fatal": logging.FATAL,
             "critical": logging.FATAL,
-        }.get(level, logging.DEBUG)
-        logging.basicConfig(stream=sys.stderr, level=self.level)
+        }.get(level.lower(), logging.DEBUG)
+        self.kwargs = {
+            "level": self.level,
+            "format": "%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
+                      "%(module)s:%(funcName)s:%(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S"
+        }
+        if filename:
+            self.kwargs["handlers"] = (logging.FileHandler(filename=filename,
+                                                           encoding="utf-8"),)
+        else:
+            self.kwargs["stream"] = sys.stderr
+        logging.basicConfig(**self.kwargs)
 
     def __repr__(self):
-        return f"Log({self.level})"
+        kwargs = ", ".join(f"{k}={v}" for k, v in self.kwargs.items())
+        return f"Log({kwargs})"
 
     def __str__(self):
-        return f"Log({self.level})"
+        return self.__repr__()
 
 
 def send_email(function: Callable = None, *,
