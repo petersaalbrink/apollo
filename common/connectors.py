@@ -650,7 +650,7 @@ class MySQLClient:
         type_dict = {}
         for row in data:
             for field in row:
-                if field not in type_dict and row[field] is not None:
+                if field not in type_dict and not isna(row[field]):
                     type_dict[field] = type(row[field])
             if len(type_dict) == len(row):
                 break
@@ -830,7 +830,8 @@ class MySQLClient:
     def insert_new(self,
                    table: str = None,
                    data: List[Union[list, tuple, dict]] = None,
-                   fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
+                   fields: Dict[str, Tuple[type, Union[int, float]]] = None
+                   ) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
