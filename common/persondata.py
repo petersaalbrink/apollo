@@ -100,9 +100,12 @@ class SourceMatch:
                 ) or False
 
     def _initials_match(self, response):
-        return (response.get("initials") and self.data.initials
-                and response.get("initials") == self.data.initials
-                ) or False
+        try:
+            return (response.get("initials") and self.data.initials
+                    and response.get("initials")[0] == self.data.initials[0]
+                    ) or False
+        except IndexError:
+            return False
 
     def _gender_match(self, response):
         return (response.get("gender") and self.data.gender
