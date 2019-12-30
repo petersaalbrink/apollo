@@ -7,7 +7,7 @@ from logging import info, debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Any, NamedTuple, Tuple, Union
+from typing import Any, Iterable, NamedTuple, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from numpy import zeros
@@ -87,7 +87,10 @@ class Score:
 class SourceMatch:
     def __init__(self):
         super().__init__()
-        self.data = self._matched = self._match_sources = None
+        self.data = self._matched = None
+
+    def _match_sources(self) -> Iterable:
+        pass
 
     def _lastname_match(self, response):
         return (response.get("lastname")
