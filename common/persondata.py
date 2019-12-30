@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,7 +7,7 @@ from logging import info, debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Any, MutableMapping, NamedTuple, Tuple, Union
+from typing import Any, NamedTuple, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from numpy import zeros
@@ -21,32 +21,21 @@ from .handlers import Timer, get
 from .parsers import Checks, flatten
 
 
-# TODO: Make BaseDataClass a subclass of AbstractBaseClass MutableMapping:
-#  from collections.abc import MutableMapping
-#  class BaseDataClass(MutableMapping):
-class BaseDataClass:
-    def get(self, item, default=None):
-        try:
-            return self.__getitem__(item)
-        except KeyError:
-            return default
+class BaseDataClass(MutableMapping):
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
 
-    def pop(self, item):
-        value = self.__dict__[item]
-        del self.__dict__[item]
-        return value
+    def __getitem__(self, key):
+        return self.__dict__[key]
 
-    def __contains__(self, item):
-        return item in self.__dict__
+    def __delitem__(self, key):
+        del self.__dict__[key]
 
     def __iter__(self):
-        yield from self.__dict__
+        return iter(self.__dict__)
 
-    def __setitem__(self, item, value):
-        self.__dict__[item] = value
-
-    def __getitem__(self, item):
-        return self.__dict__[item]
+    def __len__(self):
+        return len(self.__dict__)
 
 
 @dataclass
