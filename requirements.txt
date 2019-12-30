@@ -12,3 +12,4 @@ matplotlib
 requests
 pycountry
 translate
+nameparser
