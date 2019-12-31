@@ -745,6 +745,7 @@ class MySQLClient:
                ignore: bool = False,
                _limit: int = 10_000,
                use_tqdm: bool = False,
+               fields: Union[list, tuple] = None,
                ) -> int:
         """Insert a data array into a SQL table.
 
@@ -757,8 +758,10 @@ class MySQLClient:
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
-        query = f"INSERT {'IGNORE' if ignore else ''} INTO " \
-                f"{self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
+        fields = f"({', '.join(fields)})" if fields else ""
+        query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
+                 f"{self.database}.{table} {fields} VALUES "
+                 f"({', '.join(['%s'] * len(data[0]))})")
         range_func = trange if use_tqdm else range
         errors = 0
         for offset in range_func(0, len(data), _limit):
