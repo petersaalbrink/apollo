@@ -27,7 +27,11 @@ from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Un
 class ESClient(Elasticsearch):
     """Client for ElasticSearch"""
 
-    def __init__(self, es_index: str = None, dev: bool = True):
+    def __init__(self,
+                 es_index: str = None,
+                 dev: bool = True,
+                 **kwargs
+                 ):
         """Client for ElasticSearch"""
         from common.secrets import get_secret
         es = get_secret("es")
@@ -44,6 +48,7 @@ class ESClient(Elasticsearch):
         hosts = [{"host": self._host, "port": self._port}]
         config = {"http_auth": (es.usr, es.pwd), "timeout": 60, "retry_on_timeout": True}
         super().__init__(hosts, **config)
+        self.size = kwargs.pop("size", 20)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
@@ -84,7 +89,7 @@ class ESClient(Elasticsearch):
         if source_only and not hits_only:
             warn("Returning hits only if any([source_only, first_only])")
             hits_only = True
-        size = kwargs.pop("size", 10_000)
+        size = kwargs.pop("size", self.size)
         results = []
         for q in query:
             if not q:
@@ -218,7 +223,7 @@ class ESClient(Elasticsearch):
             {"query": {"bool": {"must": [{"match": {"lastname": "Saalbrink"}},
                                          {"match": {"address.postalCode": "1014AK"}}]}}}
         """
-        size = kwargs.pop("size", 10_000)
+        size = kwargs.pop("size", self.size)
         sort = kwargs.pop("sort", None)
         track_scores = kwargs.pop("track_scores", None)
         if field and value:
