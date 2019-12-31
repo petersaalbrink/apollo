@@ -650,7 +650,7 @@ class MySQLClient:
         type_dict = {}
         for row in data:
             for field in row:
-                if field not in type_dict and row[field] is not None:
+                if field not in type_dict and not isna(row[field]):
                     type_dict[field] = type(row[field])
             if len(type_dict) == len(row):
                 break
@@ -745,6 +745,7 @@ class MySQLClient:
                ignore: bool = False,
                _limit: int = 10_000,
                use_tqdm: bool = False,
+               fields: Union[list, tuple] = None,
                ) -> int:
         """Insert a data array into a SQL table.
 
@@ -757,8 +758,10 @@ class MySQLClient:
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
-        query = f"INSERT {'IGNORE' if ignore else ''} INTO " \
-                f"{self.database}.{table} VALUES ({', '.join(['%s'] * len(data[0]))})"
+        fields = f"({', '.join(fields)})" if fields else ""
+        query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
+                 f"{self.database}.{table} {fields} VALUES "
+                 f"({', '.join(['%s'] * len(data[0]))})")
         range_func = trange if use_tqdm else range
         errors = 0
         for offset in range_func(0, len(data), _limit):
@@ -830,7 +833,8 @@ class MySQLClient:
     def insert_new(self,
                    table: str = None,
                    data: List[Union[list, tuple, dict]] = None,
-                   fields: Dict[str, Tuple[type, Union[int, float]]] = None) -> int:
+                   fields: Dict[str, Tuple[type, Union[int, float]]] = None
+                   ) -> int:
         """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         :param table: The name of the table to be created.
