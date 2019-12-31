@@ -758,7 +758,11 @@ class MySQLClient:
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
-        fields = f"({', '.join(fields)})" if fields else ""
+        if fields:
+            fields = [f"`{f}`" for f in fields]
+            fields = f"({', '.join(fields)})"
+        else:
+            fields = ""
         query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
                  f"{self.database}.{table} {fields} VALUES "
                  f"({', '.join(['%s'] * len(data[0]))})")
