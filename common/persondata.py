@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,7 +7,7 @@ from logging import info, debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Any, MutableMapping, NamedTuple, Tuple, Union
+from typing import Any, Iterable, NamedTuple, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from numpy import zeros
@@ -21,32 +21,21 @@ from .handlers import Timer, get
 from .parsers import Checks, flatten
 
 
-# TODO: Make BaseDataClass a subclass of AbstractBaseClass MutableMapping:
-#  from collections.abc import MutableMapping
-#  class BaseDataClass(MutableMapping):
-class BaseDataClass:
-    def get(self, item, default=None):
-        try:
-            return self.__getitem__(item)
-        except KeyError:
-            return default
+class BaseDataClass(MutableMapping):
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
 
-    def pop(self, item):
-        value = self.__dict__[item]
-        del self.__dict__[item]
-        return value
+    def __getitem__(self, key):
+        return self.__dict__[key]
 
-    def __contains__(self, item):
-        return item in self.__dict__
+    def __delitem__(self, key):
+        del self.__dict__[key]
 
     def __iter__(self):
-        yield from self.__dict__
+        return iter(self.__dict__)
 
-    def __setitem__(self, item, value):
-        self.__dict__[item] = value
-
-    def __getitem__(self, item):
-        return self.__dict__[item]
+    def __len__(self):
+        return len(self.__dict__)
 
 
 @dataclass
@@ -96,75 +85,94 @@ class Score:
 
 
 class SourceMatch:
-    data = None
+    def __init__(self):
+        super().__init__()
+        self.data = self._matched = None
 
-    def _lastname_match(self, _response):
-        return (_response["lastname"]
+    def _match_sources(self) -> Iterable:
+        pass
+
+    def _lastname_match(self, response):
+        return (response.get("lastname")
                 and self.data.lastname
-                and (_response["lastname"] in self.data.lastname
-                     or self.data.lastname in _response["lastname"]))
+                and (response.get("lastname") in self.data.lastname
+                     or self.data.lastname in response.get("lastname"))
+                ) or False
 
-    def _address_match(self, _response):
-        return (_response["address_current_postalCode"]
+    def _initials_match(self, response):
+        try:
+            return (response.get("initials") and self.data.initials
+                    and response.get("initials")[0] == self.data.initials[0]
+                    ) or False
+        except IndexError:
+            return False
+
+    def _gender_match(self, response):
+        return (response.get("gender") and self.data.gender
+                and response.get("gender") == self.data.gender
+                ) or False
+
+    def _address_match(self, response):
+        return (response.get("address_current_postalCode")
                 and self.data.postalCode
-                and _response["address_current_houseNumber"]
+                and response.get("address_current_houseNumber")
                 and self.data.houseNumber
-                and _response["address_current_postalCode"] == self.data.postalCode
-                and _response["address_current_houseNumber"] == self.data.houseNumber)
+                and response.get("address_current_postalCode") == self.data.postalCode
+                and response.get("address_current_houseNumber") == self.data.houseNumber
+                ) or False
 
-    def _phone_match(self, _response):
-        return ((_response["phoneNumber_mobile"]
+    def _phone_match(self, response):
+        return ((response.get("phoneNumber_mobile")
                  and self.data.mobile
-                 and _response["phoneNumber_mobile"] == self.data.mobile
-                 ) or (_response["phoneNumber_number"]
+                 and response.get("phoneNumber_mobile") == self.data.mobile
+                 ) or (response.get("phoneNumber_number")
                        and self.data.number and
-                       _response["phoneNumber_number"] == self.data.number))
+                       response.get("phoneNumber_number") == self.data.number)
+                ) or False
 
-    def _dob_match(self, _response):
-        return (_response["birth_date"] != "1900-01-01T00:00:00Z"
+    def _dob_match(self, response):
+        return (response.get("birth_date") != "1900-01-01T00:00:00Z"
                 and self.data.date_of_birth
-                and _response["birth_date"] == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z"))
+                and response.get("birth_date") == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z")
+                ) or False
+
+    def _set_match(self, response: dict):
+        self._matched = {
+            "lastname": self._lastname_match(response),
+            "initials": self._initials_match(response),
+            "gender": self._gender_match(response),
+            "address": self._address_match(response),
+            "birth_date": self._dob_match(response),
+            "phone": self._phone_match(response),
+        }
 
     @property
+    def _match_keys(self):
+        return {key for key in self._matched if self._matched[key]}
+
     def _match_sources_def(self):
-        yield "A", lambda _response: (
-                self._lastname_match(_response)
-                and self._address_match(_response)
-                and self._dob_match(_response)
-                and self._phone_match(_response))
-        yield "B", lambda _response: (
-                self._lastname_match(_response)
-                and ((self._address_match(_response)
-                      and self._dob_match(_response))
-                     or (self._dob_match(_response)
-                         and self._phone_match(_response))
-                     or (self._address_match(_response)
-                         and self._phone_match(_response))))
-        yield "C", lambda _response: (
-                self._lastname_match(_response)
-                and (self._address_match(_response)
-                     or self._phone_match(_response)
-                     or self._dob_match(_response)))
+        yield "A", (self._matched["lastname"]
+                    and self._matched["address"]
+                    and self._matched["birth_date"]
+                    and self._matched["phone"])
+        yield "B", (self._matched["lastname"] and
+                    ((self._matched["address"] and self._matched["birth_date"])
+                     or (self._matched["birth_date"] and self._matched["phone"])
+                     or (self._matched["address"] and self._matched["phone"])))
+        yield "C", (self._matched["lastname"] and
+                    (self._matched["address"]
+                     or self._matched["phone"]
+                     or self._matched["birth_date"]))
+        yield "D", True
 
-    @property
     def _match_sources_cbs(self):
-        yield "N", lambda _response: (
-                self._lastname_match(_response)
-                and self._address_match(_response))
-        yield "A", lambda _response: (
-                    self._address_match(_response))
+        yield "N", self._matched["lastname"] and self._matched["address"]
+        yield "A", self._matched["address"]
 
-    def _get_source_def(self, response: dict) -> str:
-        for source, match in self._match_sources_def:
-            if match(response):
-                break
-        else:
-            source = "D"
-        return source
-
-    def _get_source_cbs(self, response: dict) -> str:
-        for source, match in self._match_sources_cbs:
-            if match(response):
+    def _get_source(self, response: dict) -> str:
+        self._set_match(response)
+        for source, match in self._match_sources():
+            if match:
                 break
         else:
             raise RuntimeError(
@@ -173,8 +181,10 @@ class SourceMatch:
 
 
 class SourceScore:
-    _year = datetime.now().year
-    _score_testing = False
+    def __init__(self):
+        super().__init__()
+        self._year = datetime.now().year
+        self._score_testing = False
 
     @staticmethod
     def levenshtein(seq1, seq2):
@@ -333,6 +343,7 @@ class NoMatch(Exception):
 class PersonData(SourceMatch, SourceScore):
     # TODO: documentation
     def __init__(self, **kwargs):
+        super().__init__()
 
         # data holders
         self.result = self.data = None
@@ -369,10 +380,10 @@ class PersonData(SourceMatch, SourceScore):
             raise ValueError(f"Requested fields should be one"
                              f" of {', '.join(categories)}")
         if self._cbs:
-            self._get_source = self._get_source_cbs
+            self._match_sources = self._match_sources_cbs
             self._score = self._get_score_cbs
         else:
-            self._get_source = self._get_source_def
+            self._match_sources = self._match_sources_def
             self._score = self._get_score_def
 
         # data structures
@@ -386,17 +397,6 @@ class PersonData(SourceMatch, SourceScore):
             "number": "phoneNumber.number",
             "gender": "gender",
             "date_of_birth": "birth.date",
-        }
-        self._out_mapping = {
-            "lastname": "lastname",
-            "initials": "initials",
-            "address_current_postalCode": "postalCode",
-            "address_current_houseNumber": "houseNumber",
-            "address_current_houseNumberExt": "houseNumberExt",
-            "phoneNumber_mobile": "mobile",
-            "phoneNumber_number": "number",
-            "gender": "gender",
-            "birth_date": "date_of_birth",
         }
         self._score_mapping = {
             "lastname": "name_score",
@@ -664,10 +664,12 @@ class PersonData(SourceMatch, SourceScore):
     def _id_query(responses: list) -> dict:
         """Take a list of match responses, and return a query
         that will search for the ids of those responses."""
+
         def ordered_set(seq, k="id"):
             seen = set()
             seen_add = seen.add
             return [x[k] for x in seq if not (x[k] in seen or seen_add(x[k]))]
+
         return {
             "query": {
                 "bool": {
@@ -692,7 +694,7 @@ class PersonData(SourceMatch, SourceScore):
 
     def _find(self):
         debug("Data = %s", self.data)
-        self.result = {"match_keys": set()}
+        self.result = {}
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
@@ -716,10 +718,8 @@ class PersonData(SourceMatch, SourceScore):
                         #         not self._email_valid(response[key])):
                         #     continue
                         self.result[key] = response[key]
-                        self._responses[key] = response
-                        self.result["match_keys"] = self.result["match_keys"].union(
-                            {k for k, v in response.items() if v
-                             and self.data.get(self._out_mapping.get(k)) == v})
+                        if key in self._main_fields:
+                            self._responses[key] = response
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
                         self.result["date"] = response["dateOfRecord"]
@@ -766,10 +766,12 @@ class PersonData(SourceMatch, SourceScore):
             return False
 
     def _get_score(self):
+        self.result["match_keys"] = set()
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
                 source = self._get_source(response)
+                self.result["match_keys"].update(self._match_keys)
                 score = self._score(Score(
                     response["source"],
                     response["dateOfRecord"][:4],
@@ -790,17 +792,23 @@ class PersonData(SourceMatch, SourceScore):
                 self.result[self._score_mapping[key]] = f"{source}{score}"
 
     def _finalize(self):
-        self.result["date"] = dateparse(self.result["date"])
+        # Get match keys
+        self._set_match(self.result)
+        self.result["match_keys"].update(self._match_keys)
+
+        # Fix dates
+        self.result["date"] = dateparse(self.result["date"], ignoretz=True)
         for key in ("address_moved", "birth_date", "death_date"):
             if key in self.result:
-                self.result[key] = dateparse(self.result[key])
+                self.result[key] = dateparse(self.result[key], ignoretz=True)
+
         debug("Result = %s", self.result)
 
     def match(self, data: dict) -> dict:
         self._check_country(data.pop("country", "nl").lower())
         self.data = self._clean(Data(**data))
         self._find()
-        if self._responses:
+        if self.result:
             self._get_score()
             self._finalize()
             return self.result
@@ -1500,7 +1508,7 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = dateparse(self.data["date_of_birth"])
+                self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
             except ValueError:
                 self.data["date_of_birth"] = None
         if not self.data["date_of_birth"]:
