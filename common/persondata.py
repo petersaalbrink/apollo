@@ -7,7 +7,7 @@ from logging import info, debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Any, Iterable, NamedTuple, Tuple, Union
+from typing import Iterable, NamedTuple, Optional, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from numpy import zeros
@@ -62,26 +62,24 @@ class Score:
         "gender",
         "dateOfBirth",
         "phoneNumberNumber",
-        "isFuzzy",
         "occurring",
         "moved",
         "mobile",
         "matchedNames",
         "foundPersons",
     ]
-    source: Any
-    yearOfRecord: Any
-    deceased: Any
-    lastNameNumber: Any
-    gender: Any
-    dateOfBirth: Any
-    phoneNumberNumber: Any
-    isFuzzy: Any
-    occurring: Any
-    moved: Any
-    mobile: Any
-    matchedNames: Any
-    foundPersons: Any
+    source: str
+    yearOfRecord: str
+    deceased: Optional[int]
+    lastNameNumber: int
+    gender: str
+    dateOfBirth: int
+    phoneNumberNumber: int
+    occurring: bool
+    moved: bool
+    mobile: bool
+    matchedNames: Tuple[str, str]
+    foundPersons: int
 
 
 class SourceMatch:
@@ -90,6 +88,8 @@ class SourceMatch:
         self.data = self._matched = None
 
     def _match_sources(self) -> Iterable:
+        """Assign self._match_sources_def or
+        self._match_sources_cbs to this function."""
         pass
 
     def _lastname_match(self, response):
@@ -187,6 +187,12 @@ class SourceScore:
         self._score_testing = False
 
     @staticmethod
+    def _categorize_score(score: float) -> int:
+        """Assign self._categorize_def or self._categorize_cbs
+        to this function."""
+        pass
+
+    @staticmethod
     def levenshtein(seq1, seq2):
         size_x = len(seq1) + 1
         size_y = len(seq2) + 1
@@ -250,9 +256,13 @@ class SourceScore:
             return score
 
         def fuzzy_score(result: Score, score: float) -> float:
-            """Uses name_input and name_output, before and after fuzzy
-            matching, taking into account the number of changes in name."""
-            return SourceScore.levenshtein(*result.matchedNames) * score if result.isFuzzy else score
+            """Uses name_input and name_output,
+            taking into account the number of changes in name."""
+            n1, n2 = result.matchedNames
+            lev = self.levenshtein(n1, n2)
+            if lev < .4 and (n1 not in n2 or n2 not in n1):
+                return 0
+            return lev * score
 
         def missing_score(result: Score, score: float) -> float:
             if result.dateOfBirth is None:
@@ -262,14 +272,14 @@ class SourceScore:
             return score
 
         def occurring_score(result: Score, score: float) -> float:
-            """This should be the last step."""
-            return min(score * (1 + ((result.occurring - 1) / x)), 1)
+            if result.occurring:
+                return 0
+            return score
 
         def moved_score(result: Score, score: float) -> float:
             if result.moved:
                 return 0.9 * score if result.mobile else 0.2 * score
-            else:
-                return score
+            return score
 
         def data_score(result: Score, score: float) -> float:
             return 0 if not result.matchedNames[0] else score
@@ -321,18 +331,11 @@ class SourceScore:
                 score = 1
         return score
 
-    def _get_score_def(self, result_tuple: Score) -> Union[int, float]:
+    def _convert_score(self, result_tuple: Score) -> Union[int, float]:
         score_percentage = self._calc_score(result_tuple)
         if self._score_testing:
             return score_percentage
-        categorized_score = self._categorize_def(score_percentage)
-        return categorized_score
-
-    def _get_score_cbs(self, result_tuple: Score) -> Union[int, float]:
-        score_percentage = self._calc_score(result_tuple)
-        if self._score_testing:
-            return score_percentage
-        categorized_score = self._categorize_cbs(score_percentage)
+        categorized_score = self._categorize_score(score_percentage)
         return categorized_score
 
 
@@ -381,10 +384,10 @@ class PersonData(SourceMatch, SourceScore):
                              f" of {', '.join(categories)}")
         if self._cbs:
             self._match_sources = self._match_sources_cbs
-            self._score = self._get_score_cbs
+            self._categorize_score = self._categorize_cbs
         else:
             self._match_sources = self._match_sources_def
-            self._score = self._get_score_def
+            self._categorize_score = self._categorize_def
 
         # data structures
         self._es_mapping = {
@@ -503,7 +506,6 @@ class PersonData(SourceMatch, SourceScore):
         initial: met 4 velden, wildcard op initials, geen houseNumberExt
         name: met 3 velden, geen initials en houseNumberExt
         wildcard: zelfde, maar met wildcard op lastname
-        fuzzy: zelfde, maar met fuzziness op lastname
         address: met 3 velden, fuzziness en wildcard op houseNumberExt in should met minimum_should_match=1
         name_only: met lastname en initials, wildcard op lastname,
             fuzziness en wildcard op initials in should met minimum_should_match=1
@@ -537,7 +539,9 @@ class PersonData(SourceMatch, SourceScore):
                                 "address.current.houseNumber":
                                     self.data.houseNumber}},
                             {"match": {
-                                "lastname": self.data.lastname}},
+                                "lastname": {
+                                    "query": self.data.lastname,
+                                    "fuzziness": 2}}},
                             {"wildcard": {
                                 "initials":
                                     f"{self.data.initials[0].lower()}*"
@@ -564,7 +568,9 @@ class PersonData(SourceMatch, SourceScore):
                                 "address.current.houseNumber":
                                     self.data.houseNumber}},
                             {"match": {
-                                "lastname": self.data.lastname}},
+                                "lastname": {
+                                    "query": self.data.lastname,
+                                    "fuzziness": 2}}},
                         ],
                     }
                 }
@@ -582,7 +588,7 @@ class PersonData(SourceMatch, SourceScore):
                                     self.data.houseNumber}},
                             {"wildcard": {
                                 "lastname":
-                                    f"*{self.data.lastname.split()[-1]}*"
+                                    f"*{self.data.lastname.split()[-1].lower()}*"
                             }},
                         ],
                     }
@@ -592,28 +598,6 @@ class PersonData(SourceMatch, SourceScore):
                 ]
             }
             yield "wildcard", query
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"match": {
-                                "lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "fuzzy", query
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.houseNumberExt):
@@ -626,7 +610,7 @@ class PersonData(SourceMatch, SourceScore):
                         ],
                         "should": [
                             {"wildcard": {
-                                "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0]}*"}},
+                                "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
                             {"match": {"address.current.houseNumberExt": {
                                 "query": self.data.houseNumberExt[0], "fuzziness": 2}}},
                         ],
@@ -643,11 +627,11 @@ class PersonData(SourceMatch, SourceScore):
                 "query": {
                     "bool": {
                         "must": [
-                            {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1]}*"}},
+                            {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
                         ],
                         "should": [
                             {"wildcard": {
-                                "initials": f"*{self.data.initials[0]}*"}},
+                                "initials": f"*{self.data.initials[0].lower()}*"}},
                             {"match": {"initials": {
                                 "query": self.data.initials[0], "fuzziness": 2}}},
                         ],
@@ -692,6 +676,28 @@ class PersonData(SourceMatch, SourceScore):
                 f"Not implemented for country "
                 f"{country}.")
 
+    def _check_match(self, key: str):
+        """Matches where we found a phone number,
+        but the phone number occurs more recently
+        on another address, or with another lastname,
+        should get a lower score."""
+        occurring = False
+        if "phoneNumber" in key:
+            response = self._es.find({
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"match": {key.replace("_", "."): self.result[key]}}]
+                    }},
+                "sort": [
+                    {"dateOfRecord": "desc"}
+                ]}, size=1)
+            if response:
+                response = response[0]
+                if self._responses[key]["_id"] != response["_id"]:
+                    occurring = True
+        return occurring
+
     def _find(self):
         debug("Data = %s", self.data)
         self.result = {}
@@ -699,11 +705,13 @@ class PersonData(SourceMatch, SourceScore):
         for _type, q in self._queries:
             if self._use_id_query:
                 # TODO: test if this specifically behaves as intended
-                responses = self._es.find(
+                responses = [{"_id": d["_id"], **d["_source"]}
+                             for d in self._es.find(
                     self._id_query(self._es.find(
-                        q, source_only=True)), source_only=True)
+                        q, source_only=True)))]
             else:
-                responses = self._es.find(q, source_only=True)
+                responses = [{"_id": d["_id"], **d["_source"]}
+                             for d in self._es.find(q)]
             for response in responses:
                 response = flatten(response)
                 for key in self._requested_fields:
@@ -714,9 +722,9 @@ class PersonData(SourceMatch, SourceScore):
                         if (key in ("address_moved", "birth_date", "death_date")
                                 and response[key] == "1900-01-01T00:00:00Z"):
                             continue
-                        # if (key == "contact_email" and
-                        #         not self._email_valid(response[key])):
-                        #     continue
+                        if (key == "contact_email" and
+                                not self._email_valid(response[key])):
+                            continue
                         self.result[key] = response[key]
                         if key in self._main_fields:
                             self._responses[key] = response
@@ -772,22 +780,20 @@ class PersonData(SourceMatch, SourceScore):
                 response = self._responses[key]
                 source = self._get_source(response)
                 self.result["match_keys"].update(self._match_keys)
-                score = self._score(Score(
-                    response["source"],
-                    response["dateOfRecord"][:4],
-                    response["death_year"],
-                    len(set(d["lastname"] for d in self._responses.values())),
-                    response["gender"],
-                    response["birth_year"],
-                    len(set(d["phoneNumber_number"] for d in self._responses.values())),
-                    self.result["search_type"] == "fuzzy",
-                    self._es.query(field=key.replace("_", "."),
-                                   value=self.result[key],
-                                   size=0)["hits"]["total"],
-                    response["address_moved"] != "1900-01-01T00:00:00Z",
-                    key.endswith("mobile"),
-                    (self.data.lastname, response["lastname"]),
-                    len({response["id"] for response in self._responses.values()}),
+                score = self._convert_score(Score(
+                    source=response["source"],
+                    yearOfRecord=response["dateOfRecord"][:4],
+                    deceased=response["death_year"],
+                    lastNameNumber=len(set(d["lastname"] for d in self._responses.values())),
+                    gender=response["gender"],
+                    dateOfBirth=response["birth_year"],
+                    phoneNumberNumber=len(set(d[key] for d in self._responses.values()))
+                    if "phoneNumber" in key else 1,
+                    occurring=self._check_match(key),
+                    moved=response["address_moved"] != "1900-01-01T00:00:00Z",
+                    mobile="mobile" in key or "lastname" in key,
+                    matchedNames=(self.data.lastname, response["lastname"]),
+                    foundPersons=len({response["id"] for response in self._responses.values()}),
                 ))
                 self.result[self._score_mapping[key]] = f"{source}{score}"
 
