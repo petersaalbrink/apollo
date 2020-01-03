@@ -1,16 +1,28 @@
+from collections import OrderedDict
+from contextlib import ContextDecorator
+from concurrent.futures import ThreadPoolExecutor, wait
+from csv import DictReader, DictWriter
+from dataclasses import dataclass, field
+from datetime import datetime
 from functools import wraps
-from zipfile import ZipFile
 from io import TextIOWrapper
 from itertools import islice
-from datetime import datetime
-from subprocess import run
 from pathlib import PurePath, Path
-from collections import OrderedDict
-from csv import DictReader, DictWriter
+from subprocess import run
+from time import perf_counter
+from typing import (Any,
+                    Callable,
+                    ClassVar,
+                    Dict,
+                    Iterable,
+                    List,
+                    MutableMapping,
+                    Optional,
+                    Tuple,
+                    Union)
+from zipfile import ZipFile
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
-from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
 from .connectors import EmailClient
 
 session = Session()
@@ -324,3 +336,56 @@ class Timer:
 
     def __repr__(self):
         return f"Timer: {self.end()}".split(".")[0]
+
+
+class TimerError(Exception):
+    """Exception used to report errors in use of Timer class."""
+
+
+@dataclass
+class TicToc(ContextDecorator):
+    """Time code using a class, context manager, or decorator."""
+
+    timers: ClassVar[Dict[str, float]] = dict()
+    name: Optional[str] = None
+    text: str = "Elapsed time: {:0.4f} seconds"
+    logger: Optional[Callable[[str], None]] = print
+    _start_time: Optional[float] = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Initialization: add timer to dict of timers"""
+        if self.name:
+            self.timers.setdefault(self.name, 0)
+
+    def start(self) -> None:
+        """Start a new timer"""
+        if self._start_time is not None:
+            raise TimerError(f"Timer is running. Use .stop() to stop it")
+
+        self._start_time = perf_counter()
+
+    def stop(self) -> float:
+        """Stop the timer, and report the elapsed time"""
+        if self._start_time is None:
+            raise TimerError(f"Timer is not running. Use .start() to start it")
+
+        # Calculate elapsed time
+        elapsed_time = perf_counter() - self._start_time
+        self._start_time = None
+
+        # Report elapsed time
+        if self.logger:
+            self.logger(self.text.format(elapsed_time))
+        if self.name:
+            self.timers[self.name] += elapsed_time
+
+        return elapsed_time
+
+    def __enter__(self) -> "Timer":
+        """Start a new timer as a context manager"""
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        """Stop the context manager timer"""
+        self.stop()
