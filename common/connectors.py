@@ -1,27 +1,40 @@
-import smtplib
-from sys import argv
-import mysql.connector
-from tqdm import trange
-from pandas import isna
-from warnings import warn
-from email import encoders
-from socket import timeout
-import mysql.connector.cursor
 from contextlib import suppress
-from pymongo import MongoClient
-from pathlib import Path, PurePath
-from urllib.parse import quote_plus
-from email.mime.base import MIMEBase
-from email.mime.text import MIMEText
-from pymongo.database import Database
-from pymongo.database import Collection
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, date
+from email.encoders import encode_base64
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path, PurePath
+from smtplib import SMTP
+from socket import timeout
+from sys import argv
+from typing import (Any,
+                    Dict,
+                    Iterator,
+                    List,
+                    Mapping,
+                    Sequence,
+                    Tuple,
+                    Type,
+                    Union)
+from urllib.parse import quote_plus
+from warnings import warn
+
+from elasticsearch.client import Elasticsearch
+from elasticsearch.exceptions import (ElasticsearchException,
+                                      AuthenticationException,
+                                      AuthorizationException)
+from mysql.connector import connect as mysqlconnect
+from mysql.connector.cursor import MySQLCursorBuffered
+from mysql.connector.errors import DatabaseError, InterfaceError
+from pandas.core.arrays.datetimelike import (NaTType,
+                                             Timestamp,
+                                             Timedelta)
+from pandas.core.dtypes.missing import isna
+from pymongo.database import Collection, Database
+from pymongo.mongo_client import MongoClient
 from pymongo.operations import UpdateOne, UpdateMany
-from mysql.connector import DatabaseError, InterfaceError
-from elasticsearch import Elasticsearch, ElasticsearchException
-from pandas.core.arrays.datetimelike import NaTType, Timestamp, Timedelta
-from typing import Any, Dict, Iterator, List, Mapping, Sequence, Tuple, Type, Union
+from tqdm.std import trange
 
 
 class ESClient(Elasticsearch):
@@ -99,6 +112,8 @@ class ESClient(Elasticsearch):
                 try:
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
+                except (AuthenticationException, AuthorizationException):
+                    pass
                 except (ElasticsearchException, OSError, ConnectionError, timeout) as e:
                     raise ElasticsearchException(q) from e
             if size != 0:
@@ -293,13 +308,13 @@ class EmailClient:
             p = MIMEBase("application", "octet-stream")
             with open(attachment_path, "rb") as attachment:
                 p.set_payload(attachment.read())
-            encoders.encode_base64(p)
+            encode_base64(p)
             filename = attachment_path.name if isinstance(attachment_path, PurePath) \
                 else attachment_path.split("/")[-1]
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
-        server = smtplib.SMTP(self._smtp_server)
+        server = SMTP(self._smtp_server)
         server.starttls()
         server.login(self._login, self._password)
         server.sendmail(from_address, to_address, msg.as_string())
@@ -454,9 +469,9 @@ class MySQLClient:
             datetime.date: "DATE"
         }
 
-    def connect(self, conn: bool = False) -> mysql.connector.cursor.MySQLCursorBuffered:
+    def connect(self, conn: bool = False) -> MySQLCursorBuffered:
         """Connect to SQL server"""
-        self.cnx = mysql.connector.connect(**self.__config)
+        self.cnx = mysqlconnect(**self.__config)
         self.cursor = self.cnx.cursor(buffered=True)
         if conn:
             return self.cnx
