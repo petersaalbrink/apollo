@@ -716,15 +716,20 @@ class PersonData(SourceMatch, SourceScore):
                 response = flatten(response)
                 for key in self._requested_fields:
                     if key not in self.result and response[key]:
+                        # t = Timer()
                         if (key in ("phoneNumber_number", "phoneNumber_mobile")
                                 and not self._phone_valid(response[key])):
+                            # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key in ("address_moved", "birth_date", "death_date")
                                 and response[key] == "1900-01-01T00:00:00Z"):
+                            # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key == "contact_email" and
                                 not self._email_valid(response[key])):
+                            # debug("Validating key %s took %s", key, t.end())
                             continue
+                        # debug("Validating key %s took %s", key, t.end())
                         self.result[key] = response[key]
                         if key in self._main_fields:
                             self._responses[key] = response
@@ -754,11 +759,14 @@ class PersonData(SourceMatch, SourceScore):
                     t = localtime().tm_hour
             if self._call_to_validate:
                 while True:
-                    valid = get(f"{self._phone_url}{phone}", auth=("datateam", "matrixian"))
-                    if not valid.ok:
+                    response = get(f"{self._phone_url}{phone}",
+                                   # headers={"Connection": "close"},
+                                   auth=("datateam", "matrixian"))
+                    if not response.ok:
                         self._phone_url = "http://94.168.87.210:4000/call/"
                     else:
-                        valid = loads(valid.text)
+                        valid = loads(response.text)
+                        # response.close()
                         break
         return valid
 
