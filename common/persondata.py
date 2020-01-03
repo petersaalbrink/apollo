@@ -259,10 +259,12 @@ class SourceScore:
             """Uses name_input and name_output,
             taking into account the number of changes in name."""
             n1, n2 = result.matchedNames
-            lev = self.levenshtein(n1, n2)
-            if lev < .4 and (n1 not in n2 or n2 not in n1):
-                return 0
-            return lev * score
+            if n1 and n2:
+                lev = self.levenshtein(n1, n2)
+                if lev < .4 and (n1 not in n2 or n2 not in n1):
+                    return 0
+                return lev * score
+            return score
 
         def missing_score(result: Score, score: float) -> float:
             if result.dateOfBirth is None:
