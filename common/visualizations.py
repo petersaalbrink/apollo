@@ -1,7 +1,5 @@
-import numpy as np
 from typing import List
-
-# Visualizations
+import numpy as np
 from matplotlib import rc
 import matplotlib.pyplot as plt
 import matplotlib.path as path
