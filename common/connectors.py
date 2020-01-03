@@ -112,6 +112,8 @@ class ESClient(Elasticsearch):
                 try:
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
+                except (AuthenticationException, AuthorizationException):
+                    pass
                 except (ElasticsearchException, OSError, ConnectionError, timeout) as e:
                     raise ElasticsearchException(q) from e
             if size != 0:
