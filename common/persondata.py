@@ -1521,8 +1521,10 @@ class Cleaner:
             self.data.pop("date_of_birth")
 
     def _clean_pc(self):
-        if isinstance(self.data["postalCode"], str) and len(self.data["postcode"]) is 6:
+        if isinstance(self.data["postalCode"], str):
             self.data["postalCode"] = self.data["postalCode"].replace(" ", "").upper()
+            if len(self.data["postcode"]) != 6:
+                self.data.pop("postalCode")
         else:
             self.data.pop("postalCode")
 
