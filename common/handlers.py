@@ -100,10 +100,11 @@ def csv_read(filename: Union[PurePath, str],
              encoding: str = "utf-8",
              delimiter: str = ","
              ) -> MutableMapping:
-    """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
+    """Simple generator for reading from a csv file.
+    Returns rows as OrderedDict, with None instead of empty string."""
     with open(filename, encoding=encoding) as f:
         for row in DictReader(f, delimiter=delimiter):
-            yield row
+            yield {k: v if v else None for k, v in row.items()}
 
 
 class Log:
