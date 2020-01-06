@@ -785,6 +785,8 @@ class PersonData(SourceMatch, SourceScore):
 
     def _get_score(self):
         self.result["match_keys"] = set()
+        if not [key for key in self._main_fields if key in self._responses]:
+            raise NoMatch
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
