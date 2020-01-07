@@ -176,7 +176,8 @@ class SourceMatch:
                 break
         else:
             raise RuntimeError(
-                "No source could be defined for this match!")
+                "No source could be defined for this match!",
+                self.data, response)
         return source
 
 
