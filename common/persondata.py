@@ -380,6 +380,7 @@ class PersonData(SourceMatch, SourceScore):
         self._score_testing = kwargs.pop("score_testing", False)
         self._call_to_validate = kwargs.pop("call_to_validate", True)
         self._response_type = kwargs.pop("response_type", "all")
+        self._use_sources = kwargs.pop("sources", ())
         categories = ("all", "name", "address", "phone")
         if (self._response_type not in categories and
                 not isinstance(self._response_type, (tuple, list))):
@@ -528,6 +529,8 @@ class PersonData(SourceMatch, SourceScore):
                 {"dateOfRecord": "desc"}
             ]
         }
+        if self._use_sources:
+            query["query"]["bool"]["must"] = [{"terms": {"source": [*self._use_sources]}}]
         yield "full", query
         if (self.data.postalCode and self.data.houseNumber
                 and self.data.lastname and self.data.initials):
@@ -556,7 +559,7 @@ class PersonData(SourceMatch, SourceScore):
                     {"dateOfRecord": "desc"}
                 ]
             }
-            yield "initial", query
+            yield "initial", self._extend_query(query)
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.lastname):
@@ -578,7 +581,7 @@ class PersonData(SourceMatch, SourceScore):
                     }
                 }
             }
-            yield "name", query
+            yield "name", self._extend_query(query)
             query = {
                 "query": {
                     "bool": {
@@ -600,7 +603,7 @@ class PersonData(SourceMatch, SourceScore):
                     {"dateOfRecord": "desc"}
                 ]
             }
-            yield "wildcard", query
+            yield "wildcard", self._extend_query(query)
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.houseNumberExt):
@@ -624,7 +627,7 @@ class PersonData(SourceMatch, SourceScore):
                     {"dateOfRecord": "desc"}
                 ]
             }
-            yield "address", query
+            yield "address", self._extend_query(query)
         if self._name_only_query and self.data.lastname and self.data.initials:
             query = {
                 "query": {
@@ -645,7 +648,12 @@ class PersonData(SourceMatch, SourceScore):
                     {"dateOfRecord": "desc"}
                 ]
             }
-            yield "name_only", query
+            yield "name_only", self._extend_query(query)
+
+    def _extend_query(self, query):
+        if self._use_sources:
+            query["query"]["bool"]["must"].append({"terms": {"source": [*self._use_sources]}})
+        return query
 
     @staticmethod
     def _id_query(responses: list) -> dict:
