@@ -269,8 +269,13 @@ class ZipData:
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
 
-    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
-            -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
+    def open(self,
+             remove: bool = False,
+             n_lines: int = None,
+             as_generator: bool = False
+             ) -> Union[List[OrderedDict],
+                        List[list],
+                        Dict[str, List[OrderedDict]]]:
         """Load (and optionally remove) data from zip archive. If the
         archive contains multiple csv files, they are returned in
         Dict[str, List[OrderedDict]] format.

@@ -454,7 +454,7 @@ class MySQLClient:
             "ssl_cert": f'{path / "client-cert.pem"}',
             "ssl_key": f'{path / "client-key.pem"}'}
         self.cnx = self.cursor = None
-        self._iter = self._cursor_columns = None
+        self._iter = self._cursor_columns = self.executed_query = None
         self._max_errors = 100
         self._types = {
             str: "CHAR",
@@ -488,12 +488,14 @@ class MySQLClient:
         self.cursor.execute(query, *args, **kwargs)
         self.cnx.commit()
         self._cursor_columns = [i[0] for i in self.cursor.description]
+        self.executed_query = self.cursor.statement
 
     def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
         self.cnx.commit()
         self._cursor_columns = [i[0] for i in self.cursor.description]
+        self.executed_query = self.cursor.statement
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
