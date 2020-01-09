@@ -453,7 +453,8 @@ class MySQLClient:
             "ssl_ca": f'{path / "server-ca.pem"}',
             "ssl_cert": f'{path / "client-cert.pem"}',
             "ssl_key": f'{path / "client-key.pem"}'}
-        self.cnx = self.cursor = self._iter = None
+        self.cnx = self.cursor = None
+        self._iter = self._cursor_columns = self.executed_query = None
         self._max_errors = 100
         self._types = {
             str: "CHAR",
@@ -483,14 +484,28 @@ class MySQLClient:
         self.cursor.close()
         self.cnx.close()
 
+    @property
+    def _get_cursor_columns(self):
+        if self.cursor.description:
+            return [i[0] for i in self.cursor.description]
+
+    @property
+    def _get_cursor_statement(self):
+        with suppress(AttributeError):
+            return self.cursor.statement
+
     def execute(self, query: Union[str, Query], *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
         self.cnx.commit()
+        self._cursor_columns = self._get_cursor_columns
+        self.executed_query = self._get_cursor_statement
 
     def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
         self.cnx.commit()
+        self._cursor_columns = self._get_cursor_columns
+        self.executed_query = self._get_cursor_statement
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
@@ -539,9 +554,11 @@ class MySQLClient:
         self.disconnect()
         return count
 
-    def table(self, query: Union[str, Query] = None,
+    def table(self,
+              query: Union[str, Query] = None,
               fieldnames: Union[bool, List[str]] = False,
-              *args, **kwargs) -> Union[List[dict], List[list]]:
+              *args, **kwargs
+              ) -> Union[List[dict], List[list]]:
         """Fetch a table from MySQL"""
         if not self.table_name and query and "." in query:
             for word in query.split():
@@ -550,10 +567,10 @@ class MySQLClient:
                     break
         if query is None:
             query = self.build()
-        if fieldnames is True:
-            fieldnames = self._get_fieldnames(query)
         self.connect()
         self.execute(query, *args, **kwargs)
+        if fieldnames is True:
+            fieldnames = self._cursor_columns
         table = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
             else [list(row) for row in self.fetchall()]
         self.disconnect()
@@ -562,13 +579,9 @@ class MySQLClient:
     def row(self,
             query: Union[str, Query] = None,
             fieldnames: Union[bool, List[str]] = False,
-            *args, **kwargs) -> Union[Dict[str, Any], List[Any]]:
+            *args, **kwargs
+            ) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
-        if fieldnames is True:
-            if query:
-                fieldnames = self._get_fieldnames(query)
-            else:
-                fieldnames = self.column()
         if query is None:
             query = self.build(
                 limit=1,
@@ -581,6 +594,8 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
+            if fieldnames is True:
+                fieldnames = self._cursor_columns
             row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
         except DatabaseError as e:
             raise DatabaseError(query) from e
@@ -981,10 +996,18 @@ class MySQLClient:
             query = f"{query} OFFSET {offset} "
         return Query(query)
 
-    def query(self, table: str = None, field: str = None, value: Union[str, int] = None,
-              *, limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              fieldnames: Union[bool, List[str]] = False, select_fields: Union[list, str] = None,
-              query: Union[str, Query] = None, **kwargs) -> Union[List[dict], List[list], None]:
+    def query(self,
+              table: str = None,
+              field: str = None,
+              value: Union[str, int] = None,
+              *,
+              limit: Union[str, int, list, tuple] = None,
+              offset: Union[str, int] = None,
+              fieldnames: Union[bool, List[str]] = False,
+              select_fields: Union[list, str] = None,
+              query: Union[str, Query] = None,
+              **kwargs
+              ) -> Union[List[dict], List[list], None]:
         """Build and perform a MySQL query, and returns a data array.
 
         Examples:
@@ -1023,11 +1046,11 @@ class MySQLClient:
             self.database, table = table.split(".")
         if table and not self.table_name:
             self.table_name = table
-        if fieldnames is True:
-            fieldnames = select_fields or self.column()
         self.connect()
         try:
             self.execute(query)
+            if fieldnames is True:
+                fieldnames = self._cursor_columns
             if isinstance(select_fields, str) or (isinstance(select_fields, list) and len(select_fields) == 0):
                 result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
                           for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
