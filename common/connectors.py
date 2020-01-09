@@ -489,18 +489,23 @@ class MySQLClient:
         if self.cursor.description:
             return [i[0] for i in self.cursor.description]
 
+    @property
+    def _get_cursor_statement(self):
+        with suppress(AttributeError):
+            return self.cursor.statement
+
     def execute(self, query: Union[str, Query], *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
         self.cnx.commit()
         self._cursor_columns = self._get_cursor_columns
-        self.executed_query = self.cursor.statement
+        self.executed_query = self._get_cursor_statement
 
     def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
         self.cnx.commit()
         self._cursor_columns = self._get_cursor_columns
-        self.executed_query = self.cursor.statement
+        self.executed_query = self._get_cursor_statement
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
