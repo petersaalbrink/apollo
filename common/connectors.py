@@ -484,17 +484,22 @@ class MySQLClient:
         self.cursor.close()
         self.cnx.close()
 
+    @property
+    def _get_cursor_columns(self):
+        if self.cursor.description:
+            return [i[0] for i in self.cursor.description]
+
     def execute(self, query: Union[str, Query], *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
         self.cnx.commit()
-        self._cursor_columns = [i[0] for i in self.cursor.description]
+        self._cursor_columns = self._get_cursor_columns
         self.executed_query = self.cursor.statement
 
     def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
         self.cnx.commit()
-        self._cursor_columns = [i[0] for i in self.cursor.description]
+        self._cursor_columns = self._get_cursor_columns
         self.executed_query = self.cursor.statement
         self.disconnect()
 
