@@ -704,7 +704,9 @@ class MySQLClient:
         self.dictionary = fieldnames
         self.connect()
         self.execute(query, *args, **kwargs)
-        table = [list(row) for row in self.fetchall()]
+        table = ([row for row in self.fetchall()]
+                 if fieldnames else
+                 [list(row) for row in self.fetchall()])
         self.disconnect()
         return table
 
