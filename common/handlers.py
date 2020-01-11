@@ -387,7 +387,7 @@ class TicToc(ContextDecorator):
 
         return elapsed_time
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> "TicToc":
         """Start a new timer as a context manager"""
         self.start()
         return self

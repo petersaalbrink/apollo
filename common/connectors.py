@@ -1,5 +1,6 @@
 from contextlib import suppress
 from datetime import datetime, timedelta, date
+from functools import partial
 from email.encoders import encode_base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +11,8 @@ from socket import timeout
 from sys import argv
 from typing import (Any,
                     Dict,
+                    Generator,
+                    Iterable,
                     Iterator,
                     List,
                     Mapping,
@@ -25,8 +28,13 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       AuthenticationException,
                                       AuthorizationException)
 from mysql.connector import connect as mysqlconnect
-from mysql.connector.cursor import MySQLCursorBuffered
+from mysql.connector.connection_cext import CMySQLConnection
+from mysql.connector.cursor_cext import (CMySQLCursor,
+                                         CMySQLCursorDict,
+                                         CMySQLCursorBuffered,
+                                         CMySQLCursorBufferedDict)
 from mysql.connector.errors import DatabaseError, InterfaceError
+from _mysql_connector import MySQLInterfaceError
 from pandas.core.arrays.datetimelike import (NaTType,
                                              Timestamp,
                                              Timedelta)
@@ -34,7 +42,7 @@ from pandas.core.dtypes.missing import isna
 from pymongo.database import Collection, Database
 from pymongo.mongo_client import MongoClient
 from pymongo.operations import UpdateOne, UpdateMany
-from tqdm.std import trange
+from tqdm.std import tqdm, trange
 
 
 class ESClient(Elasticsearch):
@@ -50,11 +58,11 @@ class ESClient(Elasticsearch):
         es = get_secret("es")
         if dev:
             self._host = "136.144.173.2"
-            if es_index is None:
+            if not es_index:
                 es_index = "dev_peter.person_data_20190716"
         else:
             self._host = "37.97.169.90"
-            if es_index is None:
+            if not es_index:
                 es_index = "production_realestate.realestate"
         self.es_index = es_index
         self._port = 9201
@@ -69,9 +77,13 @@ class ESClient(Elasticsearch):
     def __str__(self):
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
-    def find(self, query: Union[dict, List[dict], Iterator[dict]] = None,
-             hits_only: bool = True, source_only: bool = False, first_only: bool = False,
-             *args, **kwargs) -> Union[List[dict], List[List[dict]], dict]:
+    def find(self,
+             query: Union[dict, List[dict], Iterator[dict]] = None,
+             hits_only: bool = True,
+             source_only: bool = False,
+             first_only: bool = False,
+             *args, **kwargs
+             ) -> Union[List[dict], List[List[dict]], dict]:
         """Perform an ElasticSearch query, and return the hits.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
@@ -417,18 +429,108 @@ class Query(str):
 
 
 class MySQLClient:
-    """Client for MySQL
+    """Client for connecting to Matrixian's MySQL database.
 
-    Example:
-        sql = MySQLClient()
+    Basic methods:
+        The following three methods can be used to directly execute a query,
+        and return the resulting data of that query. The :param query:
+        parameter accepts both string and :class:`Query` objects (which can be
+        build using :meth:`MySQLClient.build`; see below).
+        :meth:`MySQLClient.table` can be used for queries that return two-
+        dimensional data, and :meth:`MySQLClient.row` and
+        :meth:`MySQLClient.column` can be used for queries that return one-
+        dimensional data.
+        When used without :param query:, these three methods will return data
+        for :attr:`MySQLClient.table_name`. :meth:`MySQLClient.table` will
+        return all data in the table, :meth:`MySQLClient.row` will return the
+        first row of data, and :meth:`MySQLClient.column` will return the
+        column names.
+
+    Advanced methods:
+        The following two methods are considered more Pythonic, and can be
+        used to automatically build a MySQL :class:`Query` and subsequently
+        retrieve the data for that query.
+        :meth:`MySQLClient.chunk`
+        :meth:`MySQLClient.iter`
+        :meth:`MySQLClient.query`
+        In addition, :meth:`MySQLClient.query` can be used to execute a query
+        that does not return data, using :param query:.
+
+    Creating tables and inserting data:
+        :meth:`MySQLClient.create_table`
+        :meth:`MySQLClient.create_definition`
+        :meth:`MySQLClient.add_index`
+        :meth:`MySQLClient.insert`
+        :meth:`MySQLClient.insert_new`
+
+    Helper methods:
+        :meth:`MySQLClient.exists`
+        :meth:`MySQLClient.count`
+        :meth:`MySQLClient.truncate`
+        :meth:`MySQLClient.build` is used internally to build queries.
+
+    Other important internal methods:
+        :meth:`MySQLClient.connect` and :meth:`MySQLClient.disconnect` can be
+        used for (dis)connecting the instance. This might be useful when
+        working directly with the :attr:`MySQLClient.cursor` attribute.
+        :meth:`MySQLClient.execute` and :meth:`MySQLClient.executemany` can be
+        used for executing a query. :meth:`MySQLClient.fetchall` and
+        :meth:`MySQLClient.fetchone` can be used for fetching results from a
+        query. These methods are used internally throughout the class's methods.
+
+    Attributes:
+        :attr:`MySQLClient.database` and :attr:`MySQLClient.table_name` hold
+        the database name that the instance connects to, and optionally the
+        name of the table that will be used by default for queries or that has
+        been used for the most recent query.
+        :attr:`MySQLClient.cnx` and :attr:`MySQLClient.cursor` hold the
+        :class:`CMySQLConnection` and :class:`CMySQLCursorBuffered` objects
+        for this instance.
+        :attr:`MySQLClient.executed_query` holds the most recently executed
+        query. Note that column names can often be retrieved together with the
+        data by setting :param fieldnames: to ``True``.
+
+    Example::
+        sql = MySQLClient("webspider_nl_google")
         data = sql.query(table="pc_data_final", postcode="1014AK")
-    """
-    def __init__(self, database: str = None, table: str = None):
-        """Client for MySQL
 
-        Example:
+    This class may be subclassed to enable connectivity to another server.
+    If subclassing, specify a database and optionally a table after the
+    :func:`super().__init__()` call, and provide login credentials using the
+    :attr:`MySQLClient.__config` dictionary (**:attr:`MySQLClient.__config`
+    will be used to connect the instance).
+    """
+    def __init__(self,
+                 database: str = None,
+                 table: str = None,
+                 buffered: bool = True,
+                 dictionary: bool = True
+                 ):
+        """Create client for MySQL, and connect to a specific database.
+        You can provide a database and optionally a table name.
+        The default database is `mx_traineeship_peter`.
+
+        :param database: Database to connect to. After connecting,
+            different databases may be queried simply by overriding the
+            database using a method's `table` parameter.
+        :type database: str
+        :param table: Optionally, provide a table that will be stored
+            and used as the default table when making queries while not
+            specifying a table using one of the class's methods.
+        :type table: str
+        :param buffered: Whether or not to use :class:`CMySQLCursorBuffered`
+        :type buffered: bool
+        :param dictionary: Whether or not to use :class:`CMySQLCursorDict`
+        :type dictionary: bool
+
+        Examples::
             sql = MySQLClient()
-            data = sql.query(table="pc_data_final", postcode="1014AK")
+            sql = MySQLClient(database="client_work_google")
+            sql = MySQLClient(database="webspider_nl_google",
+                              table="pc_data_final")
+            sql = MySQLClient("august_2017_google.shop_data_nl_main")
+        Default::
+            sql = MySQLClient("mx_traineeship_peter")
         """
         from common import __file__
         from common.secrets import get_secret
@@ -453,8 +555,14 @@ class MySQLClient:
             "ssl_ca": f'{path / "server-ca.pem"}',
             "ssl_cert": f'{path / "client-cert.pem"}',
             "ssl_key": f'{path / "client-key.pem"}'}
-        self.cnx = self.cursor = None
-        self._iter = self._cursor_columns = self.executed_query = None
+        self.cnx = None
+        self.cursor = None
+        self._iter = None
+        self._cursor_columns = None
+        self.executed_query = None
+        self._cursor_row_count = None
+        self.buffered = buffered
+        self.dictionary = dictionary
         self._max_errors = 100
         self._types = {
             str: "CHAR",
@@ -470,10 +578,17 @@ class MySQLClient:
             datetime.date: "DATE"
         }
 
-    def connect(self, conn: bool = False) -> MySQLCursorBuffered:
+    def connect(self,
+                conn: bool = False
+                ) -> Union[CMySQLCursor,
+                           CMySQLCursorDict,
+                           CMySQLCursorBuffered,
+                           CMySQLCursorBufferedDict,
+                           CMySQLConnection]:
         """Connect to SQL server"""
         self.cnx = mysqlconnect(**self.__config)
-        self.cursor = self.cnx.cursor(buffered=True)
+        self.cursor = self.cnx.cursor(buffered=self.buffered,
+                                      dictionary=self.dictionary)
         if conn:
             return self.cnx
         else:
@@ -484,28 +599,38 @@ class MySQLClient:
         self.cursor.close()
         self.cnx.close()
 
-    @property
-    def _get_cursor_columns(self):
-        if self.cursor.description:
-            return [i[0] for i in self.cursor.description]
+    def _set_cursor_properties(self):
+        try:
+            self._cursor_columns = self.cursor.column_names
+        except AttributeError:
+            self._cursor_columns = None
+        try:
+            self.executed_query = self.cursor.statement
+        except AttributeError:
+            self.executed_query = None
+        if self.buffered:
+            try:
+                self._cursor_row_count = self.cursor.rowcount
+            except AttributeError:
+                self._cursor_row_count = None
 
-    @property
-    def _get_cursor_statement(self):
-        with suppress(AttributeError):
-            return self.cursor.statement
-
-    def execute(self, query: Union[str, Query], *args, **kwargs):
+    def execute(self,
+                query: Union[str, Query],
+                *args, **kwargs):
         self.cursor.execute(query, *args, **kwargs)
-        self.cnx.commit()
-        self._cursor_columns = self._get_cursor_columns
-        self.executed_query = self._get_cursor_statement
+        with suppress(MySQLInterfaceError):
+            self.cnx.commit()
+        self._set_cursor_properties()
 
-    def executemany(self, query: Union[str, Query], data: list, *args, **kwargs):
+    def executemany(self,
+                    query: Union[str, Query],
+                    data: list,
+                    *args, **kwargs):
         self.connect()
         self.cursor.executemany(query, data, *args, **kwargs)
-        self.cnx.commit()
-        self._cursor_columns = self._get_cursor_columns
-        self.executed_query = self._get_cursor_statement
+        with suppress(MySQLInterfaceError):
+            self.cnx.commit()
+        self._set_cursor_properties()
         self.disconnect()
 
     def fetchall(self) -> List[tuple]:
@@ -515,6 +640,7 @@ class MySQLClient:
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
+        self.query(select_fields="1", limit=1)
         try:
             self.query(select_fields="1", limit=1)
             return True
@@ -524,10 +650,15 @@ class MySQLClient:
     def truncate(self):
         self.query(query=f"TRUNCATE TABLE {self.database}.{self.table_name}")
 
-    def column(self, query: Union[str, Query] = None, *args, **kwargs) -> List[str]:
+    def column(self,
+               query: Union[str, Query] = None,
+               *args, **kwargs
+               ) -> List[str]:
         """Fetch one column from MySQL"""
+        if not self.table_name:
+            raise ValueError("Provide a table.")
         self.connect()
-        if query is None:
+        if not query:
             query = f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}"
         try:
             self.execute(query, *args, **kwargs)
@@ -537,7 +668,10 @@ class MySQLClient:
         self.disconnect()
         return column
 
-    def count(self, table: str = None, *args, **kwargs) -> int:
+    def count(self,
+              table: str = None,
+              *args, **kwargs
+              ) -> int:
         """Fetch row count from MySQL"""
         self.connect()
         if table and "." in table:
@@ -556,7 +690,7 @@ class MySQLClient:
 
     def table(self,
               query: Union[str, Query] = None,
-              fieldnames: Union[bool, List[str]] = False,
+              fieldnames: bool = True,
               *args, **kwargs
               ) -> Union[List[dict], List[list]]:
         """Fetch a table from MySQL"""
@@ -565,24 +699,22 @@ class MySQLClient:
                 if "." in word:
                     self.database, self.table_name = word.split(".")
                     break
-        if query is None:
+        if not query:
             query = self.build()
+        self.dictionary = fieldnames
         self.connect()
         self.execute(query, *args, **kwargs)
-        if fieldnames is True:
-            fieldnames = self._cursor_columns
-        table = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
-            else [list(row) for row in self.fetchall()]
+        table = [list(row) for row in self.fetchall()]
         self.disconnect()
         return table
 
     def row(self,
             query: Union[str, Query] = None,
-            fieldnames: Union[bool, List[str]] = False,
+            fieldnames: bool = True,
             *args, **kwargs
             ) -> Union[Dict[str, Any], List[Any]]:
         """Fetch one row from MySQL"""
-        if query is None:
+        if not query:
             query = self.build(
                 limit=1,
                 offset=self._iter,
@@ -591,25 +723,28 @@ class MySQLClient:
                 self._iter = 1
             else:
                 self._iter += 1
+        self.dictionary = fieldnames
         self.connect()
         try:
             self.execute(query)
-            if fieldnames is True:
-                fieldnames = self._cursor_columns
-            row = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
+            row = [self.fetchall()[0]] if self.dictionary else list(self.fetchall()[0])
         except DatabaseError as e:
             raise DatabaseError(query) from e
         except IndexError:
-            row = {} if fieldnames else []
+            row = {} if self.dictionary else []
         self.disconnect()
         return row
 
-    def chunk(self, query: Union[str, Query] = None, size: int = None,
-              use_tqdm: bool = False, retry_on_error: bool = False,
-              *args, **kwargs) -> List[Union[dict, list]]:
+    def chunk(self,
+              query: Union[str, Query] = None,
+              size: int = None,
+              use_tqdm: bool = False,
+              retry_on_error: bool = False,
+              *args, **kwargs
+              ) -> Iterator[Union[dict, list]]:
         """Returns a generator for downloading a table in chunks
 
-        Example:
+        Example::
             from common.classes import MySQLClient
             sql = MySQLClient()
             query = sql.build(
@@ -617,15 +752,15 @@ class MySQLClient:
                 Province="Noord-Holland",
                 select_fields=['id', 'City']
             )
-            for rows in iter(sql.chunk(query=query, size=10)):
+            for rows in sql.chunk(query=query, size=10):
                 print(rows)
         """
         range_func = trange if use_tqdm else range
         count = self.count() if use_tqdm else 1_000_000_000
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
-        fieldnames = kwargs.pop("fieldnames", None)
-        if query is None:
+        fieldnames = kwargs.pop("fieldnames", True)
+        if not query:
             query = self.build(select_fields=select_fields,
                                order_by=order_by,
                                *args, **kwargs)
@@ -633,32 +768,75 @@ class MySQLClient:
             size = 1
         elif size <= 0:
             raise ValueError("Chunk size must be > 0")
-        if size == 1:
-            for i in range_func(0, count, size):
-                q = f"{query} LIMIT {i}, {size}"
-                try:
-                    row = self.row(q, fieldnames=fieldnames, *args, **kwargs)
-                except IndexError:
-                    break
-                yield row
-        else:
-            for i in range_func(0, count, size):
-                q = f"{query} LIMIT {i}, {size}"
-                if retry_on_error:
-                    while True:
-                        try:
-                            table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                            break
-                        except DatabaseError as e:
-                            raise DatabaseError(q) from e
-                else:
-                    table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                if len(table) == 0:
-                    break
-                yield table
+
+        def _chunk() -> Generator[Union[dict, list], None, None]:
+            if size == 1:
+                for i in range_func(0, count, size):
+                    q = f"{query} LIMIT {i}, {size}"
+                    try:
+                        row = self.row(q, fieldnames=fieldnames, *args, **kwargs)
+                    except IndexError:
+                        break
+                    yield row
+            else:
+                for i in range_func(0, count, size):
+                    q = f"{query} LIMIT {i}, {size}"
+                    if retry_on_error:
+                        while True:
+                            try:
+                                table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
+                                break
+                            except DatabaseError as e:
+                                raise DatabaseError(q) from e
+                    else:
+                        table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
+                    if len(table) == 0:
+                        break
+                    yield table
+
+        return iter(_chunk())
+
+    def iter(self,
+             query: Union[str, Query] = None,
+             use_tqdm: bool = False,
+             *args, **kwargs
+             ) -> Iterator[Union[dict, list]]:
+        """Returns an generator for retrieving query data row by row.
+
+        Example::
+            from common.classes import MySQLClient
+            sql = MySQLClient()
+            query = sql.build(
+                table="mx_traineeship_peter.client_data",
+                Province="Noord-Holland",
+                select_fields=['id', 'City']
+            )
+            for row in sql.iter(query=query):
+                print(row)
+        """
+        _tqdm = partial(tqdm, disable=not use_tqdm)
+        select_fields = kwargs.pop("select_fields", None)
+        order_by = kwargs.pop("order_by", None)
+        self.dictionary = kwargs.pop("fieldnames", True)
+        if not query:
+            query = self.build(select_fields=select_fields,
+                               order_by=order_by,
+                               *args, **kwargs)
+        self.buffered = False
+
+        self.connect()
+        self.execute(query=query, *args, **kwargs)
+
+        for row in _tqdm(self.cursor, total=self._cursor_row_count):
+            yield row
+
+        self.disconnect()
 
     @staticmethod
-    def create_definition(data: List[Union[list, tuple, dict]], fieldnames: List[str] = None) -> dict:
+    def create_definition(
+            data: List[Union[list, tuple, dict]],
+            fieldnames: List[str] = None
+    ) -> dict:
         """Use this method to provide data for the fields argument in create_table.
 
         Example:
@@ -670,8 +848,8 @@ class MySQLClient:
         """
 
         # Setup
-        if not data:
-            raise ValueError("Provide non-empty data")
+        if not data or not data[0]:
+            raise ValueError("Provide non-empty data.")
         elif not fieldnames and not isinstance(data[0], dict):
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
@@ -720,8 +898,9 @@ class MySQLClient:
                   for name, (type_, length) in fields.items()]
         return ", ".join(fields)
 
-    def create_table(self, table: str,
-                     fields: Dict[str, Tuple[Type[Union[str, int, float, bool]], Union[int, float]]],
+    def create_table(self,
+                     table: str,
+                     fields: Dict[str, Tuple[Type, Union[int, float]]],
                      drop_existing: bool = False,
                      raise_on_error: bool = True):
         """Create a SQL table in MySQLClient.database.
@@ -744,19 +923,22 @@ class MySQLClient:
                 with suppress(DatabaseError):
                     self.execute(query)
         query = f"CREATE TABLE {table} ({self._fields(fields)})"
-        self.execute(query)
-        # if raise_on_error:
-        #     self.execute(query)
-        # else:
-        #     with suppress(DatabaseError):
-        #         self.execute(query)
+        if raise_on_error:
+            self.execute(query)
+        else:
+            with suppress(DatabaseError):
+                self.execute(query)
         self.disconnect()
 
-    def _increase_max_field_len(self, e: str, table: str, chunk: List[Union[list, tuple]]):
+    def _increase_max_field_len(self,
+                                e: str,
+                                table: str,
+                                chunk: List[Union[list, tuple]]):
         field = e.split("'")[1]
-        field_type, position = self.row(f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
-                                        f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
-                                        f" = '{table}' AND COLUMN_NAME = '{field}'")
+        field_type, position = self.row(
+            f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
+            f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
+            f" = '{table}' AND COLUMN_NAME = '{field}'")
         field_type, field_len = field_type.strip(")").split("(")
         position -= 1  # MySQL starts counting at 1, Python at 0
         if "," in field_len:
@@ -785,7 +967,7 @@ class MySQLClient:
         """Insert a data array into a SQL table.
 
         The data is split into chunks of appropriate size before upload."""
-        if not data:
+        if not data or not data[0]:
             raise ValueError("No data provided.")
         if not table:
             if not self.table_name:
@@ -793,9 +975,11 @@ class MySQLClient:
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
-        if fields:
+        if isinstance(fields, Iterable):
             fields = [f"`{f}`" for f in fields]
             fields = f"({', '.join(fields)})"
+        elif isinstance(data[0], Mapping):
+            fields = list(data[0].keys())
         else:
             fields = ""
         query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
@@ -856,13 +1040,18 @@ class MySQLClient:
                         raise
         return len(data)
 
-    def add_index(self, table: str = None, fieldnames: Union[List[str], str] = None):
+    def add_index(self,
+                  table: str = None,
+                  fieldnames: Union[List[str], str] = None):
         """Add indexes to a MySQL table."""
-        if table and "." in table:
-            self.database, table = table.split(".")
+        if table:
+            if "." in table:
+                self.database, self.table_name = table.split(".")
+            else:
+                self.table_name = table
         query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
         if not fieldnames:
-            fieldnames = self.column(f"SHOW COLUMNS FROM {table if table else self.table_name} FROM {self.database}")
+            fieldnames = self.column()
         for index in fieldnames if isinstance(fieldnames, list) else [fieldnames]:
             query = f"{query} ADD INDEX `{index}` (`{index}`) USING BTREE,"
         self.connect()
@@ -916,10 +1105,18 @@ class MySQLClient:
             fieldnames = [fieldname.replace("`", "").strip() for fieldname in fieldnames.split(",")]
         return fieldnames
 
-    def build(self, table: str = None, select_fields: Union[List[str], str] = None,
-              field: str = None, value: Union[str, int] = None, distinct: Union[bool, str] = None,
-              limit: Union[str, int, list, tuple] = None, offset: Union[str, int] = None,
-              order_by: Union[str, List[str]] = None, and_or: str = None, **kwargs) -> Query:
+    def build(self,
+              table: str = None,
+              select_fields: Union[List[str], str] = None,
+              field: str = None,
+              value: Union[str, int] = None,
+              distinct: Union[bool, str] = None,
+              limit: Union[str, int, list, tuple] = None,
+              offset: Union[str, int] = None,
+              order_by: Union[str, List[str]] = None,
+              and_or: str = None,
+              **kwargs
+              ) -> Query:
         """Build a MySQL query"""
 
         def search_for(k, v):
@@ -957,11 +1154,13 @@ class MySQLClient:
             distinct = "DISTINCT"
         elif not distinct:
             distinct = ""
-        if table is None:
+        if not table:
+            if not self.table_name:
+                raise ValueError("Provide a table name.")
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
-        if select_fields is None:
+        if not select_fields:
             query = f"SELECT {distinct} * FROM {table} "
         elif isinstance(select_fields, list):
             query = f"SELECT {distinct} `{'`, `'.join(select_fields)}` FROM {table}"
@@ -1003,7 +1202,7 @@ class MySQLClient:
               *,
               limit: Union[str, int, list, tuple] = None,
               offset: Union[str, int] = None,
-              fieldnames: Union[bool, List[str]] = False,
+              fieldnames: bool = True,
               select_fields: Union[list, str] = None,
               query: Union[str, Query] = None,
               **kwargs
@@ -1046,6 +1245,7 @@ class MySQLClient:
             self.database, table = table.split(".")
         if table and not self.table_name:
             self.table_name = table
+        self.dictionary = fieldnames
         self.connect()
         try:
             self.execute(query)
@@ -1055,10 +1255,9 @@ class MySQLClient:
                 result = [{select_fields if isinstance(select_fields, str) else select_fields[0]: value[0]}
                           for value in self.fetchall()] if fieldnames else [value[0] for value in self.fetchall()]
             elif limit == 1:
-                result = dict(zip(fieldnames, list(self.fetchall()[0]))) if fieldnames else list(self.fetchall()[0])
+                result = [self.fetchall()[0]] if self.dictionary else list(self.fetchall()[0])
             else:
-                result = [dict(zip(fieldnames, row)) for row in self.fetchall()] if fieldnames \
-                    else [list(row) for row in self.fetchall()]
+                result = [list(row) for row in self.fetchall()]
         except DatabaseError as e:
             raise DatabaseError(query) from e
         except IndexError:
