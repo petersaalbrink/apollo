@@ -503,8 +503,8 @@ class MySQLClient:
     def __init__(self,
                  database: str = None,
                  table: str = None,
-                 buffered: bool = None,
-                 dictionary: bool = None
+                 buffered: bool = False,
+                 dictionary: bool = False
                  ):
         """Create client for MySQL, and connect to a specific database.
         You can provide a database and optionally a table name.
@@ -563,8 +563,8 @@ class MySQLClient:
         self._cursor_columns = None
         self.executed_query = None
         self._cursor_row_count = None
-        self.buffered = False if buffered is None else buffered
-        self.dictionary = False if dictionary is None else dictionary
+        self.buffered = buffered
+        self.dictionary = dictionary
         self._max_errors = 100
         self._types = {
             str: "CHAR",
