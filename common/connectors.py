@@ -446,27 +446,41 @@ class MySQLClient:
         column names.
 
     Advanced methods:
-        The following two methods are considered more Pythonic, and can be
+        The following three methods are considered more Pythonic, and can be
         used to automatically build a MySQL :class:`Query` and subsequently
         retrieve the data for that query.
-        :meth:`MySQLClient.chunk`
-        :meth:`MySQLClient.iter`
-        :meth:`MySQLClient.query`
+        :meth:`MySQLClient.query` can be used to build an advanced query using
+        the method's keyword arguments and then execute it. This is the main
+        method for using :class:`MySQLClient`.
         In addition, :meth:`MySQLClient.query` can be used to execute a query
-        that does not return data, using :param query:.
+        that returns data, if that query is provided as the first
+        positional-only argument; and to execute a query that does not return
+        data, using :param query:.
+        :meth:`MySQLClient.chunk` and :meth:`MySQLClient.iter` both return
+        generators, and can thus be used to iterate over larger datasets.
+        While :meth:`MySQLClient.chunk` returns chunks of data, of which the
+        size can be set by using :param size:; :meth:`MySQLClient.iter`
+        returns each row one by one.
 
     Creating tables and inserting data:
-        :meth:`MySQLClient.create_table`
-        :meth:`MySQLClient.create_definition`
-        :meth:`MySQLClient.add_index`
-        :meth:`MySQLClient.insert`
-        :meth:`MySQLClient.insert_new`
+        :meth:`MySQLClient.create_table` can be used to create a new table.
+        :meth:`MySQLClient.create_definition` can be used as input to
+        :meth:`MySQLClient.create_table`.
+        :meth:`MySQLClient.add_index` can be used to add one or more indices.
+        :meth:`MySQLClient.insert` is the main method for inserting data into
+        MySQL using Python.
+        :meth:`MySQLClient.insert_new` is a wrapper method for all of the
+        above.
 
     Helper methods:
-        :meth:`MySQLClient.exists`
-        :meth:`MySQLClient.count`
-        :meth:`MySQLClient.truncate`
-        :meth:`MySQLClient.build` is used internally to build queries.
+        :meth:`MySQLClient.exists` can be used to check whether a table with
+        :attr table_name: exists in :attr database:.
+        :meth:`MySQLClient.count` can be used to return the total row count
+        for :attr table_name:.
+        :meth:`MySQLClient.truncate` can be used to truncate all data in
+        :attr table_name:.
+        :meth:`MySQLClient.build` with :rtype: :class:`Query` is used
+        internally to build queries.
 
     Other important internal methods:
         :meth:`MySQLClient.connect` and :meth:`MySQLClient.disconnect` can be
@@ -487,8 +501,9 @@ class MySQLClient:
         for this instance.
         :attr:`MySQLClient.executed_query` holds the most recently executed
         query. Note that column names can be retrieved together with the data
-        by initializing with ``:param dictionary:=True`` or by using a method
-        with ``:param fieldnames:=True``.
+        by initializing with ``:param dictionary:=True``, setting
+        ``:attr dictionary:=True`` manually, or by using a method with
+        ``:param fieldnames:=True``.
 
     Example::
         sql = MySQLClient("webspider_nl_google")
@@ -587,7 +602,10 @@ class MySQLClient:
                            CMySQLCursorBuffered,
                            CMySQLCursorBufferedDict,
                            CMySQLConnection]:
-        """Connect to SQL server"""
+        """Connect to MySQL server.
+
+
+        """
         self.cnx = mysqlconnect(**self.__config)
         self.cursor = self.cnx.cursor(buffered=self.buffered,
                                       dictionary=self.dictionary)
@@ -642,7 +660,6 @@ class MySQLClient:
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
-        self.query(select_fields="1", limit=1)
         try:
             self.query(select_fields="1", limit=1)
             return True
@@ -807,7 +824,7 @@ class MySQLClient:
              use_tqdm: bool = False,
              *args, **kwargs
              ) -> Iterator[Union[dict, list]]:
-        """Returns an generator for retrieving query data row by row.
+        """Returns a generator for retrieving query data row by row.
 
         Example::
             from common.classes import MySQLClient
