@@ -16,6 +16,7 @@ from typing import (Any,
                     Iterator,
                     List,
                     Mapping,
+                    Optional,
                     Sequence,
                     Tuple,
                     Type,
@@ -595,6 +596,10 @@ class MySQLClient:
             datetime.date: "DATE"
         }
 
+    def __repr__(self):
+        args = ", ".join(f"{k}={v}" for k, v in self.__dict__.items())
+        return f"MySQLClient({args})"
+
     def connect(self,
                 conn: bool = False
                 ) -> Union[CMySQLCursor,
@@ -656,7 +661,7 @@ class MySQLClient:
 
     def executemany(self,
                     query: Union[Query, str],
-                    data: List[list],
+                    data: Sequence[Sequence[Any]],
                     *args, **kwargs):
         """Execute and (if necessary) commit a query many times in MySQL.
 
@@ -673,10 +678,10 @@ class MySQLClient:
             self.cnx.commit()
         self._set_cursor_properties()
 
-    def fetchall(self) -> List[tuple]:
+    def fetchall(self) -> List[Tuple[Any]]:
         return self.cursor.fetchall()
 
-    def fetchone(self) -> List[tuple]:
+    def fetchone(self) -> Tuple[Any]:
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
@@ -687,7 +692,9 @@ class MySQLClient:
             return False
 
     def truncate(self):
-        self.query(query=f"TRUNCATE TABLE {self.database}.{self.table_name}")
+        self.query(
+            query=Query(
+                f"TRUNCATE TABLE {self.database}.{self.table_name}"))
 
     def column(self,
                query: Union[Query, str] = None,
@@ -698,7 +705,8 @@ class MySQLClient:
             raise ValueError("Provide a table.")
         self.connect()
         if not query:
-            query = f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}"
+            query = Query(
+                f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}")
         try:
             self.execute(query, *args, **kwargs)
             column = [value[0] for value in self.fetchall()]
@@ -744,7 +752,7 @@ class MySQLClient:
               query: Union[Query, str] = None,
               fieldnames: bool = None,
               *args, **kwargs
-              ) -> Union[List[dict], List[list]]:
+              ) -> Union[List[Dict[str, Any]], List[List[Any]]]:
         """Fetch a table from MySQL"""
         if not self.table_name and query and "." in query:
             for word in query.split():
@@ -797,7 +805,7 @@ class MySQLClient:
               use_tqdm: bool = False,
               retry_on_error: bool = False,
               *args, **kwargs
-              ) -> Iterator[Union[dict, list]]:
+              ) -> Iterator[Union[List[Dict[str, Any]], List[List[Any]]]]:
         """Returns a generator for downloading a table in chunks
 
         Example::
@@ -856,7 +864,7 @@ class MySQLClient:
              query: Union[Query, str] = None,
              use_tqdm: bool = False,
              *args, **kwargs
-             ) -> Iterator[Union[dict, list]]:
+             ) -> Iterator[Union[Dict[str, Any], List[Any]]]:
         """Returns a generator for retrieving query data row by row.
 
         Example::
@@ -880,7 +888,7 @@ class MySQLClient:
                                *args, **kwargs)
 
         if use_tqdm:
-            count = self._count(f"SELECT COUNT(*) FROM ({query})",
+            count = self._count(Query(f"SELECT COUNT(*) FROM ({query})"),
                                 *args, **kwargs)
         else:
             count = None
@@ -899,8 +907,8 @@ class MySQLClient:
 
     @staticmethod
     def create_definition(
-            data: List[Union[list, tuple, dict]],
-            fieldnames: List[str] = None
+            data: Sequence[Union[Mapping[str, Any], Sequence[Any]]],
+            fieldnames: Sequence[str] = None
     ) -> dict:
         """Use this method to provide data for the fields argument in create_table.
 
@@ -957,7 +965,7 @@ class MySQLClient:
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
         return dict(zip(fieldnames, types))
 
-    def _fields(self, fields: dict) -> str:
+    def _fields(self, fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
         fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
                   if type_ not in [date, datetime.date] else f"`{name}` {self._types[type_]}"
                   for name, (type_, length) in fields.items()]
@@ -965,7 +973,7 @@ class MySQLClient:
 
     def create_table(self,
                      table: str,
-                     fields: Dict[str, Tuple[Type, Union[int, float]]],
+                     fields: Mapping[str, Tuple[Type, Union[int, float]]],
                      drop_existing: bool = False,
                      raise_on_error: bool = True):
         """Create a SQL table in MySQLClient.database.
@@ -981,13 +989,13 @@ class MySQLClient:
             self.database, table = table.split(".")
         self.connect()
         if drop_existing:
-            query = f"DROP TABLE {self.database}.{table}"
+            query = Query(f"DROP TABLE {self.database}.{table}")
             if raise_on_error:
                 self.execute(query)
             else:
                 with suppress(DatabaseError):
                     self.execute(query)
-        query = f"CREATE TABLE {table} ({self._fields(fields)})"
+        query = Query(f"CREATE TABLE {table} ({self._fields(fields)})")
         if raise_on_error:
             self.execute(query)
         else:
@@ -998,12 +1006,12 @@ class MySQLClient:
     def _increase_max_field_len(self,
                                 e: str,
                                 table: str,
-                                chunk: List[Union[list, tuple]]):
+                                chunk: Sequence[Sequence[Any]]):
         field = e.split("'")[1]
-        field_type, position = self.row(
+        field_type, position = self.row(Query(
             f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
             f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
-            f" = '{table}' AND COLUMN_NAME = '{field}'")
+            f" = '{table}' AND COLUMN_NAME = '{field}'"))
         field_type, field_len = field_type.strip(")").split("(")
         position -= 1  # MySQL starts counting at 1, Python at 0
         if "," in field_len:
@@ -1018,16 +1026,17 @@ class MySQLClient:
             new_len = max(len(f"{row[position]}") for row in chunk)
             field_type = f"{field_type}({new_len})"
         self.connect()
-        self.execute(f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}")
+        self.execute(Query(
+            f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}"))
         self.disconnect()
 
     def insert(self,
                table: str = None,
-               data: List[Union[list, tuple, dict]] = None,
+               data: Sequence[Union[Mapping[str, Any], Sequence[Any]]] = None,
                ignore: bool = False,
                _limit: int = 10_000,
                use_tqdm: bool = False,
-               fields: Union[list, tuple] = None,
+               fields: Sequence[str] = None,
                ) -> int:
         """Insert a data array into a SQL table.
 
@@ -1047,9 +1056,9 @@ class MySQLClient:
             fields = f"({', '.join(fields)})"
         else:
             fields = ""
-        query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
-                 f"{self.database}.{table} {fields} VALUES "
-                 f"({', '.join(['%s'] * len(data[0]))})")
+        query = Query(f"INSERT {'IGNORE' if ignore else ''} INTO "
+                      f"{self.database}.{table} {fields} VALUES "
+                      f"({', '.join(['%s'] * len(data[0]))})")
         range_func = trange if use_tqdm else range
         errors = 0
         self.connect()
@@ -1080,7 +1089,7 @@ class MySQLClient:
                         cols = ", ".join([f"ADD COLUMN {col} AFTER {after}"
                                           for col, after
                                           in zip(cols.split(", "), afters)])
-                        self.execute(f"ALTER TABLE {table} {cols}")
+                        self.execute(Query(f"ALTER TABLE {table} {cols}"))
                     elif ("Timestamp" in e
                           or "Timedelta" in e
                           or "NaTType" in e):
@@ -1107,36 +1116,40 @@ class MySQLClient:
 
     def add_index(self,
                   table: str = None,
-                  fieldnames: Union[List[str], str] = None):
+                  fieldnames: Union[Sequence[str], str] = None):
         """Add indexes to a MySQL table."""
         if table:
             if "." in table:
                 self.database, self.table_name = table.split(".")
             else:
                 self.table_name = table
-        query = f"ALTER TABLE {self.database}.{table if table else self.table_name}"
+        query = (f"ALTER TABLE {self.database}."
+                 f"{table if table else self.table_name}")
         if not fieldnames:
             fieldnames = self.column()
-        for index in fieldnames if isinstance(fieldnames, list) else [fieldnames]:
+        if isinstance(fieldnames, str):
+            fieldnames = [fieldnames]
+        for index in fieldnames:
             query = f"{query} ADD INDEX `{index}` (`{index}`) USING BTREE,"
         self.connect()
-        self.execute(query.rstrip(","))
+        self.execute(Query(query.rstrip(",")))
         self.disconnect()
 
     def insert_new(self,
                    table: str = None,
-                   data: List[Union[list, tuple, dict]] = None,
-                   fields: Dict[str, Tuple[type, Union[int, float]]] = None
+                   data: Sequence[Union[Mapping[str, Any], Sequence[Any]]] = None,
+                   fields: Mapping[str, Tuple[Type, Union[int, float]]] = None
                    ) -> int:
-        """Create a new SQL table in MySQLClient.database, and insert a data array into it.
+        """Create a new SQL table in MySQLClient.database,
+         and insert a data array into it.
+
+        The data is split into chunks of appropriate size before upload.
 
         :param table: The name of the table to be created.
         :param data: A two-dimensional array containing data corresponding to fields.
-        :param fields: A dictionary with field names for keys and tuples for values, containing a pair of class type
-        and precision. For example:
+        :param fields: A dictionary with field names for keys and tuples for values,
+        containing a pair of class type and precision. For example::
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
-
-        The data is split into chunks of appropriate size before upload.
         """
         if not data:
             raise ValueError("No data provided.")
@@ -1155,7 +1168,9 @@ class MySQLClient:
             self.add_index(table, list(fields))
         return self.insert(table, data)
 
-    def _get_fieldnames(self, query: Union[str, Query]) -> List[str]:
+    def _get_fieldnames(self,
+                        query: Union[Query, str]
+                        ) -> List[str]:
         if "*" in query:
             fieldnames = self.column()
         else:
@@ -1172,13 +1187,13 @@ class MySQLClient:
 
     def build(self,
               table: str = None,
-              select_fields: Union[List[str], str] = None,
+              select_fields: Union[Sequence[str], str] = None,
               field: str = None,
-              value: Union[str, int] = None,
+              value: Any = None,
               distinct: Union[bool, str] = None,
-              limit: Union[str, int, list, tuple] = None,
+              limit: Union[str, int, Sequence[Union[str, int]]] = None,
               offset: Union[str, int] = None,
-              order_by: Union[str, List[str]] = None,
+              order_by: Union[str, Sequence[str]] = None,
               and_or: str = None,
               **kwargs
               ) -> Query:
@@ -1261,20 +1276,46 @@ class MySQLClient:
         return Query(query)
 
     def query(self,
-              table: str = None,
+              # q: Union[Query, str] = None, /,
+              table: Union[Query, str] = None,
               field: str = None,
-              value: Union[str, int] = None,
+              value: Any = None,
               *,
-              limit: Union[str, int, list, tuple] = None,
+              limit: Union[str, int, Sequence[Union[str, int]]] = None,
               offset: Union[str, int] = None,
               fieldnames: bool = None,
-              select_fields: Union[list, str] = None,
-              query: Union[str, Query] = None,
+              select_fields: Union[Sequence[str], str] = None,
+              query: Union[Query, str] = None,
               **kwargs
-              ) -> Union[List[dict], List[list], dict, list, None]:
+              ) -> Optional[Union[List[Dict[str, Any]],
+                                  List[List[Any]],
+                                  Dict[str, Any],
+                                  List[Any]]]:
         """Build and perform a MySQL query, and returns a data array.
 
-        Examples:
+        :param table:
+        :type table:
+        :param field:
+        :type field:
+        :param value:
+        :type value:
+        :param limit:
+        :type limit:
+        :param offset:
+        :type offset:
+        :param fieldnames:
+        :type fieldnames:
+        :param select_fields:
+        :type select_fields:
+        :param query:
+        :type query: Union[Query, str]
+        :param kwargs: Any additional keyword arguments that will be passed
+        through to :meth:`MySQLClient.build`, which will then be transformed
+        into additional where-statements.
+        :return: Data array.
+        :rtype: Optional[Union[List[dict], List[list], dict, list]]
+
+        Examples::
             sql = MySQLClient()
             table = "mx_traineeship_peter.company_data"
 
