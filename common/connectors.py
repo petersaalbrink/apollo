@@ -981,11 +981,11 @@ class MySQLClient:
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
+        if fields is None and isinstance(data[0], Mapping):
+            fields = list(data[0].keys())
         if isinstance(fields, Iterable):
             fields = [f"`{f}`" for f in fields]
             fields = f"({', '.join(fields)})"
-        elif isinstance(data[0], Mapping):
-            fields = list(data[0].keys())
         else:
             fields = ""
         query = (f"INSERT {'IGNORE' if ignore else ''} INTO "
@@ -1021,9 +1021,7 @@ class MySQLClient:
                         cols = ", ".join([f"ADD COLUMN {col} AFTER {after}"
                                           for col, after
                                           in zip(cols.split(", "), afters)])
-                        self.connect()
                         self.execute(f"ALTER TABLE {table} {cols}")
-                        self.disconnect()
                     elif ("Timestamp" in e
                           or "Timedelta" in e
                           or "NaTType" in e):
