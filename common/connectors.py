@@ -604,7 +604,11 @@ class MySQLClient:
                            CMySQLConnection]:
         """Connect to MySQL server.
 
-
+        :param conn: Whether or not to return a connection object
+        (default: False)
+        :type conn: bool
+        :return: Either a :class:`CMySQLConnection` or a (subclass of)
+        :class:`CMySQLCursor`, dependent on :param conn:.
         """
         self.cnx = mysqlconnect(**self.__config)
         self.cursor = self.cnx.cursor(buffered=self.buffered,
@@ -615,11 +619,12 @@ class MySQLClient:
             return self.cursor
 
     def disconnect(self):
-        """Disconnect from SQL server"""
+        """Disconnect from MySQL server."""
         self.cursor.close()
         self.cnx.close()
 
     def _set_cursor_properties(self):
+        """Property setter for cursor-related attributes."""
         try:
             self._cursor_columns = self.cursor.column_names
         except AttributeError:
@@ -635,8 +640,14 @@ class MySQLClient:
                 self._cursor_row_count = None
 
     def execute(self,
-                query: Union[str, Query],
+                query: Union[Query, str],
                 *args, **kwargs):
+        """Execute and (if necessary) commit a query on the MySQL instance.
+
+        :param query: Statement to execute in the connected cursor.
+        :param args: and :param kwargs: will be passed onto
+        :meth:`MySQLClient.cursor.execute`.
+        """
         self.cursor.execute(query, *args, **kwargs)
         if any(s in query for s in
                ("INSERT", "UPDATE", "DELETE")):
@@ -644,9 +655,18 @@ class MySQLClient:
         self._set_cursor_properties()
 
     def executemany(self,
-                    query: Union[str, Query],
-                    data: list,
+                    query: Union[Query, str],
+                    data: List[list],
                     *args, **kwargs):
+        """Execute and (if necessary) commit a query many times in MySQL.
+
+        This method can be used to insert a data set into MySQL.
+
+        :param query: Statement to execute in the connected cursor.
+        :param data: The data array (or "sequence of parameters") to insert.
+        :param args: and :param kwargs: will be passed onto
+        :meth:`MySQLClient.cursor.execute`.
+        """
         self.cursor.executemany(query, data, *args, **kwargs)
         if any(s in query for s in
                ("INSERT", "UPDATE", "DELETE")):
@@ -670,7 +690,7 @@ class MySQLClient:
         self.query(query=f"TRUNCATE TABLE {self.database}.{self.table_name}")
 
     def column(self,
-               query: Union[str, Query] = None,
+               query: Union[Query, str] = None,
                *args, **kwargs
                ) -> List[str]:
         """Fetch one column from MySQL"""
@@ -687,28 +707,41 @@ class MySQLClient:
         self.disconnect()
         return column
 
+    def _count(self,
+               query: Union[Query, str],
+               *args, **kwargs
+               ) -> int:
+        self.connect()
+        self.execute(query, *args, **kwargs)
+        count = self.fetchone()
+        self.disconnect()
+        if isinstance(count, dict):
+            count = list(count.values())
+        if isinstance(count, list):
+            count = count[0]
+        if isinstance(count, tuple):
+            count = count[0]
+        return count
+
     def count(self,
               table: str = None,
               *args, **kwargs
               ) -> int:
         """Fetch row count from MySQL"""
-        self.connect()
+        if table is None and self.table_name is None:
+            raise ValueError("No table name provided.")
         if table and "." in table:
             self.database, table = table.split(".")
-        if not self.table_name:
+        elif table is None and self.table_name is not None:
+            table = self.table_name
+        if self.table_name is None:
             self.table_name = table
-        query = f"SELECT COUNT(*) FROM {self.database}.{self.table_name}"
-        self.execute(query, *args, **kwargs)
-        count = self.fetchone()
-        if isinstance(count, list):
-            count = count[0]
-        if isinstance(count, tuple):
-            count = count[0]
-        self.disconnect()
+        query = Query(f"SELECT COUNT(*) FROM {self.database}.{table}")
+        count = self._count(query, *args, **kwargs)
         return count
 
     def table(self,
-              query: Union[str, Query] = None,
+              query: Union[Query, str] = None,
               fieldnames: bool = None,
               *args, **kwargs
               ) -> Union[List[dict], List[list]]:
@@ -731,7 +764,7 @@ class MySQLClient:
         return table
 
     def row(self,
-            query: Union[str, Query] = None,
+            query: Union[Query, str] = None,
             fieldnames: bool = None,
             *args, **kwargs
             ) -> Union[Dict[str, Any], List[Any]]:
@@ -759,7 +792,7 @@ class MySQLClient:
         return row
 
     def chunk(self,
-              query: Union[str, Query] = None,
+              query: Union[Query, str] = None,
               size: int = None,
               use_tqdm: bool = False,
               retry_on_error: bool = False,
@@ -820,7 +853,7 @@ class MySQLClient:
         return iter(_chunk())
 
     def iter(self,
-             query: Union[str, Query] = None,
+             query: Union[Query, str] = None,
              use_tqdm: bool = False,
              *args, **kwargs
              ) -> Iterator[Union[dict, list]]:
@@ -845,15 +878,24 @@ class MySQLClient:
             query = self.build(select_fields=select_fields,
                                order_by=order_by,
                                *args, **kwargs)
-        self.buffered = False
 
-        self.connect()
-        self.execute(query=query, *args, **kwargs)
+        if use_tqdm:
+            count = self._count(f"SELECT COUNT(*) FROM ({query})",
+                                *args, **kwargs)
+        else:
+            count = None
 
-        for row in _tqdm(self.cursor, total=self._cursor_row_count):
+        # Create a local cursor to avoid ReferenceError
+        cnx = self.connect(conn=True)
+        cursor = cnx.cursor(buffered=False,
+                            dictionary=self.dictionary)
+        cursor.execute(query, *args, **kwargs)
+
+        for row in _tqdm(cursor, total=count):
             yield row
 
-        self.disconnect()
+        cursor.close()
+        cnx.close()
 
     @staticmethod
     def create_definition(
