@@ -1043,7 +1043,7 @@ class MySQLClient:
                                   else value for value in row]
                                  for row in chunk]
                     else:
-                        print(chunk)
+                        print(query)
                         raise
         self.disconnect()
         return len(data)
