@@ -34,7 +34,9 @@ from mysql.connector.cursor_cext import (CMySQLCursor,
                                          CMySQLCursorDict,
                                          CMySQLCursorBuffered,
                                          CMySQLCursorBufferedDict)
-from mysql.connector.errors import DatabaseError, InterfaceError
+from mysql.connector.errors import (DatabaseError,
+                                    InterfaceError,
+                                    OperationalError)
 from pandas.core.arrays.datetimelike import (NaTType,
                                              Timestamp,
                                              Timedelta)
@@ -894,13 +896,19 @@ class MySQLClient:
             count = None
 
         # Create a local cursor to avoid ReferenceError
-        cnx = self.connect(conn=True)
+        cnx = mysqlconnect(**self.__config)
         cursor = cnx.cursor(buffered=False,
                             dictionary=self.dictionary)
         cursor.execute(query, *args, **kwargs)
 
-        for row in _tqdm(cursor, total=count):
-            yield row
+        while True:
+            try:
+                for row in _tqdm(cursor, total=count):
+                    yield row
+                break
+            except OperationalError as e:
+                warn("Attempting reconnect: %s", e)
+                cnx.ping(reconnect=True)
 
         cursor.close()
         cnx.close()
