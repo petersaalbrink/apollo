@@ -5,6 +5,7 @@ from email.encoders import encode_base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from logging import info
 from pathlib import Path, PurePath
 from smtplib import SMTP
 from socket import timeout
@@ -16,20 +17,26 @@ from typing import (Any,
                     Iterator,
                     List,
                     Mapping,
+                    MutableMapping,
                     Optional,
                     Sequence,
                     Tuple,
                     Type,
                     Union)
 from urllib.parse import quote_plus
-from warnings import warn
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import (ElasticsearchException,
                                       AuthenticationException,
                                       AuthorizationException)
-from mysql.connector import connect as mysqlconnect
+from mysql.connector import connect
+from mysql.connector.connection import MySQLConnection
+from mysql.connector.cursor import (MySQLCursor,
+                                    MySQLCursorDict,
+                                    MySQLCursorBuffered,
+                                    MySQLCursorBufferedDict)
 from mysql.connector.connection_cext import CMySQLConnection
+from mysql.connector.constants import ClientFlag
 from mysql.connector.cursor_cext import (CMySQLCursor,
                                          CMySQLCursorDict,
                                          CMySQLCursorBuffered,
@@ -114,7 +121,7 @@ class ESClient(Elasticsearch):
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
-            warn("Returning hits only if any([source_only, first_only])")
+            info("Returning hits only if any([source_only, first_only])")
             hits_only = True
         size = kwargs.pop("size", self.size)
         results = []
@@ -571,10 +578,11 @@ class MySQLClient:
             "host": "104.199.69.152",
             "database": self.database,
             "raise_on_warnings": True,
-            "client_flags": 2048,
+            "client_flags": [ClientFlag.SSL],
             "ssl_ca": f'{path / "server-ca.pem"}',
             "ssl_cert": f'{path / "client-cert.pem"}',
-            "ssl_key": f'{path / "client-key.pem"}'}
+            "ssl_key": f'{path / "client-key.pem"}',
+        }
         self.cnx = None
         self.cursor = None
         self._iter = None
@@ -608,7 +616,12 @@ class MySQLClient:
                            CMySQLCursorDict,
                            CMySQLCursorBuffered,
                            CMySQLCursorBufferedDict,
-                           CMySQLConnection]:
+                           CMySQLConnection,
+                           MySQLCursor,
+                           MySQLCursorDict,
+                           MySQLCursorBuffered,
+                           MySQLCursorBufferedDict,
+                           MySQLConnection]:
         """Connect to MySQL server.
 
         :param conn: Whether or not to return a connection object
@@ -617,7 +630,7 @@ class MySQLClient:
         :return: Either a :class:`CMySQLConnection` or a (subclass of)
         :class:`CMySQLCursor`, dependent on :param conn:.
         """
-        self.cnx = mysqlconnect(**self.__config)
+        self.cnx = connect(**self.__config)
         self.cursor = self.cnx.cursor(buffered=self.buffered,
                                       dictionary=self.dictionary)
         if conn:
@@ -860,7 +873,10 @@ class MySQLClient:
                         break
                     yield table
 
-        return iter(_chunk())
+        # Avoid memory leak
+        self.__config["use_pure"] = True
+        yield from iter(_chunk())
+        self.__config["use_pure"] = False
 
     def iter(self,
              query: Union[Query, str] = None,
@@ -896,7 +912,7 @@ class MySQLClient:
             count = None
 
         # Create a local cursor to avoid ReferenceError
-        cnx = mysqlconnect(**self.__config)
+        cnx = connect(**self.__config)
         cursor = cnx.cursor(buffered=False,
                             dictionary=self.dictionary)
         cursor.execute(query, *args, **kwargs)
@@ -907,7 +923,7 @@ class MySQLClient:
                     yield row
                 break
             except OperationalError as e:
-                warn("Attempting reconnect: %s", e)
+                info("Attempting reconnect: %s", e)
                 cnx.ping(reconnect=True)
 
         cursor.close()
@@ -1196,6 +1212,7 @@ class MySQLClient:
     def build(self,
               table: str = None,
               select_fields: Union[Sequence[str], str] = None,
+              fields_as: MutableMapping[str, str] = None,
               field: str = None,
               value: Any = None,
               distinct: Union[bool, str] = None,
@@ -1248,12 +1265,27 @@ class MySQLClient:
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
-        if not select_fields:
-            query = f"SELECT {distinct} * FROM {table} "
-        elif isinstance(select_fields, list):
-            query = f"SELECT {distinct} `{'`, `'.join(select_fields)}` FROM {table}"
+
+        if fields_as:
+            if isinstance(select_fields, str):
+                query = f"SELECT {distinct} {select_fields} AS {fields_as[select_fields]} FROM {table}"
+            else:
+                if not select_fields:
+                    select_fields = self.column()
+                if len(select_fields) > len(fields_as):
+                    for field in select_fields:
+                        if field not in fields_as:
+                            fields_as[field] = field
+                fields_as = [f"{a} AS {b}" for a, b in fields_as.items()]
+                query = f"SELECT {distinct} {', '.join(fields_as)} FROM {table} "
         else:
-            query = f"SELECT {distinct} {select_fields} FROM {table}"
+            if not select_fields:
+                query = f"SELECT {distinct} * FROM {table} "
+            elif isinstance(select_fields, list):
+                query = f"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
+            else:
+                query = f"SELECT {distinct} {select_fields} FROM {table}"
+
         if not all([field is None, value is None]):
             query = f"{query} WHERE {search_for(field, value)}"
         if kwargs:
@@ -1347,7 +1379,7 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
         if query:
-            warn("Executing query. If you meant to retrieve data, use"
+            info("Executing query. If you meant to retrieve data, use"
                  " .query() without the `query=` parameter instead.")
             self.connect()
             self.execute(query)
