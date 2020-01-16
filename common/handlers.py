@@ -81,6 +81,7 @@ def csv_write(data: Union[List[dict], dict],
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
     extrasaction: str = kwargs.pop("extrasaction", "raise")
+    quotechar: str = kwargs.pop("quotechar", '"')
 
     multiple_rows = isinstance(data, list)
     fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
@@ -91,6 +92,7 @@ def csv_write(data: Union[List[dict], dict],
                          fieldnames=fieldnames,
                          delimiter=delimiter,
                          extrasaction=extrasaction,
+                         quotechar=quotechar,
                          **kwargs)
         if not_exists:
             csv.writeheader()

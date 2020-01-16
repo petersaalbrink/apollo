@@ -818,6 +818,7 @@ class MySQLClient:
 
     def build(self,
               table: str = None,
+              *,
               select_fields: Union[Sequence[str], str] = None,
               fields_as: MutableMapping[str, str] = None,
               field: str = None,
@@ -825,6 +826,7 @@ class MySQLClient:
               distinct: Union[bool, str] = None,
               limit: Union[str, int, Sequence[Union[str, int]]] = None,
               offset: Union[str, int] = None,
+              group_by: Union[str, Sequence[str]] = None,
               order_by: Union[str, Sequence[str]] = None,
               and_or: str = None,
               **kwargs
@@ -908,6 +910,11 @@ class MySQLClient:
                 query = f"{query} {and_or} {keys}"
             else:
                 query = f"{query} WHERE {keys}"
+        if group_by:
+            if isinstance(group_by, str):
+                group_by = [group_by]
+            group_by = ", ".join(group_by)
+            query = f"{query} GROUP BY {group_by}"
         if order_by:
             if isinstance(order_by, str):
                 order_by = [order_by]
