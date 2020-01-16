@@ -1,3 +1,4 @@
+from collections import namedtuple
 from pathlib import Path
 from getpass import getpass
 from base64 import b64encode, b64decode
@@ -24,19 +25,7 @@ NAMES = {
     "dev_platform": "Matrixian Platform (development)",
 }
 
-
-class Credentials:
-    __slots__ = ["usr", "pwd"]
-
-    def __init__(self, usr: str, pwd: str):
-        self.usr = usr
-        self.pwd = pwd
-
-    def __str__(self):
-        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
+Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
 
 def change_secret(name: str) -> Credentials:

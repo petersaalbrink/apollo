@@ -168,7 +168,7 @@ class MySQLClient:
         from common import __file__
         from common.env import getenv
         from common.secrets import get_secret
-        sql = get_secret("sql")
+        usr, pwd = get_secret("sql")
         if database:
             if "." in database:
                 database, table = database.split(".")
@@ -180,8 +180,8 @@ class MySQLClient:
         self.table_name = table
         path = Path(__file__).parent / "certificates"
         self.__config = {
-            "user": sql.usr,
-            "password": sql.pwd,
+            "user": usr,
+            "password": pwd,
             "host": getenv("MX_MYSQL_IP_DEV"),
             "database": self.database,
             "raise_on_warnings": True,

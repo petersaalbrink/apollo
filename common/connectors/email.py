@@ -10,17 +10,18 @@ from typing import Union
 
 class EmailClient:
     """Client for sending plain text emails and attachments."""
-    from common.secrets import get_secret
-    mail = get_secret("mail_pass")
 
     def __init__(self,
                  smtp_server="smtp.gmail.com:587",
                  login="dev@matrixiangroup.com",
-                 password=mail.pwd):
+                 password=None):
         """Client for sending plain text emails and attachments."""
         self._smtp_server = smtp_server
         self._login = login
         self._password = password
+        if self._password is None:
+            from common.secrets import get_secret
+            self._password = get_secret("mail_pass").pwd
 
     def send_email(self,
                    to_address: Union[str, list] = "psaalbrink@matrixiangroup.com",

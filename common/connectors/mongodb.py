@@ -38,8 +38,8 @@ class MongoDB(MongoClient):
         host, secret = hosts[host]
         from common.env import getenv
         from common.secrets import get_secret
-        cred = get_secret(secret)
-        uri = f"mongodb://{quote_plus(cred.usr)}:{quote_plus(cred.pwd)}@{getenv(host)}"
+        usr, pwd = get_secret(secret)
+        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{getenv(host)}"
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:
