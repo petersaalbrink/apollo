@@ -41,7 +41,10 @@ def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
     return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
 
 
-def thread(function: Callable, data: Iterable, process: Callable = None):
+def thread(function: Callable,
+           data: Iterable,
+           process: Callable = None,
+           **kwargs):
     """Thread :param data: with :param function: and optionally do :param process:.
 
     Example:
@@ -51,14 +54,15 @@ def thread(function: Callable, data: Iterable, process: Callable = None):
             data=range(2000),
             process=lambda result: print(result.status_code)
         )"""
+    max_workers = kwargs.pop("max_workers", None)
     if process is None:
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
                          return_when='FIRST_EXCEPTION').done]
     else:
         futures = set()
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == 1000:
