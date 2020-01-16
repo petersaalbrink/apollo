@@ -9,6 +9,7 @@ pandas
 phonenumbers
 pycountry
 pymongo
+python-dotenv
 requests
 text-unidecode
 tqdm

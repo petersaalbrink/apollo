@@ -166,6 +166,7 @@ class MySQLClient:
             sql = MySQLClient("mx_traineeship_peter")
         """
         from common import __file__
+        from common.env import getenv
         from common.secrets import get_secret
         sql = get_secret("sql")
         if database:
@@ -181,7 +182,7 @@ class MySQLClient:
         self.__config = {
             "user": sql.usr,
             "password": sql.pwd,
-            "host": "104.199.69.152",
+            "host": getenv("MX_MYSQL_IP_DEV"),
             "database": self.database,
             "raise_on_warnings": True,
             "client_flags": [ClientFlag.SSL],

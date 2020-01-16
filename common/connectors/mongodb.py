@@ -24,22 +24,22 @@ class MongoDB(MongoClient):
             raise ValueError("Please provide a database name as well.")
         if not host:
             host = "address" if database and "addressvalidation" in database else "dev"
+        elif host == "stg":
+            raise DeprecationWarning("Staging database is not used anymore.")
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
         hosts = {
-            "address": ("149.210.164.50", "addr"),
-            "dev": ("136.144.173.2", "mongo"),
-            "stg": ("136.144.189.123", "mongo_stg"),
-            "prod": ("37.97.169.90", "mongo_prod"),
+            "address": ("MX_MONGO_IP_ADDR", "addr"),
+            "dev": ("MX_MONGO_IP_DEV", "mongo"),
+            "prod": ("MX_MONGO_IP_PROD", "mongo_prod"),
         }
         if host not in hosts:
             raise ValueError(f"Host `{host}` not recognized")
-        elif host == "stg":
-            raise DeprecationWarning("Staging database is not used anymore.")
         host, secret = hosts[host]
+        from common.env import getenv
         from common.secrets import get_secret
         cred = get_secret(secret)
-        uri = f"mongodb://{quote_plus(cred.usr)}:{quote_plus(cred.pwd)}@{host}"
+        uri = f"mongodb://{quote_plus(cred.usr)}:{quote_plus(cred.pwd)}@{getenv(host)}"
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:

@@ -24,18 +24,19 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
+        from common.env import getenv
         from common.secrets import get_secret
         es = get_secret("es")
         if dev:
-            self._host = "136.144.173.2"
+            self._host = getenv("MX_ELASTIC_IP_DEV")
             if not es_index:
                 es_index = "dev_peter.person_data_20190716"
         else:
-            self._host = "37.97.169.90"
+            self._host = getenv("MX_ELASTIC_IP_PROD")
             if not es_index:
                 es_index = "production_realestate.realestate"
         self.es_index = es_index
-        self._port = 9201
+        self._port = int(getenv("MX_ELASTIC_PORT", 9200))
         hosts = [{"host": self._host, "port": self._port}]
         config = {"http_auth": (es.usr, es.pwd), "timeout": 60, "retry_on_timeout": True}
         super().__init__(hosts, **config)
