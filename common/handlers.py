@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from contextlib import ContextDecorator
 from concurrent.futures import ThreadPoolExecutor, wait
-from csv import DictReader, DictWriter
+from csv import DictReader, DictWriter, Error, Sniffer
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
@@ -103,13 +103,19 @@ def csv_write(data: Union[List[dict], dict],
 
 
 def csv_read(filename: Union[PurePath, str],
-             encoding: str = "utf-8",
-             delimiter: str = ","
+             **kwargs,
              ) -> MutableMapping:
     """Simple generator for reading from a csv file.
     Returns rows as OrderedDict, with None instead of empty string."""
-    with open(filename, encoding=encoding) as f:
-        for row in DictReader(f, delimiter=delimiter):
+    with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
+        if not kwargs:
+            try:
+                dialect = Sniffer().sniff(f.read())
+            except Error:
+                dialect = "excel"
+            finally:
+                f.seek(0)
+        for row in DictReader(f, dialect=dialect, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
 
 
