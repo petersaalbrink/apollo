@@ -276,7 +276,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.execute(query, *args, **kwargs)
-        if any(s in query for s in
+        if any(query.upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
@@ -295,7 +295,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.executemany(query, data, *args, **kwargs)
-        if any(s in query for s in
+        if any(query.upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()

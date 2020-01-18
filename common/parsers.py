@@ -1,5 +1,6 @@
 from datetime import datetime
 from urllib.parse import quote_plus
+from pandas import isna
 from pycountry import countries
 from .handlers import get
 from .connectors import EmailClient
@@ -60,36 +61,36 @@ class Checks:
     @staticmethod
     def int_or_null(var):
         try:
-            return int(var) if var is not None else None
+            return int(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
     def bool_or_null(var):
-        return bool(Checks.int_or_null(var)) if var is not None else None
+        return bool(Checks.int_or_null(var)) if var and not isna(var) else None
 
     @staticmethod
     def str_or_null(var):
-        return str(var) if var else None
+        return str(var) if var and not isna(var) else None
 
     @staticmethod
     def str_or_empty(var):
-        return str(var) if var else ""
+        return str(var) if var and not isna(var) else ""
 
     @staticmethod
     def float_or_null(var):
         try:
-            return float(var) if var is not None else None
+            return float(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
     def date_or_null(var, f):
-        return datetime.strptime(var, f) if var else None
+        return datetime.strptime(var, f) if var and not isna(var) else None
 
     @staticmethod
     def check_null(var):
-        return var if var else None
+        return var if var and not isna(var) else None
 
     @staticmethod
     def energy_label(var):
