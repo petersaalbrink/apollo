@@ -115,6 +115,8 @@ def csv_read(filename: Union[PurePath, str],
                 dialect = "excel"
             finally:
                 f.seek(0)
+        else:
+            dialect = "excel"
         for row in DictReader(f, dialect=dialect, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
 
