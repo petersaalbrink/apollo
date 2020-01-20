@@ -890,10 +890,10 @@ class MySQLClient:
         else:
             if not select_fields:
                 query = f"SELECT {distinct} * FROM {table} "
-            elif isinstance(select_fields, list):
-                query = f"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
-            else:
+            elif isinstance(select_fields, str):
                 query = f"SELECT {distinct} {select_fields} FROM {table}"
+            else:
+                query = f"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
 
         if not all([field is None, value is None]):
             query = f"{query} WHERE {search_for(field, value)}"
