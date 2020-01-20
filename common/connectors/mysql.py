@@ -692,7 +692,6 @@ class MySQLClient:
                       f"({', '.join(['%s'] * len(data[0]))})")
         range_func = trange if use_tqdm else range
         errors = 0
-        self.connect()
         for offset in range_func(0, len(data), _limit):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
@@ -701,7 +700,9 @@ class MySQLClient:
                 chunk = [list(d.values()) for d in chunk]
             while True:
                 try:
+                    self.connect()
                     self.executemany(query, chunk)
+                    self.disconnect()
                     break
                 except (DatabaseError, InterfaceError) as e:
                     errors += 1
@@ -720,7 +721,9 @@ class MySQLClient:
                         cols = ", ".join([f"ADD COLUMN {col} AFTER {after}"
                                           for col, after
                                           in zip(cols.split(", "), afters)])
+                        self.connect()
                         self.execute(Query(f"ALTER TABLE {table} {cols}"))
+                        self.disconnect()
                     elif ("Timestamp" in e
                           or "Timedelta" in e
                           or "NaTType" in e):
@@ -742,7 +745,6 @@ class MySQLClient:
                     else:
                         print(query)
                         raise
-        self.disconnect()
         return len(data)
 
     def add_index(self,
