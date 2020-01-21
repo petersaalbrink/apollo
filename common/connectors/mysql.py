@@ -636,26 +636,33 @@ class MySQLClient:
 
     def _increase_max_field_len(self,
                                 e: str,
-                                table: str,
-                                chunk: Sequence[Sequence[Any]]):
+                                table: str = None,
+                                chunk: Sequence[Sequence[Any]] = None):
         field = e.split("'")[1]
+        if table is None:
+            table = self.table_name
         field_type, position = self.row(Query(
             f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
             f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
             f" = '{table}' AND COLUMN_NAME = '{field}'"))
         field_type, field_len = field_type.strip(")").split("(")
-        position -= 1  # MySQL starts counting at 1, Python at 0
-        if "," in field_len:
-            field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
-            new_len = []
-            for row in chunk:
-                if "." in f"{row[position]}":
-                    new_len.append(len(f"{row[position]}".split(".")[1]))
-            new_len = max(new_len)
-            field_type = f"{field_type}({field_len + 1},{new_len})"
+
+        if chunk is not None:
+            position -= 1  # MySQL starts counting at 1, Python at 0
+            if "," in field_len:
+                field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
+                new_len = []
+                for row in chunk:
+                    if "." in f"{row[position]}":
+                        new_len.append(len(f"{row[position]}".split(".")[1]))
+                new_len = max(new_len)
+                field_type = f"{field_type}({field_len + 1},{new_len})"
+            else:
+                new_len = max(len(f"{row[position]}") for row in chunk)
+                field_type = f"{field_type}({new_len})"
         else:
-            new_len = max(len(f"{row[position]}") for row in chunk)
-            field_type = f"{field_type}({new_len})"
+            field_type = f"{field_type}({field_len + 1})"
+
         self.connect()
         self.execute(Query(
             f"ALTER TABLE {self.database}.{table} MODIFY COLUMN `{field}` {field_type}"))
@@ -710,7 +717,7 @@ class MySQLClient:
                         raise
                     e = f"{e}"
                     if "truncated" in e or "Out of range value" in e:
-                        self._increase_max_field_len(e, table, chunk)
+                        self._increase_max_field_len(e, table=table, chunk=chunk)
                     elif ("Column count doesn't match value count" in e
                           and isinstance(data[0], dict)):
                         cols = {col: self.create_definition([{col: data[0][col]}])[col]
@@ -931,6 +938,28 @@ class MySQLClient:
             query = f"{query} OFFSET {offset} "
         return Query(query)
 
+    def _execute_query(self, query: Union[Query, str]):
+        """Helper method to execute a query."""
+        info("Executing query. If you meant to retrieve data, use"
+             " .query() without the `query=` parameter instead.")
+        errors = 0
+        while True:
+            try:
+                self.connect()
+                self.execute(query)
+                self.disconnect()
+                break
+            except DatabaseError as e:
+                errors += 1
+                if errors >= self._max_errors:
+                    raise
+                e = f"{e}"
+                if ("truncated" in e or "Out of range value" in e
+                        and query.upper().startswith("INSERT")):
+                    self._increase_max_field_len(e)
+                else:
+                    raise
+
     def query(self,
               # q: Union[Query, str] = None, /,
               table: Union[Query, str] = None,
@@ -995,12 +1024,7 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
         if query:
-            info("Executing query. If you meant to retrieve data, use"
-                 " .query() without the `query=` parameter instead.")
-            self.connect()
-            self.execute(query)
-            self.disconnect()
-            return
+            return self._execute_query(query)
         if select_fields and len(select_fields) == 0:
             raise TypeError(f"Empty {type(select_fields)} not accepted.")
         if table and (isinstance(table, Query)
