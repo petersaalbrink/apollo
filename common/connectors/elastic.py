@@ -221,21 +221,32 @@ class ESClient(Elasticsearch):
             {"query": {"bool": {"must": [{"match": {"lastname": "Saalbrink"}},
                                          {"match": {"address.postalCode": "1014AK"}}]}}}
         """
-        size = kwargs.pop("size", self.size)
-        sort = kwargs.pop("sort", None)
-        track_scores = kwargs.pop("track_scores", None)
+        find_kwargs = {
+            "size": kwargs.pop("size", self.size),
+            "sort": kwargs.pop("sort", None),
+            "track_scores": kwargs.pop("track_scores", None),
+            "hits_only": kwargs.pop("hits_only", True),
+            "source_only": kwargs.pop("source_only", False),
+            "first_only": kwargs.pop("first_only", False),
+        }
+
         if field and value:
             q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
-            return self.find(q, sort=sort, size=size, track_scores=track_scores)
+            return self.find(q, **find_kwargs)
+        elif field or value:
+            raise ValueError("Provide both field and value.")
+
         args = {}
         for k in kwargs:
             if "_" in k and not k.startswith("_"):
                 args[k.replace("_", ".")] = kwargs[k]
+            else:
+                args[k] = kwargs[k]
         if len(args) == 1:
             q = {"query": {"bool": {"must": [{"match": args}]}}}
-            return self.find(q, sort=sort, size=size, track_scores=track_scores)
+            return self.find(q, **find_kwargs)
         elif len(args) > 1:
             q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
-            return self.find(q, sort=sort, size=size, track_scores=track_scores)
+            return self.find(q, **find_kwargs)
         else:
-            return self.find(sort=sort, size=size, track_scores=track_scores)
+            return self.find(**find_kwargs)
