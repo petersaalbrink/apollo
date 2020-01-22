@@ -671,12 +671,12 @@ class PersonData(SourceMatch, SourceScore):
                 result = self._vn.find(query=query, first_only=True)
                 if result:
                     return result["valid"]
-            if self._respect_hours:
-                t = localtime().tm_hour
-                while t >= 22 or t < 8:
-                    sleep(60)
-                    t = localtime().tm_hour
             if self._call_to_validate:
+                if self._respect_hours:
+                    t = localtime().tm_hour
+                    while t >= 22 or t < 8:
+                        sleep(60)
+                        t = localtime().tm_hour
                 while True:
                     response = get(f"{self._phone_url}{phone}",
                                    # headers={"Connection": "close"},
