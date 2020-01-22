@@ -724,7 +724,7 @@ class PersonData(SourceMatch, SourceScore):
                     matchedNames=(self.data.lastname, response["lastname"]),
                     foundPersons=len({response["id"] for response in self._responses.values()}),
                 ))
-                self.result[self._score_mapping[key]] = f"{source}{score}"
+                self.result[self._score_mapping.get(key, f"{key}_score")] = f"{source}{score}"
 
     def _finalize(self):
         # Get match keys
@@ -732,9 +732,8 @@ class PersonData(SourceMatch, SourceScore):
         self.result["match_keys"].update(self._match_keys)
 
         # Fix dates
-        self.result["date"] = dateparse(self.result["date"], ignoretz=True)
-        for key in ("address_moved", "birth_date", "death_date"):
-            if key in self.result:
+        for key in ("date", "address_moved", "birth_date", "death_date"):
+            if key in self.result and isinstance(self.result[key], str):
                 self.result[key] = dateparse(self.result[key], ignoretz=True)
 
         debug("Result = %s", self.result)
