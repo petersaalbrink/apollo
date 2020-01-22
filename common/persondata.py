@@ -340,7 +340,7 @@ class PersonData(SourceMatch, SourceScore):
                            ":4000/email?email=")
         try:
             self._local = (rget("https://api.ipify.org").text
-                           == "94.168.87.210")
+                           in {"37.97.136.149", "94.168.87.210"})
         except (ConnectionError, IOError):
             self._local = False
 
@@ -467,7 +467,10 @@ class PersonData(SourceMatch, SourceScore):
 
     @property
     def _main_fields(self) -> tuple:
-        if self._response_type == "phone":
+        if isinstance(self._response_type, (tuple, list)):
+            return tuple(f for f in self._response_type
+                         if f != "phoneNumber_country")
+        elif self._response_type == "phone":
             return "phoneNumber_number", "phoneNumber_mobile"
         elif self._response_type == "address":
             return "address_current_postalCode",
@@ -529,7 +532,7 @@ class PersonData(SourceMatch, SourceScore):
             query = self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
                 {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}}])
+                {"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
             if not self._cbs and self.data.initials:
                 query["query"]["bool"]["must"].append(
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
@@ -547,7 +550,7 @@ class PersonData(SourceMatch, SourceScore):
                 minimum_should_match=1)
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
-                must=[{"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
+                must=[{"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
                       {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
 
     def _base_query(self, **kwargs):
@@ -1468,7 +1471,7 @@ class NamesData:
     def titles() -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
         with suppress(ConnectionError, IOError):
-            if rget("https://api.ipify.org").text == "94.168.87.210":
+            if rget("https://api.ipify.org").text in {"94.168.87.210", "37.97.136.149"}:
                 return set(doc["title"] for doc in
                            MongoDB("dev_peter.names_data").find({"data": "titles"}, {"title": True}))
         return {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
