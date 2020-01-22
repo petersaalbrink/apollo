@@ -1,5 +1,6 @@
 from datetime import datetime
 from urllib.parse import quote_plus
+from numpy import zeros
 from pandas import isna
 from pycountry import countries
 from .handlers import get
@@ -108,3 +109,39 @@ class Checks:
             "G": 1,
             None: 0
         }.get(var, 0)
+
+
+def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
+    """Calculate the Levenshtein distance and score for two strings.
+
+    By default, returns the percentage score.
+    Set :param measure: to "distance" to return the Levenshtein distance.
+    """
+    measures = {"distance", "percentage"}
+    if measure not in measures:
+        raise ValueError(f"measure should be one of {measures}")
+    size_x = len(seq1) + 1
+    size_y = len(seq2) + 1
+    matrix = zeros((size_x, size_y))
+    for _x in range(size_x):
+        matrix[_x, 0] = _x
+    for _y in range(size_y):
+        matrix[0, _y] = _y
+    for _x in range(1, size_x):
+        for _y in range(1, size_y):
+            if seq1[_x - 1] == seq2[_y - 1]:
+                matrix[_x, _y] = min(
+                    matrix[_x - 1, _y] + 1,
+                    matrix[_x - 1, _y - 1],
+                    matrix[_x, _y - 1] + 1
+                )
+            else:
+                matrix[_x, _y] = min(
+                    matrix[_x - 1, _y] + 1,
+                    matrix[_x - 1, _y - 1] + 1,
+                    matrix[_x, _y - 1] + 1
+                )
+    if measure == "percentage":
+        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+    else:
+        return int(matrix[size_x - 1, size_y - 1])

@@ -10,7 +10,6 @@ from time import localtime, sleep
 from typing import Iterable, NamedTuple, Optional, Tuple, Union
 
 from dateutil.parser import parse as dateparse
-from numpy import zeros
 from phonenumbers import is_valid_number, parse
 from phonenumbers.phonenumberutil import NumberParseException
 from requests import get as rget
@@ -18,7 +17,7 @@ from text_unidecode import unidecode
 
 from .connectors import ESClient, MongoDB
 from .handlers import Timer, get
-from .parsers import Checks, flatten
+from .parsers import Checks, flatten, levenshtein
 
 
 class BaseDataClass(MutableMapping):
@@ -193,31 +192,6 @@ class SourceScore:
         to this function."""
         pass
 
-    @staticmethod
-    def levenshtein(seq1, seq2):
-        size_x = len(seq1) + 1
-        size_y = len(seq2) + 1
-        matrix = zeros((size_x, size_y))
-        for _x in range(size_x):
-            matrix[_x, 0] = _x
-        for _y in range(size_y):
-            matrix[0, _y] = _y
-        for _x in range(1, size_x):
-            for _y in range(1, size_y):
-                if seq1[_x - 1] == seq2[_y - 1]:
-                    matrix[_x, _y] = min(
-                        matrix[_x - 1, _y] + 1,
-                        matrix[_x - 1, _y - 1],
-                        matrix[_x, _y - 1] + 1
-                    )
-                else:
-                    matrix[_x, _y] = min(
-                        matrix[_x - 1, _y] + 1,
-                        matrix[_x - 1, _y - 1] + 1,
-                        matrix[_x, _y - 1] + 1
-                    )
-        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
-
     def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
         # Set constants
@@ -261,7 +235,7 @@ class SourceScore:
             taking into account the number of changes in name."""
             n1, n2 = result.matchedNames
             if n1 and n2:
-                lev = self.levenshtein(n1, n2)
+                lev = levenshtein(n1, n2)
                 if lev < .4 and (n1 not in n2 or n2 not in n1):
                     return 0
                 return lev * score
@@ -560,6 +534,69 @@ class PersonData(SourceMatch, SourceScore):
                 ]
             }
             yield "initial", self._extend_query(query)
+        if self.data.lastname and self.data.initials:
+            if self.data.date_of_birth:
+                query = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"match": {"birth.date": self.data.date_of_birth}},
+                                {"match": {"lastname": {
+                                    "query": self.data.lastname,
+                                    "fuzziness": 2}}},
+                                {"wildcard": {
+                                    "initials": f"{self.data.initials[0].lower()}*"
+                                }},
+                            ],
+                        }
+                    },
+                    "sort": [
+                        {"dateOfRecord": "desc"}
+                    ]
+                }
+                yield "dob", self._extend_query(query)
+            if self.data.number:
+                if self.data.date_of_birth:
+                    query = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"match": {"phoneNumber.number": self.data.number}},
+                                    {"match": {"lastname": {
+                                        "query": self.data.lastname,
+                                        "fuzziness": 2}}},
+                                    {"wildcard": {
+                                        "initials": f"{self.data.initials[0].lower()}*"
+                                    }},
+                                ],
+                            }
+                        },
+                        "sort": [
+                            {"dateOfRecord": "desc"}
+                        ]
+                    }
+                    yield "number", self._extend_query(query)
+            if self.data.mobile:
+                if self.data.date_of_birth:
+                    query = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"match": {"phoneNumber.mobile": self.data.mobile}},
+                                    {"match": {"lastname": {
+                                        "query": self.data.lastname,
+                                        "fuzziness": 2}}},
+                                    {"wildcard": {
+                                        "initials": f"{self.data.initials[0].lower()}*"
+                                    }},
+                                ],
+                            }
+                        },
+                        "sort": [
+                            {"dateOfRecord": "desc"}
+                        ]
+                    }
+                    yield "mobile", self._extend_query(query)
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.lastname):
@@ -581,6 +618,9 @@ class PersonData(SourceMatch, SourceScore):
                     }
                 }
             }
+            if not self._cbs and self.data.initials:
+                query["query"]["bool"]["must"].append(
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
             yield "name", self._extend_query(query)
             query = {
                 "query": {
@@ -603,6 +643,9 @@ class PersonData(SourceMatch, SourceScore):
                     {"dateOfRecord": "desc"}
                 ]
             }
+            if not self._cbs and self.data.initials:
+                query["query"]["bool"]["must"].append(
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
             yield "wildcard", self._extend_query(query)
         if (self.data.postalCode
                 and self.data.houseNumber
@@ -634,14 +677,8 @@ class PersonData(SourceMatch, SourceScore):
                     "bool": {
                         "must": [
                             {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
+                            {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}},
                         ],
-                        "should": [
-                            {"wildcard": {
-                                "initials": f"*{self.data.initials[0].lower()}*"}},
-                            {"match": {"initials": {
-                                "query": self.data.initials[0], "fuzziness": 2}}},
-                        ],
-                        "minimum_should_match": 1,
                     }
                 },
                 "sort": [
@@ -718,8 +755,8 @@ class PersonData(SourceMatch, SourceScore):
                 # TODO: test if this specifically behaves as intended
                 responses = [{"_id": d["_id"], **d["_source"]}
                              for d in self._es.find(
-                    self._id_query(self._es.find(
-                        q, source_only=True)))]
+                        self._id_query(self._es.find(
+                            q, source_only=True)))]
             else:
                 responses = [{"_id": d["_id"], **d["_source"]}
                              for d in self._es.find(q)]
@@ -1315,30 +1352,6 @@ class PhoneNumberFinder:
         def fuzzy_score(result: namedtuple, score: float) -> float:
             """Uses name_input and name_output, before and after fuzzy
             matching, taking into account the number of changes in name."""
-
-            def levenshtein(seq1, seq2):
-                size_x = len(seq1) + 1
-                size_y = len(seq2) + 1
-                matrix = zeros((size_x, size_y))
-                for _x in range(size_x):
-                    matrix[_x, 0] = _x
-                for _y in range(size_y):
-                    matrix[0, _y] = _y
-                for _x in range(1, size_x):
-                    for _y in range(1, size_y):
-                        if seq1[_x - 1] == seq2[_y - 1]:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1],
-                                matrix[_x, _y - 1] + 1
-                            )
-                        else:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1] + 1,
-                                matrix[_x, _y - 1] + 1
-                            )
-                return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
 
             return levenshtein(*result.matchedNames) * score if result.isFuzzy else score
 
