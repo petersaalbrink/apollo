@@ -488,204 +488,72 @@ class PersonData(SourceMatch, SourceScore):
         name_only: met lastname en initials, wildcard op lastname,
             fuzziness en wildcard op initials in should met minimum_should_match=1
         """
-        query = {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"match": {
-                            self._es_mapping[field]: self.data[field]}}
-                        for field in self.data
-                        if field != "telephone" and self.data[field]],
-                    "minimum_should_match": self._strictness,
-                }
-            },
-            "sort": [
-                {"dateOfRecord": "desc"}
-            ]
-        }
-        if self._use_sources:
-            query["query"]["bool"]["must"] = [{"terms": {"source": [*self._use_sources]}}]
-        yield "full", query
+        yield "full", self._base_query(must=[], should=[
+            {"match": {self._es_mapping[field]: self.data[field]}}
+            for field in self.data if field != "telephone" and self.data[field]],
+                                       minimum_should_match=self._strictness)
         if (self.data.postalCode and self.data.houseNumber
                 and self.data.lastname and self.data.initials):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"match": {
-                                "lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                            {"wildcard": {
-                                "initials":
-                                    f"{self.data.initials[0].lower()}*"
-                            }},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "initial", self._extend_query(query)
+            yield "initial", self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if self.data.lastname and self.data.initials:
             if self.data.date_of_birth:
-                query = {
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"match": {"birth.date": self.data.date_of_birth}},
-                                {"match": {"lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                                {"wildcard": {
-                                    "initials": f"{self.data.initials[0].lower()}*"
-                                }},
-                            ],
-                        }
-                    },
-                    "sort": [
-                        {"dateOfRecord": "desc"}
-                    ]
-                }
-                yield "dob", self._extend_query(query)
+                yield "dob", self._base_query(must=[
+                    {"match": {"birth.date": self.data.date_of_birth}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.number:
-                if self.data.date_of_birth:
-                    query = {
-                        "query": {
-                            "bool": {
-                                "must": [
-                                    {"match": {"phoneNumber.number": self.data.number}},
-                                    {"match": {"lastname": {
-                                        "query": self.data.lastname,
-                                        "fuzziness": 2}}},
-                                    {"wildcard": {
-                                        "initials": f"{self.data.initials[0].lower()}*"
-                                    }},
-                                ],
-                            }
-                        },
-                        "sort": [
-                            {"dateOfRecord": "desc"}
-                        ]
-                    }
-                    yield "number", self._extend_query(query)
+                yield "number", self._base_query(must=[
+                    {"match": {"phoneNumber.number": self.data.number}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.mobile:
-                if self.data.date_of_birth:
-                    query = {
-                        "query": {
-                            "bool": {
-                                "must": [
-                                    {"match": {"phoneNumber.mobile": self.data.mobile}},
-                                    {"match": {"lastname": {
-                                        "query": self.data.lastname,
-                                        "fuzziness": 2}}},
-                                    {"wildcard": {
-                                        "initials": f"{self.data.initials[0].lower()}*"
-                                    }},
-                                ],
-                            }
-                        },
-                        "sort": [
-                            {"dateOfRecord": "desc"}
-                        ]
-                    }
-                    yield "mobile", self._extend_query(query)
+                yield "mobile", self._base_query(must=[
+                    {"match": {"phoneNumber.mobile": self.data.mobile}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.lastname):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"match": {
-                                "lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                        ],
-                    }
-                }
-            }
+            query = self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}}])
             if not self._cbs and self.data.initials:
                 query["query"]["bool"]["must"].append(
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
-            yield "name", self._extend_query(query)
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"wildcard": {
-                                "lastname":
-                                    f"*{self.data.lastname.split()[-1].lower()}*"
-                            }},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
+            yield "name", query
+            query = self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}}])
             if not self._cbs and self.data.initials:
                 query["query"]["bool"]["must"].append(
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
-            yield "wildcard", self._extend_query(query)
+            yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.houseNumberExt):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"address.current.postalCode": self.data.postalCode}},
-                            {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                        ],
-                        "should": [
-                            {"wildcard": {
-                                "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
-                            {"match": {"address.current.houseNumberExt": {
-                                "query": self.data.houseNumberExt[0], "fuzziness": 2}}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "address", self._extend_query(query)
+            yield "address", self._base_query(
+                must=[{"match": {"address.current.postalCode": self.data.postalCode}},
+                      {"match": {"address.current.houseNumber": self.data.houseNumber}}],
+                should=[{"wildcard": {
+                    "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
+                    {"match": {"address.current.houseNumberExt": {
+                        "query": self.data.houseNumberExt[0], "fuzziness": 2}}}],
+                minimum_should_match=1)
         if self._name_only_query and self.data.lastname and self.data.initials:
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
-                            {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "name_only", self._extend_query(query)
+            yield "name_only", self._base_query(
+                must=[{"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
+                      {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+
+    def _base_query(self, **kwargs):
+        return self._extend_query({
+            "query": {"bool": kwargs},
+            "sort": [{"dateOfRecord": "desc"}]})
 
     def _extend_query(self, query):
         if self._use_sources:
