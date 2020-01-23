@@ -194,12 +194,11 @@ class SourceScore:
 
     def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
-        # Set constants
+        # Set constant
         x = 100
-        year = self._year
 
         def date_score(result: Score, score: float) -> float:
-            return (1 - ((year - int(result.yearOfRecord)) / (x / 2))) * score
+            return (1 - ((self._year - int(result.yearOfRecord)) / (x / 2))) * score
 
         def source_score(result: Score, score: float) -> float:
             source = {
@@ -222,7 +221,7 @@ class SourceScore:
             return (1 - ((source[result.source] - 1) / (x * 2))) * score
 
         def death_score(result: Score, score: float) -> float:
-            _x = max((year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
+            _x = max((self._year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
             return score if result.deceased is None else _x * score
 
         def n_score(result: Score, score: float) -> float:

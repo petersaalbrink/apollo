@@ -1,8 +1,8 @@
+from base64 import b64encode, b64decode
 from collections import namedtuple
 from pathlib import Path
-from getpass import getpass
-from base64 import b64encode, b64decode
 try:
+    from getpass import getpass
     import termios
     _ = termios.tcgetattr, termios.tcsetattr
 except (ImportError, AttributeError):

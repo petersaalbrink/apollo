@@ -54,9 +54,11 @@ def thread(function: Callable,
             data=range(2000),
             process=lambda result: print(result.status_code)
         )"""
+    process_chunk_size = kwargs.pop("process_chunk_size", 1_000)
     max_workers = kwargs.pop("max_workers", None)
     if process is None:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # noinspection PyUnresolvedReferences
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
                          return_when='FIRST_EXCEPTION').done]
@@ -65,7 +67,7 @@ def thread(function: Callable,
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
-                if len(futures) == 1000:
+                if len(futures) == process_chunk_size:
                     done, futures = wait(futures, return_when='FIRST_EXCEPTION')
                     _ = [process(f.result()) for f in done]
             done, futures = wait(futures, return_when='FIRST_EXCEPTION')
