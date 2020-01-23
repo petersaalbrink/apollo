@@ -345,12 +345,15 @@ class MySQLClient:
         self.execute(query, *args, **kwargs)
         count = self.fetchone()
         self.disconnect()
-        if isinstance(count, dict):
-            count = list(count.values())
-        if isinstance(count, list):
-            count = count[0]
-        if isinstance(count, tuple):
-            count = count[0]
+        while True:
+            if isinstance(count, dict):
+                count = list(count.values())
+            if isinstance(count, list):
+                count = count[0]
+            if isinstance(count, tuple):
+                count = count[0]
+            if isinstance(count, int):
+                break
         return count
 
     def count(self,
