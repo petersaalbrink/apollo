@@ -664,7 +664,11 @@ class MySQLClient:
                 new_len = max(len(f"{row[position]}") for row in chunk)
                 field_type = f"{field_type}({new_len})"
         else:
-            field_type = f"{field_type}({field_len + 1})"
+            if "," in field_len:
+                field_len, decimal_part = field_len.split(",")
+                field_type = f"{field_type}({int(field_len) + 1},{decimal_part})"
+            else:
+                field_type = f"{field_type}({int(field_len) + 1})"
 
         self.connect()
         self.execute(Query(
