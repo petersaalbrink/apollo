@@ -15,8 +15,10 @@ from phonenumbers.phonenumberutil import NumberParseException
 from requests import get as rget
 from text_unidecode import unidecode
 
-from .connectors import ESClient, MongoDB
-from .handlers import Timer, get
+from .connectors.elastic import ESClient, ElasticsearchException
+from .connectors.mongodb import MongoDB
+from .handlers import Timer
+from .requests import get
 from .parsers import Checks, flatten, levenshtein
 
 
@@ -343,7 +345,7 @@ class PersonData(SourceMatch, SourceScore):
         except (ConnectionError, IOError):
             self._local = False
 
-        # kwargs  # TODO: Check if you use all of these!
+        # kwargs
         self._cbs = kwargs.pop("cbs", False)
         self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
@@ -622,7 +624,6 @@ class PersonData(SourceMatch, SourceScore):
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                # TODO: test if this specifically behaves as intended
                 responses = [{"_id": d["_id"], **d["_source"]}
                              for d in self._es.find(
                         self._id_query(self._es.find(
@@ -666,10 +667,11 @@ class PersonData(SourceMatch, SourceScore):
             valid = False
         if valid:
             if self._local:
-                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
-                result = self._vn.find(query=query, first_only=True)
-                if result:
-                    return result["valid"]
+                with suppress(ElasticsearchException):
+                    query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
+                    result = self._vn.find(query=query, first_only=True)
+                    if result:
+                        return result["valid"]
             if self._call_to_validate:
                 if self._respect_hours:
                     t = localtime().tm_hour

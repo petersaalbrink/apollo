@@ -12,7 +12,7 @@ def getenv():
             file.parent.mkdir()
         except FileExistsError:
             pass
-        env = Path(__file__).parents[1] / ".env"
+        env = Path(__file__).parent / "etc/.env"
         with open(env) as src, open(file, "w") as dst:
             dst.write(src.read())
 

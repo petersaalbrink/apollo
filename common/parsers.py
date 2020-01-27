@@ -3,7 +3,7 @@ from urllib.parse import quote_plus
 from numpy import zeros
 from pandas import isna
 from pycountry import countries
-from .handlers import get
+from .requests import get
 from .connectors import EmailClient
 
 
