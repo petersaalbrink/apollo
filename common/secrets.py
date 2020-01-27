@@ -1,7 +1,11 @@
-from pathlib import Path
-from getpass import getpass
 from base64 import b64encode, b64decode
+from collections import namedtuple
+from contextlib import suppress
+from json import loads
+from pathlib import Path
+from requests import post
 try:
+    from getpass import getpass
     import termios
     _ = termios.tcgetattr, termios.tcsetattr
 except (ImportError, AttributeError):
@@ -24,19 +28,7 @@ NAMES = {
     "dev_platform": "Matrixian Platform (development)",
 }
 
-
-class Credentials:
-    __slots__ = ["usr", "pwd"]
-
-    def __init__(self, usr: str, pwd: str):
-        self.usr = usr
-        self.pwd = pwd
-
-    def __str__(self):
-        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(usr='{self.usr}', pwd=<hidden>)"
+Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
 
 def change_secret(name: str) -> Credentials:
@@ -84,3 +76,19 @@ def get_secret(name: str) -> Credentials:
             f.write(f"{name}::{usr}::{pwd}\n")
 
     return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
+
+
+def get_token() -> dict:
+    usr, pwd = get_secret("data_platform")
+    while True:
+        with suppress(KeyError):
+            posted = post("https://api.matrixiangroup.com/token",
+                          data={"username": usr,
+                                "password": pwd})
+            token = loads(posted.text)["access_token"]
+            break
+    return {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }

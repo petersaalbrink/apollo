@@ -10,15 +10,16 @@ from time import localtime, sleep
 from typing import Iterable, NamedTuple, Optional, Tuple, Union
 
 from dateutil.parser import parse as dateparse
-from numpy import zeros
 from phonenumbers import is_valid_number, parse
 from phonenumbers.phonenumberutil import NumberParseException
 from requests import get as rget
 from text_unidecode import unidecode
 
-from .connectors import ESClient, MongoDB
-from .handlers import Timer, get
-from .parsers import Checks, flatten
+from .connectors.elastic import ESClient, ElasticsearchException
+from .connectors.mongodb import MongoDB
+from .handlers import Timer
+from .requests import get
+from .parsers import Checks, flatten, levenshtein
 
 
 class BaseDataClass(MutableMapping):
@@ -193,39 +194,13 @@ class SourceScore:
         to this function."""
         pass
 
-    @staticmethod
-    def levenshtein(seq1, seq2):
-        size_x = len(seq1) + 1
-        size_y = len(seq2) + 1
-        matrix = zeros((size_x, size_y))
-        for _x in range(size_x):
-            matrix[_x, 0] = _x
-        for _y in range(size_y):
-            matrix[0, _y] = _y
-        for _x in range(1, size_x):
-            for _y in range(1, size_y):
-                if seq1[_x - 1] == seq2[_y - 1]:
-                    matrix[_x, _y] = min(
-                        matrix[_x - 1, _y] + 1,
-                        matrix[_x - 1, _y - 1],
-                        matrix[_x, _y - 1] + 1
-                    )
-                else:
-                    matrix[_x, _y] = min(
-                        matrix[_x - 1, _y] + 1,
-                        matrix[_x - 1, _y - 1] + 1,
-                        matrix[_x, _y - 1] + 1
-                    )
-        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
-
     def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
-        # Set constants
+        # Set constant
         x = 100
-        year = self._year
 
         def date_score(result: Score, score: float) -> float:
-            return (1 - ((year - int(result.yearOfRecord)) / (x / 2))) * score
+            return (1 - ((self._year - int(result.yearOfRecord)) / (x / 2))) * score
 
         def source_score(result: Score, score: float) -> float:
             source = {
@@ -248,7 +223,7 @@ class SourceScore:
             return (1 - ((source[result.source] - 1) / (x * 2))) * score
 
         def death_score(result: Score, score: float) -> float:
-            _x = max((year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
+            _x = max((self._year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
             return score if result.deceased is None else _x * score
 
         def n_score(result: Score, score: float) -> float:
@@ -261,7 +236,7 @@ class SourceScore:
             taking into account the number of changes in name."""
             n1, n2 = result.matchedNames
             if n1 and n2:
-                lev = self.levenshtein(n1, n2)
+                lev = levenshtein(n1, n2)
                 if lev < .4 and (n1 not in n2 or n2 not in n1):
                     return 0
                 return lev * score
@@ -366,11 +341,11 @@ class PersonData(SourceMatch, SourceScore):
                            ":4000/email?email=")
         try:
             self._local = (rget("https://api.ipify.org").text
-                           == "94.168.87.210")
+                           in {"37.97.136.149", "94.168.87.210"})
         except (ConnectionError, IOError):
             self._local = False
 
-        # kwargs  # TODO: Check if you use all of these!
+        # kwargs
         self._cbs = kwargs.pop("cbs", False)
         self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
@@ -380,6 +355,7 @@ class PersonData(SourceMatch, SourceScore):
         self._score_testing = kwargs.pop("score_testing", False)
         self._call_to_validate = kwargs.pop("call_to_validate", True)
         self._response_type = kwargs.pop("response_type", "all")
+        self._use_sources = kwargs.pop("sources", ())
         categories = ("all", "name", "address", "phone")
         if (self._response_type not in categories and
                 not isinstance(self._response_type, (tuple, list))):
@@ -492,7 +468,10 @@ class PersonData(SourceMatch, SourceScore):
 
     @property
     def _main_fields(self) -> tuple:
-        if self._response_type == "phone":
+        if isinstance(self._response_type, (tuple, list)):
+            return tuple(f for f in self._response_type
+                         if f != "phoneNumber_country")
+        elif self._response_type == "phone":
             return "phoneNumber_number", "phoneNumber_mobile"
         elif self._response_type == "address":
             return "address_current_postalCode",
@@ -513,139 +492,77 @@ class PersonData(SourceMatch, SourceScore):
         name_only: met lastname en initials, wildcard op lastname,
             fuzziness en wildcard op initials in should met minimum_should_match=1
         """
-        query = {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"match": {
-                            self._es_mapping[field]: self.data[field]}}
-                        for field in self.data
-                        if field != "telephone" and self.data[field]],
-                    "minimum_should_match": self._strictness,
-                }
-            },
-            "sort": [
-                {"dateOfRecord": "desc"}
-            ]
-        }
-        yield "full", query
+        yield "full", self._base_query(must=[], should=[
+            {"match": {self._es_mapping[field]: self.data[field]}}
+            for field in self.data if field != "telephone" and self.data[field]],
+                                       minimum_should_match=self._strictness)
         if (self.data.postalCode and self.data.houseNumber
                 and self.data.lastname and self.data.initials):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"match": {
-                                "lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                            {"wildcard": {
-                                "initials":
-                                    f"{self.data.initials[0].lower()}*"
-                            }},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "initial", query
+            yield "initial", self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+        if self.data.lastname and self.data.initials:
+            if self.data.date_of_birth:
+                yield "dob", self._base_query(must=[
+                    {"match": {"birth.date": self.data.date_of_birth}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+            if self.data.number:
+                yield "number", self._base_query(must=[
+                    {"match": {"phoneNumber.number": self.data.number}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+            if self.data.mobile:
+                yield "mobile", self._base_query(must=[
+                    {"match": {"phoneNumber.mobile": self.data.mobile}},
+                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.lastname):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"match": {
-                                "lastname": {
-                                    "query": self.data.lastname,
-                                    "fuzziness": 2}}},
-                        ],
-                    }
-                }
-            }
+            query = self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}}])
+            if not self._cbs and self.data.initials:
+                query["query"]["bool"]["must"].append(
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
             yield "name", query
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "address.current.postalCode":
-                                    self.data.postalCode}},
-                            {"match": {
-                                "address.current.houseNumber":
-                                    self.data.houseNumber}},
-                            {"wildcard": {
-                                "lastname":
-                                    f"*{self.data.lastname.split()[-1].lower()}*"
-                            }},
-                        ],
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
+            query = self._base_query(must=[
+                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"match": {"address.current.houseNumber": self.data.houseNumber}},
+                {"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
+            if not self._cbs and self.data.initials:
+                query["query"]["bool"]["must"].append(
+                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
             yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber
                 and self.data.houseNumberExt):
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"address.current.postalCode": self.data.postalCode}},
-                            {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                        ],
-                        "should": [
-                            {"wildcard": {
-                                "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
-                            {"match": {"address.current.houseNumberExt": {
-                                "query": self.data.houseNumberExt[0], "fuzziness": 2}}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "address", query
+            yield "address", self._base_query(
+                must=[{"match": {"address.current.postalCode": self.data.postalCode}},
+                      {"match": {"address.current.houseNumber": self.data.houseNumber}}],
+                should=[{"wildcard": {
+                    "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
+                    {"match": {"address.current.houseNumberExt": {
+                        "query": self.data.houseNumberExt[0], "fuzziness": 2}}}],
+                minimum_should_match=1)
         if self._name_only_query and self.data.lastname and self.data.initials:
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"wildcard": {"lastname": f"*{self.data.lastname.split()[-1].lower()}*"}},
-                        ],
-                        "should": [
-                            {"wildcard": {
-                                "initials": f"*{self.data.initials[0].lower()}*"}},
-                            {"match": {"initials": {
-                                "query": self.data.initials[0], "fuzziness": 2}}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]
-            }
-            yield "name_only", query
+            yield "name_only", self._base_query(
+                must=[{"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
+                      {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+
+    def _base_query(self, **kwargs):
+        return self._extend_query({
+            "query": {"bool": kwargs},
+            "sort": [{"dateOfRecord": "desc"}]})
+
+    def _extend_query(self, query):
+        if self._use_sources:
+            query["query"]["bool"]["must"].append({"terms": {"source": [*self._use_sources]}})
+        return query
 
     @staticmethod
     def _id_query(responses: list) -> dict:
@@ -707,11 +624,10 @@ class PersonData(SourceMatch, SourceScore):
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                # TODO: test if this specifically behaves as intended
                 responses = [{"_id": d["_id"], **d["_source"]}
                              for d in self._es.find(
-                    self._id_query(self._es.find(
-                        q, source_only=True)))]
+                        self._id_query(self._es.find(
+                            q, source_only=True)))]
             else:
                 responses = [{"_id": d["_id"], **d["_source"]}
                              for d in self._es.find(q)]
@@ -751,16 +667,17 @@ class PersonData(SourceMatch, SourceScore):
             valid = False
         if valid:
             if self._local:
-                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
-                result = self._vn.find(query=query, first_only=True)
-                if result:
-                    return result["valid"]
-            if self._respect_hours:
-                t = localtime().tm_hour
-                while t >= 22 or t < 8:
-                    sleep(60)
-                    t = localtime().tm_hour
+                with suppress(ElasticsearchException):
+                    query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
+                    result = self._vn.find(query=query, first_only=True)
+                    if result:
+                        return result["valid"]
             if self._call_to_validate:
+                if self._respect_hours:
+                    t = localtime().tm_hour
+                    while t >= 22 or t < 8:
+                        sleep(60)
+                        t = localtime().tm_hour
                 while True:
                     response = get(f"{self._phone_url}{phone}",
                                    # headers={"Connection": "close"},
@@ -808,7 +725,7 @@ class PersonData(SourceMatch, SourceScore):
                     matchedNames=(self.data.lastname, response["lastname"]),
                     foundPersons=len({response["id"] for response in self._responses.values()}),
                 ))
-                self.result[self._score_mapping[key]] = f"{source}{score}"
+                self.result[self._score_mapping.get(key, f"{key}_score")] = f"{source}{score}"
 
     def _finalize(self):
         # Get match keys
@@ -816,9 +733,8 @@ class PersonData(SourceMatch, SourceScore):
         self.result["match_keys"].update(self._match_keys)
 
         # Fix dates
-        self.result["date"] = dateparse(self.result["date"], ignoretz=True)
-        for key in ("address_moved", "birth_date", "death_date"):
-            if key in self.result:
+        for key in ("date", "address_moved", "birth_date", "death_date"):
+            if key in self.result and isinstance(self.result[key], str):
                 self.result[key] = dateparse(self.result[key], ignoretz=True)
 
         debug("Result = %s", self.result)
@@ -1308,30 +1224,6 @@ class PhoneNumberFinder:
             """Uses name_input and name_output, before and after fuzzy
             matching, taking into account the number of changes in name."""
 
-            def levenshtein(seq1, seq2):
-                size_x = len(seq1) + 1
-                size_y = len(seq2) + 1
-                matrix = zeros((size_x, size_y))
-                for _x in range(size_x):
-                    matrix[_x, 0] = _x
-                for _y in range(size_y):
-                    matrix[0, _y] = _y
-                for _x in range(1, size_x):
-                    for _y in range(1, size_y):
-                        if seq1[_x - 1] == seq2[_y - 1]:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1],
-                                matrix[_x, _y - 1] + 1
-                            )
-                        else:
-                            matrix[_x, _y] = min(
-                                matrix[_x - 1, _y] + 1,
-                                matrix[_x - 1, _y - 1] + 1,
-                                matrix[_x, _y - 1] + 1
-                            )
-                return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
-
             return levenshtein(*result.matchedNames) * score if result.isFuzzy else score
 
         def missing_score(result: namedtuple, score: float) -> float:
@@ -1579,7 +1471,7 @@ class NamesData:
     def titles() -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
         with suppress(ConnectionError, IOError):
-            if rget("https://api.ipify.org").text == "94.168.87.210":
+            if rget("https://api.ipify.org").text in {"94.168.87.210", "37.97.136.149"}:
                 return set(doc["title"] for doc in
                            MongoDB("dev_peter.names_data").find({"data": "titles"}, {"title": True}))
         return {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",

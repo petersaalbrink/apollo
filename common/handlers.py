@@ -1,7 +1,6 @@
 from collections import OrderedDict
 from contextlib import ContextDecorator
-from concurrent.futures import ThreadPoolExecutor, wait
-from csv import DictReader, DictWriter
+from csv import DictReader, DictWriter, Error, Sniffer
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
@@ -14,59 +13,13 @@ from typing import (Any,
                     Callable,
                     ClassVar,
                     Dict,
-                    Iterable,
                     List,
                     MutableMapping,
                     Optional,
                     Tuple,
                     Union)
 from zipfile import ZipFile
-from requests import Session, Response
-from requests.adapters import HTTPAdapter
-from .connectors import EmailClient
-
-session = Session()
-session.mount('http://', HTTPAdapter(
-    pool_connections=100,
-    pool_maxsize=100))
-
-
-def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
-    """Sends a GET request. Returns :class:`Response` object.
-
-    :param text_only: return JSON data from :class:`Response` as dictionary.
-    :param url: URL for the new :class:`Request` object.
-    :param kwargs: Optional arguments that ``request`` takes.
-    """
-    return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
-
-
-def thread(function: Callable, data: Iterable, process: Callable = None):
-    """Thread :param data: with :param function: and optionally do :param process:.
-
-    Example:
-        from common import get, thread
-        thread(
-            function=lambda _: get("http://example.org"),
-            data=range(2000),
-            process=lambda result: print(result.status_code)
-        )"""
-    if process is None:
-        with ThreadPoolExecutor() as executor:
-            return [f.result() for f in
-                    wait({executor.submit(function, row) for row in data},
-                         return_when='FIRST_EXCEPTION').done]
-    else:
-        futures = set()
-        with ThreadPoolExecutor() as executor:
-            for row in data:
-                futures.add(executor.submit(function, row))
-                if len(futures) == 1000:
-                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-                    _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-            if done:
-                _ = [process(f.result()) for f in done]
+from .connectors.email import EmailClient
 
 
 def csv_write(data: Union[List[dict], dict],
@@ -77,6 +30,7 @@ def csv_write(data: Union[List[dict], dict],
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
     extrasaction: str = kwargs.pop("extrasaction", "raise")
+    quotechar: str = kwargs.pop("quotechar", '"')
 
     multiple_rows = isinstance(data, list)
     fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
@@ -87,6 +41,7 @@ def csv_write(data: Union[List[dict], dict],
                          fieldnames=fieldnames,
                          delimiter=delimiter,
                          extrasaction=extrasaction,
+                         quotechar=quotechar,
                          **kwargs)
         if not_exists:
             csv.writeheader()
@@ -97,13 +52,21 @@ def csv_write(data: Union[List[dict], dict],
 
 
 def csv_read(filename: Union[PurePath, str],
-             encoding: str = "utf-8",
-             delimiter: str = ","
+             **kwargs,
              ) -> MutableMapping:
     """Simple generator for reading from a csv file.
     Returns rows as OrderedDict, with None instead of empty string."""
-    with open(filename, encoding=encoding) as f:
-        for row in DictReader(f, delimiter=delimiter):
+    with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
+        if kwargs.pop("sniff", False):
+            try:
+                dialect = Sniffer().sniff(f.read())
+            except Error:
+                dialect = "excel"
+            finally:
+                f.seek(0)
+        else:
+            dialect = "excel"
+        for row in DictReader(f, dialect=dialect, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
 
 
@@ -149,7 +112,18 @@ class Log:
 def send_email(function: Callable = None, *,
                to_address: Union[str, list] = None,
                message: str = None):
-    """Function decorator to send emails!"""
+    """Function decorator to send emails!
+
+    Usage::
+        @send_email
+        def my_func():
+            pass
+
+    or::
+        def my_func():
+            pass
+        send_email(my_func)()
+    """
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
 
@@ -269,8 +243,13 @@ class ZipData:
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
 
-    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
-            -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
+    def open(self,
+             remove: bool = False,
+             n_lines: int = None,
+             as_generator: bool = False
+             ) -> Union[List[OrderedDict],
+                        List[list],
+                        Dict[str, List[OrderedDict]]]:
         """Load (and optionally remove) data from zip archive. If the
         archive contains multiple csv files, they are returned in
         Dict[str, List[OrderedDict]] format.
@@ -382,7 +361,7 @@ class TicToc(ContextDecorator):
 
         return elapsed_time
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> "TicToc":
         """Start a new timer as a context manager"""
         self.start()
         return self
