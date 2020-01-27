@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
 from pathlib import Path
+from threading import Lock
 from typing import (Callable,
                     Iterable,
                     Iterator,
@@ -9,6 +10,30 @@ from requests import Session, Response
 from requests.adapters import HTTPAdapter
 
 
+class ThreadSafeIterator:
+    """Takes an iterator/generator and makes it thread-safe
+    by serializing call to the `next` method of given iterator/generator.
+    """
+    def __init__(self, it):
+        self.it = it
+        self.lock = Lock()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        with self.lock:
+            return self.it.__next__()
+
+
+def threadsafe(f):
+    """A decorator that takes a generator function and makes it thread-safe."""
+    def g(*args, **kwargs):
+        return ThreadSafeIterator(f(*args, **kwargs))
+    return g
+
+
+@threadsafe
 def get_proxies() -> Iterator[dict]:
 
     # Get proxies
@@ -45,14 +70,20 @@ session.mount('http://', HTTPAdapter(
 get_kwargs = get_proxies()
 
 
-def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
+def get(url,
+        text_only: bool = False,
+        use_proxies: bool = False,
+        **kwargs
+        ) -> Union[dict, Response]:
     """Sends a GET request. Returns :class:`Response` object.
 
-    :param text_only: return JSON data from :class:`Response` as dictionary.
     :param url: URL for the new :class:`Request` object.
+    :param text_only: return JSON data from :class:`Response` as dictionary.
+    :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    kwargs.update(next(get_kwargs))
+    if use_proxies:
+        kwargs.update(next(get_kwargs))
     return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
 
 
