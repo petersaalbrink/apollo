@@ -557,6 +557,8 @@ class MySQLClient:
         # Setup
         if not data or not data[0]:
             raise ValueError("Provide non-empty data.")
+        elif fieldnames and isinstance(data[0], dict):
+            pass
         elif not fieldnames and not isinstance(data[0], dict):
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
@@ -620,16 +622,17 @@ class MySQLClient:
         :param raise_on_error: Raise on error during creating (default: True).
         """
         if "." in table:
-            self.database, table = table.split(".")
+            self.database, self.table_name = table.split(".")
         self.connect()
         if drop_existing:
-            query = Query(f"DROP TABLE {self.database}.{table}")
+            query = Query(f"DROP TABLE {self.database}.{self.table_name}")
             if raise_on_error:
                 self.execute(query)
             else:
                 with suppress(DatabaseError):
                     self.execute(query)
-        query = Query(f"CREATE TABLE {table} ({self._fields(fields)})")
+        query = Query(f"CREATE TABLE {self.database}.{self.table_name}"
+                      f" ({self._fields(fields)})")
         if raise_on_error:
             self.execute(query)
         else:
@@ -770,8 +773,7 @@ class MySQLClient:
                 self.database, self.table_name = table.split(".")
             else:
                 self.table_name = table
-        query = (f"ALTER TABLE {self.database}."
-                 f"{table if table else self.table_name}")
+        query = f"ALTER TABLE {self.database}.{self.table_name}"
         if not fieldnames:
             fieldnames = self.column()
         if isinstance(fieldnames, str):
