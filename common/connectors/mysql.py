@@ -276,7 +276,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.execute(query, *args, **kwargs)
-        if any(query.upper().startswith(s) for s in
+        if any(query.strip().upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
@@ -295,7 +295,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.executemany(query, data, *args, **kwargs)
-        if any(query.upper().startswith(s) for s in
+        if any(query.strip().upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
@@ -964,7 +964,7 @@ class MySQLClient:
                     raise
                 e = f"{e}"
                 if ("truncated" in e or "Out of range value" in e
-                        and query.upper().startswith("INSERT")):
+                        and query.strip().upper().startswith("INSERT")):
                     self._increase_max_field_len(e)
                 else:
                     raise
@@ -1037,7 +1037,7 @@ class MySQLClient:
         if select_fields and len(select_fields) == 0:
             raise TypeError(f"Empty {type(select_fields)} not accepted.")
         if table and (isinstance(table, Query)
-                      or table.startswith("SELECT")):
+                      or table.strip().upper().startswith("SELECT")):
             query = table
         else:
             query = self.build(table=table,
