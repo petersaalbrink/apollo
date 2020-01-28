@@ -1,7 +1,7 @@
-from .connectors import (ESClient,
-                         EmailClient,
-                         MySQLClient,
-                         MongoDB)
+from .connectors.elastic import ESClient
+from .connectors.email import EmailClient
+from .connectors.mongodb import MongoDB
+from .connectors.mysql import MySQLClient
 from .handlers import (Timer,
                        ZipData,
                        csv_write,
