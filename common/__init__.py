@@ -20,7 +20,7 @@ from .persondata import (NoMatch,
 from .requests import (get,
                        thread,
                        get_proxies,
-                       get_kwargs)
+                       get_session)
 from .visualizations import (RadarPlot,
                              DistributionPlot,
                              plot_stacked_bar)
