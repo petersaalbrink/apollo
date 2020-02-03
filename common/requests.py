@@ -69,7 +69,7 @@ def get_session(
     backoff_factor=0.3,
     status_forcelist=(500, 502, 504),
     session=None,
-):
+) -> Session:
     session = session or Session()
     retry = Retry(
         total=retries,
@@ -88,7 +88,7 @@ def get_session(
 
 
 common_session = get_session()
-get_kwargs = get_proxies()
+get_kwargs = iter(get_proxies())
 
 
 def get(url,
@@ -103,7 +103,7 @@ def get(url,
     :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    global common_session
+    global common_session, get_kwargs
     if use_proxies:
         kwargs.update(next(get_kwargs))
     return (common_session.get(url, **kwargs).json()
