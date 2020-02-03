@@ -276,7 +276,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.execute(query, *args, **kwargs)
-        if any(query.upper().startswith(s) for s in
+        if any(query.strip().upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
@@ -295,7 +295,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.executemany(query, data, *args, **kwargs)
-        if any(query.upper().startswith(s) for s in
+        if any(query.strip().upper().startswith(s) for s in
                ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
@@ -557,6 +557,8 @@ class MySQLClient:
         # Setup
         if not data or not data[0]:
             raise ValueError("Provide non-empty data.")
+        elif fieldnames and isinstance(data[0], dict):
+            pass
         elif not fieldnames and not isinstance(data[0], dict):
             raise ValueError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
@@ -620,16 +622,17 @@ class MySQLClient:
         :param raise_on_error: Raise on error during creating (default: True).
         """
         if "." in table:
-            self.database, table = table.split(".")
+            self.database, self.table_name = table.split(".")
         self.connect()
         if drop_existing:
-            query = Query(f"DROP TABLE {self.database}.{table}")
+            query = Query(f"DROP TABLE {self.database}.{self.table_name}")
             if raise_on_error:
                 self.execute(query)
             else:
                 with suppress(DatabaseError):
                     self.execute(query)
-        query = Query(f"CREATE TABLE {table} ({self._fields(fields)})")
+        query = Query(f"CREATE TABLE {self.database}.{self.table_name}"
+                      f" ({self._fields(fields)})")
         if raise_on_error:
             self.execute(query)
         else:
@@ -644,10 +647,14 @@ class MySQLClient:
         field = e.split("'")[1]
         if table is None:
             table = self.table_name
-        field_type, position = self.row(Query(
+        result = self.row(Query(
             f"SELECT COLUMN_TYPE, ORDINAL_POSITION FROM information_schema.COLUMNS"
             f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
             f" = '{table}' AND COLUMN_NAME = '{field}'"))
+        if result:
+            field_type, position = result
+        else:
+            raise
         field_type, field_len = field_type.strip(")").split("(")
 
         if chunk is not None:
@@ -770,8 +777,7 @@ class MySQLClient:
                 self.database, self.table_name = table.split(".")
             else:
                 self.table_name = table
-        query = (f"ALTER TABLE {self.database}."
-                 f"{table if table else self.table_name}")
+        query = f"ALTER TABLE {self.database}.{self.table_name}"
         if not fieldnames:
             fieldnames = self.column()
         if isinstance(fieldnames, str):
@@ -962,7 +968,7 @@ class MySQLClient:
                     raise
                 e = f"{e}"
                 if ("truncated" in e or "Out of range value" in e
-                        and query.upper().startswith("INSERT")):
+                        and query.strip().upper().startswith("INSERT")):
                     self._increase_max_field_len(e)
                 else:
                     raise
@@ -1035,7 +1041,7 @@ class MySQLClient:
         if select_fields and len(select_fields) == 0:
             raise TypeError(f"Empty {type(select_fields)} not accepted.")
         if table and (isinstance(table, Query)
-                      or table.startswith("SELECT")):
+                      or table.strip().upper().startswith("SELECT")):
             query = table
         else:
             query = self.build(table=table,

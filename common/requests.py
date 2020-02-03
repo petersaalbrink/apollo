@@ -8,6 +8,7 @@ from typing import (Callable,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class ThreadSafeIterator:
@@ -63,10 +64,30 @@ def get_proxies() -> Iterator[dict]:
         yield kwargs
 
 
-session = Session()
-session.mount('http://', HTTPAdapter(
-    pool_connections=100,
-    pool_maxsize=100))
+def get_session(
+    retries=3,
+    backoff_factor=0.3,
+    status_forcelist=(500, 502, 504),
+    session=None,
+):
+    session = session or Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(
+        max_retries=retry,
+        pool_connections=100,
+        pool_maxsize=100)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
+common_session = get_session()
 get_kwargs = get_proxies()
 
 
@@ -82,9 +103,12 @@ def get(url,
     :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
+    global common_session
     if use_proxies:
         kwargs.update(next(get_kwargs))
-    return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
+    return (common_session.get(url, **kwargs).json()
+            if text_only else
+            common_session.get(url, **kwargs))
 
 
 def thread(function: Callable,
