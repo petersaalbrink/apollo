@@ -20,7 +20,7 @@ setup(
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
     packages=["common", "common.connectors"],
     install_requires=pkgs,
-    package_data={"common": ["certificates/*.pem"]},
+    package_data={"common": ["certificates/*.pem", "etc/*"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
