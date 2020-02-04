@@ -11,6 +11,7 @@ pycountry
 pymailcheck
 pymongo
 python-dotenv
+pyxlsb
 requests
 text-unidecode
 tqdm
