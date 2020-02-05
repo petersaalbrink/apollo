@@ -872,12 +872,12 @@ class MySQLClient:
                 elif v.startswith("!"):
                     key = rf"""{k} != "{v[1:]}" """
                 elif v.startswith((">", "<")):
-                    key = rf"{k} {v[0]} '{v[1:]}'"
+                    key = rf"{k} {v[0]} {v[1:]}"
                 elif v.startswith((">=", "<=")):
-                    key = rf"""{k} {v[:2]} "{v[2:]}" """
+                    key = rf"""{k} {v[:2]} {v[2:]} """
                 elif "%" in v:
                     key = rf"""{k} LIKE "{v}" """
-                elif "IN " in v:
+                elif v.startswith("IN "):
                     key = rf"{k} {v}"
                 if '"' in v and r'\"' not in v:
                     v = v.replace('"', r'\"')
