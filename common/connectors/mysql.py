@@ -18,17 +18,10 @@ from typing import (Any,
                     Union)
 
 from mysql.connector import connect
-from mysql.connector.connection import MySQLConnection
-from mysql.connector.cursor import (MySQLCursor,
-                                    MySQLCursorDict,
-                                    MySQLCursorBuffered,
-                                    MySQLCursorBufferedDict)
-from mysql.connector.connection_cext import CMySQLConnection
+from mysql.connector.abstracts import (
+    MySQLCursorAbstract as MySQLCursor,
+    MySQLConnectionAbstract as MySQLConnection)
 from mysql.connector.constants import ClientFlag
-from mysql.connector.cursor_cext import (CMySQLCursor,
-                                         CMySQLCursorDict,
-                                         CMySQLCursorBuffered,
-                                         CMySQLCursorBufferedDict)
 from mysql.connector.errors import (DatabaseError,
                                     InterfaceError,
                                     OperationalError)
@@ -219,15 +212,7 @@ class MySQLClient:
 
     def connect(self,
                 conn: bool = False
-                ) -> Union[CMySQLCursor,
-                           CMySQLCursorDict,
-                           CMySQLCursorBuffered,
-                           CMySQLCursorBufferedDict,
-                           CMySQLConnection,
-                           MySQLCursor,
-                           MySQLCursorDict,
-                           MySQLCursorBuffered,
-                           MySQLCursorBufferedDict,
+                ) -> Union[MySQLCursor,
                            MySQLConnection]:
         """Connect to MySQL server.
 
