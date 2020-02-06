@@ -13,7 +13,9 @@ from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse
 from phonenumbers.phonenumberutil import NumberParseException
 from requests import get as rget
+from requests.exceptions import RetryError
 from text_unidecode import unidecode
+from urllib3.exceptions import MaxRetryError
 
 from .connectors.elastic import ESClient, ElasticsearchException
 from .connectors.mongodb import MongoDB
@@ -679,15 +681,16 @@ class PersonData(SourceMatch, SourceScore):
                         sleep(60)
                         t = localtime().tm_hour
                 while True:
-                    response = get(f"{self._phone_url}{phone}",
-                                   # headers={"Connection": "close"},
-                                   auth=("datateam", "matrixian"))
-                    if not response.ok:
-                        self._phone_url = "http://94.168.87.210:4000/call/"
-                    else:
-                        valid = loads(response.text)
-                        # response.close()
-                        break
+                    with suppress(RetryError, MaxRetryError):
+                        response = get(f"{self._phone_url}{phone}",
+                                       # headers={"Connection": "close"},
+                                       auth=("datateam", "matrixian"))
+                        if not response.ok:
+                            self._phone_url = "http://94.168.87.210:4000/call/"
+                        else:
+                            valid = loads(response.text)
+                            # response.close()
+                            break
         return valid
 
     def _email_valid(self, email: str):
@@ -1121,14 +1124,15 @@ class PhoneNumberFinder:
                 self.sleep_or_continue()
             if self.call_to_validate:
                 while True:
-                    valid = get(f"{self.url}{phone}", auth=("datateam", "matrixian"))
-                    if not valid:
-                        self.url = "http://94.168.87.210:4000/call/+31"
-                        debug("First try: %s", t.end())
-                    else:
-                        valid = loads(valid.text)
-                        debug("Request: %s", t.end())
-                        break
+                    with suppress(RetryError, MaxRetryError):
+                        valid = get(f"{self.url}{phone}", auth=("datateam", "matrixian"))
+                        if not valid:
+                            self.url = "http://94.168.87.210:4000/call/+31"
+                            debug("First try: %s", t.end())
+                        else:
+                            valid = loads(valid.text)
+                            debug("Request: %s", t.end())
+                            break
         return valid
 
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
