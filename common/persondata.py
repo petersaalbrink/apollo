@@ -353,7 +353,7 @@ class PersonData(SourceMatch, SourceScore):
         self._respect_hours = kwargs.pop("respect_hours", True)
         self._name_only_query = kwargs.pop("name_only_query", False)
         self._score_testing = kwargs.pop("score_testing", False)
-        self._call_to_validate = kwargs.pop("call_to_validate", True)
+        self._call_to_validate = kwargs.pop("call_to_validate", False)
         self._response_type = kwargs.pop("response_type", "all")
         self._use_sources = kwargs.pop("sources", ())
         categories = ("all", "name", "address", "phone")

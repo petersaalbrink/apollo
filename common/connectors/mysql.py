@@ -18,17 +18,10 @@ from typing import (Any,
                     Union)
 
 from mysql.connector import connect
-from mysql.connector.connection import MySQLConnection
-from mysql.connector.cursor import (MySQLCursor,
-                                    MySQLCursorDict,
-                                    MySQLCursorBuffered,
-                                    MySQLCursorBufferedDict)
-from mysql.connector.connection_cext import CMySQLConnection
+from mysql.connector.abstracts import (
+    MySQLCursorAbstract as MySQLCursor,
+    MySQLConnectionAbstract as MySQLConnection)
 from mysql.connector.constants import ClientFlag
-from mysql.connector.cursor_cext import (CMySQLCursor,
-                                         CMySQLCursorDict,
-                                         CMySQLCursorBuffered,
-                                         CMySQLCursorBufferedDict)
 from mysql.connector.errors import (DatabaseError,
                                     InterfaceError,
                                     OperationalError)
@@ -219,15 +212,7 @@ class MySQLClient:
 
     def connect(self,
                 conn: bool = False
-                ) -> Union[CMySQLCursor,
-                           CMySQLCursorDict,
-                           CMySQLCursorBuffered,
-                           CMySQLCursorBufferedDict,
-                           CMySQLConnection,
-                           MySQLCursor,
-                           MySQLCursorDict,
-                           MySQLCursorBuffered,
-                           MySQLCursorBufferedDict,
+                ) -> Union[MySQLCursor,
                            MySQLConnection]:
         """Connect to MySQL server.
 
@@ -626,11 +611,8 @@ class MySQLClient:
         self.connect()
         if drop_existing:
             query = Query(f"DROP TABLE {self.database}.{self.table_name}")
-            if raise_on_error:
+            with suppress(DatabaseError):
                 self.execute(query)
-            else:
-                with suppress(DatabaseError):
-                    self.execute(query)
         query = Query(f"CREATE TABLE {self.database}.{self.table_name}"
                       f" ({self._fields(fields)})")
         if raise_on_error:
@@ -816,7 +798,7 @@ class MySQLClient:
             fields = self.create_definition(data)
         self.create_table(table, fields,
                           drop_existing=True,
-                          raise_on_error=False)
+                          raise_on_error=True)
         with suppress(DatabaseError):
             self.add_index(table, list(fields))
         return self.insert(table, data)
@@ -856,29 +838,35 @@ class MySQLClient:
         """Build a MySQL query"""
 
         def search_for(k, v):
-            key = f"{k} = '{v}'"
+            key = rf"""{k} = "{v}" """
             if isinstance(v, int):
-                key = f"{k} = {v}"
+                key = rf"{k} = {v}"
             elif isinstance(v, str):
                 if v == "NULL":
-                    key = f"{k} = {v}"
+                    key = rf"{k} = {v}"
                 elif v == "IS NULL":
-                    key = f"{k} IS NULL"
+                    key = rf"{k} IS NULL"
                 elif v == "!NULL":
-                    key = f"{k} IS NOT NULL"
+                    key = rf"{k} IS NOT NULL"
                 elif "!IN " in v:
                     v = v.replace("!", "NOT ")
-                    key = f"{k} {v}"
+                    key = rf"{k} {v}"
                 elif v.startswith("!"):
-                    key = f"{k} != '{v[1:]}'"
+                    key = rf"""{k} != "{v[1:]}" """
                 elif v.startswith((">", "<")):
-                    key = f"{k} {v[0]} '{v[1:]}'"
+                    key = rf"{k} {v[0]} {v[1:]}"
                 elif v.startswith((">=", "<=")):
-                    key = f"{k} {v[:2]} '{v[2:]}'"
+                    key = rf"""{k} {v[:2]} {v[2:]} """
                 elif "%" in v:
-                    key = f"{k} LIKE '{v}'"
-                elif "IN " in v:
-                    key = f"{k} {v}"
+                    key = rf"""{k} LIKE "{v}" """
+                elif v.startswith("IN "):
+                    key = rf"{k} {v}"
+                if '"' in v and r'\"' not in v:
+                    v = v.replace('"', r'\"')
+                    key = rf"""{k} = "{v}" """
+                if "'" in v and r"\'" not in v:
+                    v = v.replace("'", r"\'")
+                    key = rf"""{k} = "{v}" """
             return key
 
         if not and_or:
@@ -899,7 +887,7 @@ class MySQLClient:
 
         if fields_as:
             if isinstance(select_fields, str):
-                query = f"SELECT {distinct} {select_fields} AS {fields_as[select_fields]} FROM {table}"
+                query = rf"SELECT {distinct} {select_fields} AS {fields_as[select_fields]} FROM {table}"
             else:
                 if not select_fields:
                     select_fields = self.column()
@@ -908,47 +896,47 @@ class MySQLClient:
                         if field not in fields_as:
                             fields_as[field] = field
                 fields_as = [f"{a} AS {b}" for a, b in fields_as.items()]
-                query = f"SELECT {distinct} {', '.join(fields_as)} FROM {table} "
+                query = rf"SELECT {distinct} {', '.join(fields_as)} FROM {table} "
         else:
             if not select_fields:
-                query = f"SELECT {distinct} * FROM {table} "
+                query = rf"SELECT {distinct} * FROM {table} "
             elif isinstance(select_fields, str):
-                query = f"SELECT {distinct} {select_fields} FROM {table}"
+                query = rf"SELECT {distinct} {select_fields} FROM {table}"
             else:
-                query = f"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
+                query = rf"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
 
         if not all([field is None, value is None]):
-            query = f"{query} WHERE {search_for(field, value)}"
+            query = rf"{query} WHERE {search_for(field, value)}"
         if kwargs:
             keys = []
             for field, value in kwargs.items():
                 if isinstance(value, list):
-                    skey = f" {and_or} ".join([search_for(field, skey) for skey in value])
+                    skey = rf" {and_or} ".join([search_for(field, skey) for skey in value])
                 else:
                     skey = search_for(field, value)
                 keys.append(skey)
-            keys = f" {and_or} ".join(keys)
+            keys = rf" {and_or} ".join(keys)
             if "WHERE" in query:
-                query = f"{query} {and_or} {keys}"
+                query = rf"{query} {and_or} {keys}"
             else:
-                query = f"{query} WHERE {keys}"
+                query = rf"{query} WHERE {keys}"
         if group_by:
             if isinstance(group_by, str):
                 group_by = [group_by]
             group_by = ", ".join(group_by)
-            query = f"{query} GROUP BY {group_by}"
+            query = rf"{query} GROUP BY {group_by}"
         if order_by:
             if isinstance(order_by, str):
                 order_by = [order_by]
             order_by = ", ".join(order_by)
-            query = f"{query} ORDER BY {order_by}"
+            query = rf"{query} ORDER BY {order_by}"
         if limit:
             if isinstance(limit, (int, str)):
-                query = f"{query} LIMIT {limit}"
+                query = rf"{query} LIMIT {limit}"
             elif isinstance(limit, (list, tuple)):
-                query = f"{query} LIMIT {limit[0]}, {limit[1]}"
+                query = rf"{query} LIMIT {limit[0]}, {limit[1]}"
         if offset:
-            query = f"{query} OFFSET {offset} "
+            query = rf"{query} OFFSET {offset} "
         return Query(query)
 
     def _execute_query(self, query: Union[Query, str]):
