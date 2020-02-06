@@ -17,6 +17,8 @@ from .persondata import (NoMatch,
                          NamesData,
                          PhoneNumberFinder,
                          PersonData)
+from .platform import (FileTransfer,
+                       notify)
 from .requests import (get,
                        thread,
                        get_proxies,
@@ -52,4 +54,6 @@ __all__ = [
     "RadarPlot",
     "DistributionPlot",
     "plot_stacked_bar",
+    __file__,
+    "__version__",
 ]

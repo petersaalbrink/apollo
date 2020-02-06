@@ -53,7 +53,10 @@ class EmailClient:
             from traceback import format_exception
             message = f"{message}\n\n{''.join(format_exception(*exc_info()))}" \
                 if message else "".join(format_exception(*exc_info()))
-        msg.attach(MIMEText(message, "plain"))
+        message = MIMEText(
+            message,
+            "html" if message.startswith("<!doctype html>") else "plain")
+        msg.attach(message)
 
         if attachment_path:
             p = MIMEBase("application", "octet-stream")
