@@ -54,6 +54,5 @@ __all__ = [
     "DistributionPlot",
     "plot_stacked_bar",
     "FileTransfer",
-    __file__,
     "__version__",
 ]
