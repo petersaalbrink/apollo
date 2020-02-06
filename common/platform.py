@@ -3,6 +3,7 @@ from pathlib import Path
 from secrets import token_hex
 from subprocess import run
 from time import time
+from typing import List, Union
 from bson import DBRef, ObjectId
 from pendulum import timezone
 from .connectors.email import EmailClient
@@ -40,7 +41,7 @@ class FileTransfer:
         self.filetransfer_file_upload()
 
     def notify(self,
-               to_address: str,
+               to_address: Union[str, List[str]],
                username: str):
         template = Path(__file__).parent / "etc/email.html"
         with open(template) as f:
