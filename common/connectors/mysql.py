@@ -626,11 +626,8 @@ class MySQLClient:
         self.connect()
         if drop_existing:
             query = Query(f"DROP TABLE {self.database}.{self.table_name}")
-            if raise_on_error:
+            with suppress(DatabaseError):
                 self.execute(query)
-            else:
-                with suppress(DatabaseError):
-                    self.execute(query)
         query = Query(f"CREATE TABLE {self.database}.{self.table_name}"
                       f" ({self._fields(fields)})")
         if raise_on_error:
@@ -816,7 +813,7 @@ class MySQLClient:
             fields = self.create_definition(data)
         self.create_table(table, fields,
                           drop_existing=True,
-                          raise_on_error=False)
+                          raise_on_error=True)
         with suppress(DatabaseError):
             self.add_index(table, list(fields))
         return self.insert(table, data)
