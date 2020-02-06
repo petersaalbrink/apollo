@@ -6,6 +6,7 @@ nameparser
 numpy
 openpyxl
 pandas
+pendulum
 phonenumbers
 pycountry
 pymailcheck

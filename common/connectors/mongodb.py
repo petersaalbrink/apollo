@@ -23,7 +23,12 @@ class MongoDB(MongoClient):
         if collection and not database:
             raise ValueError("Please provide a database name as well.")
         if not host:
-            host = "address" if database and "addressvalidation" in database else "dev"
+            host = "dev"
+            if database:
+                if "addressvalidation" in database:
+                    host = "address"
+                elif "production" in database:
+                    host = "prod"
         elif host == "stg":
             raise DeprecationWarning("Staging database is not used anymore.")
         if not client and not database:

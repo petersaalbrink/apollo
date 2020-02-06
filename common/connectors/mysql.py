@@ -158,7 +158,7 @@ class MySQLClient:
         Default::
             sql = MySQLClient("mx_traineeship_peter")
         """
-        from common import __file__
+        import common
         from common.env import getenv
         from common.secrets import get_secret
         usr, pwd = get_secret("sql")
@@ -171,7 +171,7 @@ class MySQLClient:
             database, table = database.split(".")
         self.database = database
         self.table_name = table
-        path = Path(__file__).parent / "certificates"
+        path = Path(common.__file__).parent / "certificates"
         self.__config = {
             "user": usr,
             "password": pwd,
