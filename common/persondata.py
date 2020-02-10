@@ -592,7 +592,7 @@ class PersonData(SourceMatch, SourceScore):
 
     @staticmethod
     def _check_country(country: str):
-        if (country not in
+        if (country and country.lower() not in
                 {"nederland", "netherlands", "nl", "nld"}):
             raise NotImplementedError(
                 f"Not implemented for country "
@@ -743,7 +743,7 @@ class PersonData(SourceMatch, SourceScore):
         debug("Result = %s", self.result)
 
     def match(self, data: dict) -> dict:
-        self._check_country(data.pop("country", "nl").lower())
+        self._check_country(data.pop("country", "nl"))
         self.data = self._clean(Data(**data))
         self._find()
         if self.result:
