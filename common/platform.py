@@ -1,11 +1,12 @@
 from datetime import datetime
 from pathlib import Path
 from secrets import token_hex
-from subprocess import run
+from subprocess import run, CalledProcessError
 from time import time
 from typing import List, Union
 from bson import DBRef, ObjectId
 from pendulum import timezone
+from pymongo.errors import PyMongoError
 from .connectors.email import EmailClient
 from .connectors.mongodb import MongoDB
 
@@ -17,9 +18,10 @@ class FileTransfer:
         self.filepath = (
             f"/var/www/platform_projects/public/upload/filetransfer"
             f"/{user_id}/{token_hex(10)}{round(time())}")
+        self.db = MongoDB("production_api.filetransferFile", host="prod")
 
     def filetransfer_database_entry(self) -> "FileTransfer":
-        MongoDB("production_api.filetransferFile", host="prod").insert_one({
+        self.db.insert_one({
             "createdDate": datetime.now(tz=timezone("Europe/Amsterdam")),
             "filePath": self.filepath,
             "fileName": self.filename,
@@ -39,9 +41,29 @@ class FileTransfer:
             run(cmd, shell=True)
         return self
 
+    def test_mongo(self):
+        try:
+            self.db.find_one()
+        except PyMongoError:
+            raise RuntimeError(
+                "Make sure you have access to MongoDB prod/live server.")
+
+    @staticmethod
+    def test_ssh():
+        try:
+            run("ssh consucom echo ok", shell=True).check_returncode()
+        except CalledProcessError:
+            raise RuntimeError(
+                "Make sure you have an entry for consucom in ~/.ssh/config.")
+
+    def test_connections(self):
+        self.test_mongo()
+        self.test_ssh()
+
     def transfer(self) -> "FileTransfer":
-        self.filetransfer_database_entry()
+        self.test_connections()
         self.filetransfer_file_upload()
+        self.filetransfer_database_entry()
         return self
 
     def notify(self,
