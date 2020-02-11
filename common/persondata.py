@@ -83,6 +83,9 @@ class Score:
     mobile: bool
     matchedNames: Tuple[str, str]
     foundPersons: int
+# TODO: incorporate into SourceScore:
+#  total number of search results
+#  frequency of lastname
 
 
 class SourceMatch:
@@ -154,6 +157,7 @@ class SourceMatch:
         return {key for key in self._matched if self._matched[key]}
 
     def _match_sources_def(self):
+        # TODO: incorporate gender and initials into match scoring system
         yield "A", (self._matched["lastname"]
                     and self._matched["address"]
                     and self._matched["birth_date"]
