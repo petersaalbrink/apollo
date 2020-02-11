@@ -328,7 +328,60 @@ class NoMatch(Exception):
 
 
 class PersonData(SourceMatch, SourceScore):
-    # TODO: documentation
+    """Match data with Matrixian's Person Database.
+
+    Main method::
+    :meth:`PersonData.match`
+
+    The match method returns a dictionary which includes the person data,
+    in addition to:
+        * Several calculated scores
+        * Search type
+        * Match keys
+
+    Please refer to the following page for documentation of the
+    keyword arguments that are available:
+    https://matrixiangroup.atlassian.net/wiki/spaces/SF/pages/1319763972/Person+matching#Tweaking-parameters
+
+    Example::
+        pd = PersonData(call_to_validate=True)
+        data = {
+            "initials": "P",
+            "lastname": "Saalbrink",
+            "postalCode": "1071XB",
+            "houseNumber": "71",
+            "houseNumberExt": "B",
+        }
+        try:
+            result = pd.match(data)
+            print(result)
+        except NoMatch:
+            pass
+    :return: {
+        'address_current_city': 'Amsterdam',
+        'address_current_country': 'NL',
+        'address_current_houseNumber': 71,
+        'address_current_houseNumberExt': 'BA',
+        'address_current_location': [4.88027692, 52.35333008],
+        'address_current_postalCode': '1071XB',
+        'address_current_state': 'Noord-Holland',
+        'address_current_street': 'Ruysdaelstraat',
+        'address_score': 'C2',
+        'date': datetime.datetime(2018, 12, 20, 0, 0),
+        'gender': 'M',
+        'initials': 'PP',
+        'lastname': 'Saalbrink',
+        'match_keys': {'lastname', 'initials', 'address'},
+        'mobile_score': 'C1',
+        'name_score': 'C2',
+        'number_score': 'C2',
+        'phoneNumber_country': '+31',
+        'phoneNumber_mobile': 649978891,
+        'phoneNumber_number': 203345554,
+        'search_type': 'initial',
+        'source': 'company_data_NL_contact'
+    }
+    """
     def __init__(self, **kwargs):
         super().__init__()
 
