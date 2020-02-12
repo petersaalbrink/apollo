@@ -344,7 +344,7 @@ class PersonData(SourceMatch, SourceScore):
     https://matrixiangroup.atlassian.net/wiki/spaces/SF/pages/1319763972/Person+matching#Tweaking-parameters
 
     Example::
-        pd = PersonData(call_to_validate=True)
+        pm = PersonData(call_to_validate=True)
         data = {
             "initials": "P",
             "lastname": "Saalbrink",
@@ -353,7 +353,7 @@ class PersonData(SourceMatch, SourceScore):
             "houseNumberExt": "B",
         }
         try:
-            result = pd.match(data)
+            result = pm.match(data)
             print(result)
         except NoMatch:
             pass
