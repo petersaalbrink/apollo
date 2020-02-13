@@ -222,9 +222,12 @@ class MySQLClient:
         :return: Either a :class:`CMySQLConnection` or a (subclass of)
         :class:`CMySQLCursor`, dependent on :param conn:.
         """
-        self.cnx = connect(**self.__config)
-        self.cursor = self.cnx.cursor(buffered=self.buffered,
-                                      dictionary=self.dictionary)
+        while True:
+            with suppress(OperationalError):
+                self.cnx = connect(**self.__config)
+                self.cursor = self.cnx.cursor(buffered=self.buffered,
+                                              dictionary=self.dictionary)
+                break
         if conn:
             return self.cnx
         else:
