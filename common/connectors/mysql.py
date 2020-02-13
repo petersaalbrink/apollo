@@ -1,5 +1,6 @@
 from contextlib import suppress
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from functools import partial
 from logging import info
 from pathlib import Path
@@ -196,6 +197,7 @@ class MySQLClient:
             str: "CHAR",
             int: "INT",
             float: "DECIMAL",
+            Decimal: "DECIMAL",
             bool: "TINYINT",
             timedelta: "TIMESTAMP",
             Timedelta: "DECIMAL",
@@ -580,7 +582,7 @@ class MySQLClient:
         types = [
             (type_, 6) if type_ in (
                 timedelta, datetime, Timedelta, Timestamp, NaTType) else (
-                (type_, float(f"{prec}.2")) if type_ in (float, Timedelta) else (
+                (type_, float(f"{prec}.2")) if type_ in (float, Timedelta, Decimal) else (
                     type_, prec
                 ))
             for type_, prec in types
