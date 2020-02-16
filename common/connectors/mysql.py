@@ -4,6 +4,7 @@ from decimal import Decimal
 from functools import partial
 from logging import info
 from pathlib import Path
+from random import sample
 from typing import (Any,
                     Dict,
                     Generator,
@@ -558,6 +559,10 @@ class MySQLClient:
         else:
             raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
 
+        # Try taking a sample
+        with suppress(ValueError):
+            data = sample(data, 1000)
+
         # Create the type dict
         type_dict = {}
         for row in data:
@@ -573,23 +578,36 @@ class MySQLClient:
         type_dict = {field: type_dict[field] for field in data[0]}
 
         # Get the field lenghts for each type
-        types = list(zip(
-            type_dict.values(),
+        date_types = {timedelta, datetime, Timedelta, Timestamp, NaTType}
+        float_types = {float, Decimal}
+        union = date_types.union(float_types)
+        dates = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
+        floats_dict = {field: _type for field, _type in type_dict.items() if _type in float_types}
+        floats_list = list(zip(
+            floats_dict.values(),
             list(map(max, zip(
-                *[[len(str(value)) for value in row.values()] for row in data])))
+                *[[tuple(map(len, f"{value}".split("."))) for key, value in row.items()
+                   if key in floats_dict.keys()]
+                  for row in data])))
         ))
-        # Change default precision for floats and datetimes
-        types = [
-            (type_, 6) if type_ in (
-                timedelta, datetime, Timedelta, Timestamp, NaTType) else (
-                (type_, float(f"{prec}.2")) if type_ in (float, Timedelta, Decimal) else (
-                    type_, prec
-                ))
-            for type_, prec in types
-        ]
-        if len(types) != len(fieldnames):
+        floats_list = [(_type, float(".".join((f"{l + r}", f"{r}")))) for _type, (l, r) in floats_list]
+        floats = dict(zip(floats_dict, floats_list))
+        normals_dict = {field: _type for field, _type in type_dict.items() if _type not in union}
+        normals_list = list(zip(
+            normals_dict.values(),
+            list(map(max, zip(
+                *[[len(f"{value}") for key, value in row.items()
+                   if key in normals_dict.keys()]
+                  for row in data])))
+        ))
+        normals = dict(zip(normals_dict, normals_list))
+        all_types = {**dates, **floats, **normals}
+        type_dict = {field: all_types[field] for field in type_dict}
+
+        if len(type_dict) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
-        return dict(zip(fieldnames, types))
+
+        return type_dict
 
     def _fields(self, fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
         fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
