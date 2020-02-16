@@ -193,6 +193,12 @@ class SourceScore:
         super().__init__()
         self._year = datetime.now().year
         self._score_testing = False
+        self._score_mapping = {
+            "lastname": "name_score",
+            "phoneNumber_mobile": "mobile_score",
+            "phoneNumber_number": "number_score",
+            "address_current_postalCode": "address_score",
+        }
 
     @staticmethod
     def _categorize_score(score: float) -> int:
@@ -323,111 +329,10 @@ class SourceScore:
         return categorized_score
 
 
-class NoMatch(Exception):
-    pass
-
-
-class PersonData(SourceMatch, SourceScore):
-    """Match data with Matrixian's Person Database.
-
-    Main method::
-    :meth:`PersonData.match`
-
-    The match method returns a dictionary which includes the person data,
-    in addition to:
-        * Several calculated scores
-        * Search type
-        * Match keys
-
-    Please refer to the following page for documentation of the
-    keyword arguments that are available:
-    https://matrixiangroup.atlassian.net/wiki/spaces/SF/pages/1319763972/Person+matching#Tweaking-parameters
-
-    Example::
-        pm = PersonData(call_to_validate=True)
-        data = {
-            "initials": "P",
-            "lastname": "Saalbrink",
-            "postalCode": "1071XB",
-            "houseNumber": "71",
-            "houseNumberExt": "B",
-        }
-        try:
-            result = pm.match(data)
-            print(result)
-        except NoMatch:
-            pass
-    :return: {
-        'address_current_city': 'Amsterdam',
-        'address_current_country': 'NL',
-        'address_current_houseNumber': 71,
-        'address_current_houseNumberExt': 'BA',
-        'address_current_location': [4.88027692, 52.35333008],
-        'address_current_postalCode': '1071XB',
-        'address_current_state': 'Noord-Holland',
-        'address_current_street': 'Ruysdaelstraat',
-        'address_score': 'C2',
-        'date': datetime.datetime(2018, 12, 20, 0, 0),
-        'gender': 'M',
-        'initials': 'PP',
-        'lastname': 'Saalbrink',
-        'match_keys': {'lastname', 'initials', 'address'},
-        'mobile_score': 'C1',
-        'name_score': 'C2',
-        'number_score': 'C2',
-        'phoneNumber_country': '+31',
-        'phoneNumber_mobile': 649978891,
-        'phoneNumber_number': 203345554,
-        'search_type': 'initial',
-        'source': 'company_data_NL_contact'
-    }
-    """
+class MatchQueries:
     def __init__(self, **kwargs):
         super().__init__()
-
-        # data holders
-        self.result = self.data = None
-        self._clean = Cleaner().clean
-
-        # connectors
-        self._es = ESClient("dev_peter.person_data_20190716")
-        self._vn = ESClient("dev_peter.validated_numbers")
-        if gethostname() == "matrixian":
-            self._phone_url = "http://localhost:5000/call/"
-        else:
-            self._phone_url = "http://94.168.87.210:4000/call/"
-        self._email_url = ("http://develop.platform.matrixiangroup.com"
-                           ":4000/email?email=")
-        try:
-            self._local = (rget("https://api.ipify.org").text
-                           in {"37.97.136.149", "94.168.87.210"})
-        except (ConnectionError, IOError):
-            self._local = False
-
-        # kwargs
-        self._cbs = kwargs.pop("cbs", False)
-        self._email = kwargs.pop("email", False)
-        self._use_id_query = kwargs.pop("id_query", False)
-        self._strictness = kwargs.pop("strictness", 5)
-        self._respect_hours = kwargs.pop("respect_hours", True)
-        self._name_only_query = kwargs.pop("name_only_query", False)
-        self._score_testing = kwargs.pop("score_testing", False)
-        self._call_to_validate = kwargs.pop("call_to_validate", False)
-        self._response_type = kwargs.pop("response_type", "all")
-        self._use_sources = kwargs.pop("sources", ())
-        categories = ("all", "name", "address", "phone")
-        if (self._response_type not in categories and
-                not isinstance(self._response_type, (tuple, list))):
-            raise ValueError(f"Requested fields should be one"
-                             f" of {', '.join(categories)}")
-        if self._cbs:
-            self._match_sources = self._match_sources_cbs
-            self._categorize_score = self._categorize_cbs
-        else:
-            self._match_sources = self._match_sources_def
-            self._categorize_score = self._categorize_def
-
-        # data structures
+        self.data = None
         self._es_mapping = {
             "lastname": "lastname",
             "initials": "initials",
@@ -439,106 +344,10 @@ class PersonData(SourceMatch, SourceScore):
             "gender": "gender",
             "date_of_birth": "birth.date",
         }
-        self._score_mapping = {
-            "lastname": "name_score",
-            "phoneNumber_mobile": "mobile_score",
-            "phoneNumber_number": "number_score",
-            "address_current_postalCode": "address_score",
-        }
-
-    def __repr__(self):
-        return f"PersonData(in={self.data}, out={self.result})"
-
-    @property
-    def _requested_fields(self) -> tuple:
-        if isinstance(self._response_type, (tuple, list)):
-            return self._response_type
-        elif self._response_type == "all":
-            return (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
-                "address_moved",
-                "birth_date",
-                "contact_email",
-                "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            ) if self._email else (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
-                "address_moved",
-                "birth_date",
-                "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            )
-        elif self._response_type == "name":
-            return (
-                "birth_date",
-                "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
-            )
-        elif self._response_type == "address":
-            return (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
-                "address_moved",
-            )
-        elif self._response_type == "phone":
-            return (
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            )
-
-    @property
-    def _main_fields(self) -> tuple:
-        if isinstance(self._response_type, (tuple, list)):
-            return tuple(f for f in self._response_type
-                         if f != "phoneNumber_country")
-        elif self._response_type == "phone":
-            return "phoneNumber_number", "phoneNumber_mobile"
-        elif self._response_type == "address":
-            return "address_current_postalCode",
-        elif self._response_type == "name":
-            return "lastname",
-        else:
-            return ("lastname", "address_current_postalCode",
-                    "phoneNumber_number", "phoneNumber_mobile")
+        self._cbs = kwargs.pop("cbs", False)
+        self._name_only_query = kwargs.pop("name_only_query", False)
+        self._strictness = kwargs.pop("strictness", 5)
+        self._use_sources = kwargs.pop("sources", ())
 
     @property
     def _queries(self) -> Tuple[str, dict]:
@@ -646,6 +455,204 @@ class PersonData(SourceMatch, SourceScore):
                 {"dateOfRecord": "desc"}
             ]
         }
+
+
+class NoMatch(Exception):
+    pass
+
+
+class PersonData(MatchQueries,
+                 SourceMatch,
+                 SourceScore):
+    """Match data with Matrixian's Person Database.
+
+    Main method::
+    :meth:`PersonData.match`
+
+    The match method returns a dictionary which includes the person data,
+    in addition to:
+        * Several calculated scores
+        * Search type
+        * Match keys
+
+    Please refer to the following page for documentation of the
+    keyword arguments that are available:
+    https://matrixiangroup.atlassian.net/wiki/spaces/SF/pages/1319763972/Person+matching#Tweaking-parameters
+
+    Example::
+        pm = PersonData(call_to_validate=True)
+        data = {
+            "initials": "P",
+            "lastname": "Saalbrink",
+            "postalCode": "1071XB",
+            "houseNumber": "71",
+            "houseNumberExt": "B",
+        }
+        try:
+            result = pm.match(data)
+            print(result)
+        except NoMatch:
+            pass
+    :return: {
+        'address_current_city': 'Amsterdam',
+        'address_current_country': 'NL',
+        'address_current_houseNumber': 71,
+        'address_current_houseNumberExt': 'BA',
+        'address_current_location': [4.88027692, 52.35333008],
+        'address_current_postalCode': '1071XB',
+        'address_current_state': 'Noord-Holland',
+        'address_current_street': 'Ruysdaelstraat',
+        'address_score': 'C2',
+        'date': datetime.datetime(2018, 12, 20, 0, 0),
+        'gender': 'M',
+        'initials': 'PP',
+        'lastname': 'Saalbrink',
+        'match_keys': {'lastname', 'initials', 'address'},
+        'mobile_score': 'C1',
+        'name_score': 'C2',
+        'number_score': 'C2',
+        'phoneNumber_country': '+31',
+        'phoneNumber_mobile': 649978891,
+        'phoneNumber_number': 203345554,
+        'search_type': 'initial',
+        'source': 'company_data_NL_contact'
+    }
+    """
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
+
+        # data holders
+        self.result = self.data = None
+        self._clean = Cleaner().clean
+
+        # connectors
+        self._es = ESClient("dev_peter.person_data_20190716")
+        self._vn = ESClient("dev_peter.validated_numbers")
+        if gethostname() == "matrixian":
+            self._phone_url = "http://localhost:5000/call/"
+        else:
+            self._phone_url = "http://94.168.87.210:4000/call/"
+        self._email_url = ("http://develop.platform.matrixiangroup.com"
+                           ":4000/email?email=")
+        try:
+            self._local = (rget("https://api.ipify.org").text
+                           in {"37.97.136.149", "94.168.87.210"})
+        except (ConnectionError, IOError):
+            self._local = False
+
+        # kwargs
+        self._email = kwargs.pop("email", False)
+        self._use_id_query = kwargs.pop("id_query", False)
+        self._respect_hours = kwargs.pop("respect_hours", True)
+        self._score_testing = kwargs.pop("score_testing", False)
+        self._call_to_validate = kwargs.pop("call_to_validate", False)
+        self._response_type = kwargs.pop("response_type", "all")
+        categories = ("all", "name", "address", "phone")
+        if (self._response_type not in categories and
+                not isinstance(self._response_type, (tuple, list))):
+            raise ValueError(f"Requested fields should be one"
+                             f" of {', '.join(categories)}")
+        if self._cbs:
+            self._match_sources = self._match_sources_cbs
+            self._categorize_score = self._categorize_cbs
+        else:
+            self._match_sources = self._match_sources_def
+            self._categorize_score = self._categorize_def
+
+    def __repr__(self):
+        return f"PersonData(in={self.data}, out={self.result})"
+
+    @property
+    def _requested_fields(self) -> tuple:
+        if isinstance(self._response_type, (tuple, list)):
+            return self._response_type
+        elif self._response_type == "all":
+            return (
+                "address_current_city",
+                "address_current_country",
+                "address_current_houseNumber",
+                "address_current_houseNumberExt",
+                "address_current_location",
+                "address_current_postalCode",
+                "address_current_state",
+                "address_current_street",
+                "address_moved",
+                "birth_date",
+                "contact_email",
+                "death_date",
+                "firstname",
+                "gender",
+                "initials",
+                "lastname",
+                "middlename",
+                "phoneNumber_country",
+                "phoneNumber_mobile",
+                "phoneNumber_number",
+            ) if self._email else (
+                "address_current_city",
+                "address_current_country",
+                "address_current_houseNumber",
+                "address_current_houseNumberExt",
+                "address_current_location",
+                "address_current_postalCode",
+                "address_current_state",
+                "address_current_street",
+                "address_moved",
+                "birth_date",
+                "death_date",
+                "firstname",
+                "gender",
+                "initials",
+                "lastname",
+                "middlename",
+                "phoneNumber_country",
+                "phoneNumber_mobile",
+                "phoneNumber_number",
+            )
+        elif self._response_type == "name":
+            return (
+                "birth_date",
+                "death_date",
+                "firstname",
+                "gender",
+                "initials",
+                "lastname",
+                "middlename",
+            )
+        elif self._response_type == "address":
+            return (
+                "address_current_city",
+                "address_current_country",
+                "address_current_houseNumber",
+                "address_current_houseNumberExt",
+                "address_current_location",
+                "address_current_postalCode",
+                "address_current_state",
+                "address_current_street",
+                "address_moved",
+            )
+        elif self._response_type == "phone":
+            return (
+                "phoneNumber_country",
+                "phoneNumber_mobile",
+                "phoneNumber_number",
+            )
+
+    @property
+    def _main_fields(self) -> tuple:
+        if isinstance(self._response_type, (tuple, list)):
+            return tuple(f for f in self._response_type
+                         if f != "phoneNumber_country")
+        elif self._response_type == "phone":
+            return "phoneNumber_number", "phoneNumber_mobile"
+        elif self._response_type == "address":
+            return "address_current_postalCode",
+        elif self._response_type == "name":
+            return "lastname",
+        else:
+            return ("lastname", "address_current_postalCode",
+                    "phoneNumber_number", "phoneNumber_mobile")
 
     @staticmethod
     def _check_country(country: str):
