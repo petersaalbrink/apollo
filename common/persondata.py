@@ -1524,6 +1524,8 @@ class Cleaner:
 
 
 class NamesData:
+    uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
+
     @staticmethod
     def first_names() -> dict:
         """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
@@ -1546,18 +1548,26 @@ class NamesData:
                 "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
 
     @staticmethod
-    def surnames(common_only: bool = True) -> set:
+    def surnames() -> dict:
         """Imports a database with surnames frequencies and returns common surnames as a list.
 
         Only surnames that occur more than 200 times in the Netherlands are regarded as common.
         If a name occurs twice in the file, the largest number is taken.
 
         The output can be used for data and matching quality calculations."""
+
+        def cutoff(n: float) -> int:
+            if n <= 50:
+                return 0
+            elif n <= 250:
+                return 1
+            elif n <= 1500:
+                return 2
+            else:
+                return 3
+
         db = MongoDB("dev_peter.names_data")
-        if common_only:
-            # Return only names that occur commonly
-            names_data = set(doc["surname"] for doc in
-                             db.find({"data": "surnames", "number": {"$gt": 200}}, {"surname": True}))
-        else:
-            names_data = set(doc["surname"] for doc in db.find({"data": "surnames"}, {"surname": True}))
+        # Return only names that occur commonly
+        names_data = list(db.find({"data": "surnames"}, {"_id": True, "number": True, "surname": True}))
+        names_data = {doc["surname"]: cutoff(doc["number"]) for doc in names_data}
         return names_data
