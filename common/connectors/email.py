@@ -5,6 +5,7 @@ from email.mime.text import MIMEText
 from pathlib import Path, PurePath
 from smtplib import SMTP
 from sys import argv
+from traceback import format_exc
 from typing import Union
 
 
@@ -47,12 +48,10 @@ class EmailClient:
         if not message:
             message = ""
         elif isinstance(message, Exception):
-            message = str(message)
+            message = f"{message}"
         if error_message:
-            from sys import exc_info
-            from traceback import format_exception
-            message = f"{message}\n\n{''.join(format_exception(*exc_info()))}" \
-                if message else "".join(format_exception(*exc_info()))
+            message = (f"{message}\n\n{format_exc()}"
+                       if message else format_exc())
         message = MIMEText(
             message,
             "html" if message.startswith("<!doctype html>") else "plain")
