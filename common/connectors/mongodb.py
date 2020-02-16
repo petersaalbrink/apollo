@@ -3,7 +3,9 @@ from urllib.parse import quote_plus
 
 from pymongo.database import Collection, Database
 from pymongo.mongo_client import MongoClient
-from pymongo.operations import UpdateOne, UpdateMany
+from pymongo.operations import (InsertOne,
+                                UpdateOne,
+                                UpdateMany)
 
 
 class MongoDB(MongoClient):
@@ -53,6 +55,11 @@ class MongoDB(MongoClient):
                 return mongo_client.__getattr__(database).__getattr__(collection)
             return mongo_client.__getattr__(database)
         return mongo_client
+
+    # noinspection PyPep8Naming, PyShadowingBuiltins
+    @staticmethod
+    def InsertOne(document):
+        return InsertOne(document)
 
     # noinspection PyPep8Naming, PyShadowingBuiltins
     @staticmethod
