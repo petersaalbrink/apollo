@@ -136,11 +136,17 @@ def send_email(function: Callable = None, *,
         if not m:
             m = f"{f.__name__}("
             if args:
-                m = f"{m}{', '.join(map(str, args))}"
-                if kwargs:
-                    m = f"{m}, "
+                if ismethod(f):
+                    args = args[1:]
+                args = [arg for arg in
+                        [f"{arg}" for arg in args]
+                        if len(arg) <= 1_000]
+                m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
             if kwargs:
-                m = f"{m}{', '.join([f'{k}={v}' for k,v in kwargs.items()])}"
+                kwargs = [kwarg for kwarg in
+                          [f'{k}={v}' for k, v in kwargs.items()]
+                          if len(kwarg) <= 1_000]
+                m = f"{m}{', '.join(kwargs)}"
             m = f"{m})"
         return m
 
