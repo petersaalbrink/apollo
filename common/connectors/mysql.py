@@ -575,34 +575,34 @@ class MySQLClient:
             for field in data[0]:
                 if field not in type_dict:
                     type_dict[field] = str
-        type_dict = {field: type_dict[field] for field in data[0]}
+        type_dict: dict = {field: type_dict[field] for field in data[0]}
 
         # Get the field lenghts for each type
-        date_types = {timedelta, datetime, Timedelta, Timestamp, NaTType}
-        float_types = {float, Decimal}
-        union = date_types.union(float_types)
-        dates = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
-        floats_dict = {field: _type for field, _type in type_dict.items() if _type in float_types}
-        floats_list = list(zip(
+        date_types: set = {timedelta, datetime, Timedelta, Timestamp, NaTType}
+        float_types: set = {float, Decimal}
+        union: set = date_types.union(float_types)
+        dates: dict = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
+        floats_dict: dict = {field: _type for field, _type in type_dict.items() if _type in float_types}
+        floats_list: list = list(zip(
             floats_dict.values(),
             list(map(max, zip(
                 *[[tuple(map(len, f"{value}".split("."))) for key, value in row.items()
                    if key in floats_dict.keys()]
                   for row in data])))
         ))
-        floats_list = [(_type, float(".".join((f"{l + r}", f"{r}")))) for _type, (l, r) in floats_list]
-        floats = dict(zip(floats_dict, floats_list))
-        normals_dict = {field: _type for field, _type in type_dict.items() if _type not in union}
-        normals_list = list(zip(
+        floats_list: list = [(_type, float(".".join((f"{l + r}", f"{r}")))) for _type, (l, r) in floats_list]
+        floats: dict = dict(zip(floats_dict, floats_list))
+        normals_dict: dict = {field: _type for field, _type in type_dict.items() if _type not in union}
+        normals_list: list = list(zip(
             normals_dict.values(),
             list(map(max, zip(
                 *[[len(f"{value}") for key, value in row.items()
                    if key in normals_dict.keys()]
                   for row in data])))
         ))
-        normals = dict(zip(normals_dict, normals_list))
-        all_types = {**dates, **floats, **normals}
-        type_dict = {field: all_types[field] for field in type_dict}
+        normals: dict = dict(zip(normals_dict, normals_list))
+        all_types: dict = {**dates, **floats, **normals}
+        type_dict: dict = {field: all_types[field] for field in type_dict}
 
         if len(type_dict) != len(fieldnames):
             raise ValueError("Lengths don't match; does every data row have the same number of fields?")
@@ -734,6 +734,7 @@ class MySQLClient:
                     if errors >= self._max_errors:
                         raise
                     e = f"{e}"
+                    info("%s", e)
                     if "truncated" in e or "Out of range value" in e:
                         self._increase_max_field_len(e, table=table, chunk=chunk)
                     elif ("Column count doesn't match value count" in e
