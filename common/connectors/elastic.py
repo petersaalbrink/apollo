@@ -54,7 +54,7 @@ class ESClient(Elasticsearch):
              source_only: bool = False,
              first_only: bool = False,
              *args, **kwargs
-             ) -> Union[List[dict], List[List[dict]], dict]:
+             ) -> Union[List[List[dict]], List[dict], Dict[str, Dict[str, Any]]]:
         """Perform an ElasticSearch query, and return the hits.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
