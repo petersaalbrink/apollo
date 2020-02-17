@@ -3,8 +3,9 @@ from contextlib import ContextDecorator
 from csv import DictReader, DictWriter, Error, Sniffer
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import wraps
+from functools import partial, wraps
 from io import TextIOWrapper
+from inspect import ismethod
 from itertools import islice
 from pathlib import PurePath, Path
 from subprocess import run
@@ -19,7 +20,11 @@ from typing import (Any,
                     Tuple,
                     Union)
 from zipfile import ZipFile
+from tqdm.std import tqdm, trange
 from .connectors.email import EmailClient
+
+tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
+trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 
 
 def csv_write(data: Union[List[dict], dict],
@@ -131,11 +136,17 @@ def send_email(function: Callable = None, *,
         if not m:
             m = f"{f.__name__}("
             if args:
-                m = f"{m}{', '.join(map(str, args))}"
-                if kwargs:
-                    m = f"{m}, "
+                if ismethod(f):
+                    args = args[1:]
+                args = [arg for arg in
+                        [f"{arg}" for arg in args]
+                        if len(arg) <= 1_000]
+                m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
             if kwargs:
-                m = f"{m}{', '.join([f'{k}={v}' for k,v in kwargs.items()])}"
+                kwargs = [kwarg for kwarg in
+                          [f'{k}={v}' for k, v in kwargs.items()]
+                          if len(kwarg) <= 1_000]
+                m = f"{m}{', '.join(kwargs)}"
             m = f"{m})"
         return m
 
