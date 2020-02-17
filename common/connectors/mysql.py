@@ -31,7 +31,7 @@ from pandas.core.arrays.datetimelike import (NaTType,
                                              Timestamp,
                                              Timedelta)
 from pandas.core.dtypes.missing import isna
-from tqdm.std import tqdm, trange
+from ..handlers import tqdm, trange
 
 
 class Query(str):
@@ -435,7 +435,7 @@ class MySQLClient:
             for rows in sql.chunk(query=query, size=10):
                 print(rows)
         """
-        range_func = trange if use_tqdm else range
+        range_func = partial(trange, desc="chunking", disable=not use_tqdm)
         count = self.count() if use_tqdm else 1_000_000_000
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
@@ -497,7 +497,7 @@ class MySQLClient:
             for row in sql.iter(query=query):
                 print(row)
         """
-        _tqdm = partial(tqdm, disable=not use_tqdm)
+        _tqdm = partial(tqdm, desc="iterating", disable=not use_tqdm)
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
         self.dictionary = kwargs.pop("fieldnames", True)
@@ -716,9 +716,8 @@ class MySQLClient:
         query = Query(f"INSERT {'IGNORE' if ignore else ''} INTO "
                       f"{self.database}.{table} {fields} VALUES "
                       f"({', '.join(['%s'] * len(data[0]))})")
-        range_func = trange if use_tqdm else range
         errors = 0
-        for offset in range_func(0, len(data), _limit):
+        for offset in trange(0, len(data), _limit, desc="inserting", disable=not use_tqdm):
             chunk = data[offset:offset + _limit]
             if len(chunk) == 0:
                 break

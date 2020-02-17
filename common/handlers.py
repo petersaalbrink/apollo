@@ -3,8 +3,9 @@ from contextlib import ContextDecorator
 from csv import DictReader, DictWriter, Error, Sniffer
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import wraps
+from functools import partial, wraps
 from io import TextIOWrapper
+from inspect import ismethod
 from itertools import islice
 from pathlib import PurePath, Path
 from subprocess import run
@@ -19,7 +20,11 @@ from typing import (Any,
                     Tuple,
                     Union)
 from zipfile import ZipFile
+from tqdm.std import tqdm, trange
 from .connectors.email import EmailClient
+
+tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
+trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 
 
 def csv_write(data: Union[List[dict], dict],
