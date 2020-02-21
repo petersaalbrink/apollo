@@ -15,7 +15,7 @@ def parse(address: str, country: str = "NL"):
             "United Kingdom": "UK"
         }.get(country, countries.lookup(country).name)
     }
-    response = get(f"http://37.97.136.149:5000/parsers/", params=params, text_only=True)
+    response = get(f"http://136.144.209.80:5000/parser", params=params, text_only=True)
     if "status" in response:
         EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
                                              "psaalbrink@matrixiangroup.com"],
