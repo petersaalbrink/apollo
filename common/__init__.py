@@ -1,3 +1,4 @@
+from .address import parse, validate
 from .connectors.elastic import ESClient
 from .connectors.email import EmailClient
 from .connectors.mongodb import MongoDB
@@ -8,8 +9,7 @@ from .handlers import (Timer,
                        csv_read,
                        Log,
                        send_email)
-from .parsers import (parse,
-                      Checks,
+from .parsers import (Checks,
                       flatten,
                       levenshtein)
 from .persondata import (NoMatch,
