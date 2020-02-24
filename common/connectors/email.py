@@ -54,7 +54,7 @@ class EmailClient:
                        if message else format_exc())
         message = MIMEText(
             message,
-            "html" if message.startswith("<!doctype html>") else "plain")
+            "html" if message.lower().startswith("<!doctype html>") else "plain")
         msg.attach(message)
 
         if attachment_path:
