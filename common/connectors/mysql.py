@@ -5,6 +5,8 @@ from functools import partial
 from logging import info
 from pathlib import Path
 from random import sample
+# noinspection PyUnresolvedReferences
+from re import Pattern
 from typing import (Any,
                     Dict,
                     Generator,
@@ -893,6 +895,8 @@ class MySQLClient:
                 if "'" in v and r"\'" not in v:
                     v = v.replace("'", r"\'")
                     key = rf"""{k} = "{v}" """
+            elif isinstance(v, Pattern):
+                key = f"""{k} REGEXP "{v.pattern}" """
             return key
 
         if not and_or:
