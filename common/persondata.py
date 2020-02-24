@@ -1199,6 +1199,12 @@ class PhoneNumberFinder:
                             break
         return valid
 
+    @staticmethod
+    def _get_source(data, record):
+        return ("N" if record["lastname"] and (
+                record["lastname"] in data.lastname
+                or data.lastname in record["lastname"]) else "A")
+
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
         t = Timer()
         for number_type in number_types:
@@ -1208,9 +1214,7 @@ class PhoneNumberFinder:
                 if self.validate(f"{number}"):
                     debug("After validating: %s", t.end())
                     result = number
-                    source = "N" if record["lastname"] and (
-                            record["lastname"] in data.lastname
-                            or data.lastname in record["lastname"]) else "A"
+                    source = self._get_source(data, record)
                     score = self.calculate_score(self.Score(
                         record["source"],
                         record["dateOfRecord"][:4],
