@@ -18,9 +18,7 @@ pipelines:
           caches:
             - pip
           script:
-            - IFS=' + '
-            - read -ra ARR <<< "$(cat common/_version.py)"
-            - echo "${ARR[0]} + \".$BITBUCKET_BUILD_NUMBER\"" > common/_version.py
+            - sed -i "s/[0-9]\{2,\}/$BITBUCKET_BUILD_NUMBER/g" common/_version.py
             - git add common/_version.py
             - git commit -m "[skip CI]"
             - git push
