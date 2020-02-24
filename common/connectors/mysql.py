@@ -657,7 +657,10 @@ class MySQLClient:
             f" WHERE TABLE_SCHEMA = '{self.database}' AND TABLE_NAME"
             f" = '{table}' AND COLUMN_NAME = '{field}'"))
         if result:
-            field_type, position = result
+            if self.dictionary:
+                field_type, position = result.values()
+            else:
+                field_type, position = result
         else:
             raise
         field_type, field_len = field_type.strip(")").split("(")

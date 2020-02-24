@@ -10,7 +10,7 @@ from time import localtime, sleep
 from typing import Iterable, NamedTuple, Optional, Tuple, Union
 
 from dateutil.parser import parse as dateparse
-from phonenumbers import is_valid_number, parse
+from phonenumbers import is_valid_number, parse as phoneparse
 from phonenumbers.phonenumberutil import NumberParseException
 from requests import get as rget
 from requests.exceptions import RetryError
@@ -728,7 +728,7 @@ class PersonData(MatchQueries,
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
         phone = f"+31{number}"
-        valid = is_valid_number(parse(phone, "NL"))
+        valid = is_valid_number(phoneparse(phone, "NL"))
         if f"{number}".startswith(("8", "9")):
             valid = False
         if valid:
@@ -1175,7 +1175,7 @@ class PhoneNumberFinder:
             ValueError: On parse error."""
         t = Timer()
         # Before calling our API, do basic (offline) validation
-        valid = is_valid_number(parse(phone, "NL"))
+        valid = is_valid_number(phoneparse(phone, "NL"))
         if phone.startswith(("8", "9")):
             valid = False
         if valid:
@@ -1444,7 +1444,7 @@ class Cleaner:
                         self.data.pop(_type)
                 # Check format and syntax
                 try:
-                    number_valid = is_valid_number(parse(f"+31{self.data[_type]}", "NL"))
+                    number_valid = is_valid_number(phoneparse(f"+31{self.data[_type]}", "NL"))
                 except NumberParseException:
                     number_valid = False
                 if not number_valid:
@@ -1557,14 +1557,16 @@ class NamesData:
         The output can be used for data and matching quality calculations."""
 
         def cutoff(n: float) -> int:
-            if n <= 50:
+            if n <= 15:
                 return 0
-            elif n <= 250:
+            elif n <= 50:
                 return 1
-            elif n <= 1500:
+            elif n <= 250:
                 return 2
-            else:
+            elif n <= 1500:
                 return 3
+            else:
+                return 4
 
         db = MongoDB("dev_peter.names_data")
         # Return only names that occur commonly

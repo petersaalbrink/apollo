@@ -18,7 +18,7 @@ pipelines:
           caches:
             - pip
           script:
-            - IFS='+'
+            - IFS=' + '
             - read -ra ARR <<< "$(cat common/_version.py)"
             - echo "${ARR[0]} + \".$BITBUCKET_BUILD_NUMBER\"" > common/_version.py
             - git add common/_version.py
