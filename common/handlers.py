@@ -116,7 +116,9 @@ class Log:
 
 def send_email(function: Callable = None, *,
                to_address: Union[str, list] = None,
-               message: str = None):
+               message: str = None,
+               on_error_only: bool = False,
+               ):
     """Function decorator to send emails!
 
     Usage::
@@ -156,9 +158,10 @@ def send_email(function: Callable = None, *,
             ec = EmailClient()
             try:
                 f(*args, **kwargs)
-                ec.send_email(to_address=to_address,
-                              message=f"Program finished successfully:\n\n"
-                                      f"{make_message(message, f, args, kwargs)}")
+                if not on_error_only:
+                    ec.send_email(to_address=to_address,
+                                  message=f"Program finished successfully:\n\n"
+                                          f"{make_message(message, f, args, kwargs)}")
             except Exception:
                 ec.send_email(to_address=to_address,
                               message=make_message(message, f, args, kwargs),
