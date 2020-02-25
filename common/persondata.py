@@ -1199,6 +1199,29 @@ class PhoneNumberFinder:
                             break
         return valid
 
+    @staticmethod
+    def _get_source(data, record):
+        return ("N" if record["lastname"] and (
+                record["lastname"] in data.lastname
+                or data.lastname in record["lastname"]) else "A")
+
+    def score(self, data, records, record, fuzzy, number, number_type):
+        return self.Score(
+            record["source"],
+            record["dateOfRecord"][:4],
+            record["death"]["year"],
+            len(set(d["lastname"] for d in records)),
+            record.get("gender"),
+            record["birth"]["year"],
+            len(set(d["phoneNumber"]["number"] for d in records)),
+            fuzzy,
+            self.es.query(field=f"phoneNumber.{number_type}",
+                          value=int(number), size=0)["hits"]["total"],
+            record["address"]["moved"] != "1900-01-01T00:00:00Z",
+            number_type == "mobile",
+            (data.lastname, record["lastname"])
+        )
+
     def extract_number(self, data, records, record, result, source, score, fuzzy, number_types: list = None):
         t = Timer()
         for number_type in number_types:
@@ -1208,24 +1231,9 @@ class PhoneNumberFinder:
                 if self.validate(f"{number}"):
                     debug("After validating: %s", t.end())
                     result = number
-                    source = "N" if record["lastname"] and (
-                            record["lastname"] in data.lastname
-                            or data.lastname in record["lastname"]) else "A"
-                    score = self.calculate_score(self.Score(
-                        record["source"],
-                        record["dateOfRecord"][:4],
-                        record["death"]["year"],
-                        len(set(d["lastname"] for d in records)),
-                        record.get("gender"),
-                        record["birth"]["year"],
-                        len(set(d["phoneNumber"]["number"] for d in records)),
-                        fuzzy,
-                        self.es.query(field=f"phoneNumber.{number_type}",
-                                      value=int(number), size=0)["hits"]["total"],
-                        record["address"]["moved"] != "1900-01-01T00:00:00Z",
-                        number_type == "mobile",
-                        (data.lastname, record["lastname"])
-                    ))
+                    source = self._get_source(data, record)
+                    score = self.calculate_score(self.score(
+                        data, records, record, fuzzy, number, number_type))
                 debug("Total for %s: %s", number_type, t.end())
         debug("Took %s, result: %s", t.end(), result)
         return result, source, score
