@@ -1,6 +1,5 @@
 from contextlib import suppress
 from logging import info
-from socket import timeout
 from typing import (Any,
                     Dict,
                     Iterator,
@@ -11,8 +10,8 @@ from typing import (Any,
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import (ElasticsearchException,
-                                      AuthenticationException,
-                                      AuthorizationException)
+                                      TransportError)
+from urllib3.exceptions import HTTPWarning
 
 
 class ESClient(Elasticsearch):
@@ -95,9 +94,9 @@ class ESClient(Elasticsearch):
                 try:
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
-                except (AuthenticationException, AuthorizationException):
+                except (OSError, HTTPWarning, TransportError):
                     pass
-                except (ElasticsearchException, OSError, ConnectionError, timeout) as e:
+                except ElasticsearchException as e:
                     raise ElasticsearchException(q) from e
             if size != 0:
                 if hits_only:
