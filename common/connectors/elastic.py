@@ -37,7 +37,7 @@ class ESClient(Elasticsearch):
         self.es_index = es_index
         self._port = int(getenv("MX_ELASTIC_PORT", 9200))
         hosts = [{"host": self._host, "port": self._port}]
-        config = {"http_auth": (usr, pwd), "timeout": 60, "retry_on_timeout": True}
+        config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
         super().__init__(hosts, **config)
         self.size = kwargs.pop("size", 20)
 
