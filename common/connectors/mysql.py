@@ -509,7 +509,7 @@ class MySQLClient:
                                *args, **kwargs)
 
         if use_tqdm:
-            count = self._count(Query(f"SELECT COUNT(*) FROM ({query})"),
+            count = self._count(Query(f"SELECT COUNT(*) FROM ({query}) AS x"),
                                 *args, **kwargs)
         else:
             count = None
