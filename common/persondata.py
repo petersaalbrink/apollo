@@ -394,17 +394,18 @@ class MatchQueries:
                 {"match": {"address.current.postalCode": self.data.postalCode}},
                 {"match": {"address.current.houseNumber": self.data.houseNumber}},
                 {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}}])
-            if not self._cbs and self.data.initials:
-                query["query"]["bool"]["must"].append(
-                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
+            if self.data.initials:
+                query["query"]["bool"]["should"] = {
+                    "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
             yield "name", query
             query = self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
                 {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                {"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
-            if not self._cbs and self.data.initials:
-                query["query"]["bool"]["must"].append(
-                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}})
+                {"wildcard": {
+                    "lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
+            if self.data.initials:
+                query["query"]["bool"]["should"] = {
+                    "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
             yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber
