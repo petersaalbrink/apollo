@@ -38,6 +38,7 @@ __all__ = [
     "Log",
     "send_email",
     "parse",
+    "validate",
     "Checks",
     "flatten",
     "levenshtein",
