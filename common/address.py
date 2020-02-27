@@ -24,6 +24,18 @@ def parse(address: str, country: str = "NL"):
 
 
 def validate(params: dict):
+    keys = (
+        "country",
+        "script",
+        "input_street",
+        "input_building",
+        "input_housenumber",
+        "input_subBuilding",
+        "input_postcode",
+        "input_city",
+    )
+    if not all(key in params for key in keys):
+        raise KeyError(f"Missing keys: {[key for key in keys if key not in params]}")
     while True:
         try:
             response = get(
