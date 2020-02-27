@@ -93,7 +93,7 @@ class SourceMatch:
         super().__init__()
         self.data = self._matched = None
 
-    def _match_sources(self) -> Iterable:
+    def _match_sources(self) -> str:
         """Assign self._match_sources_def or
         self._match_sources_cbs to this function."""
         pass
@@ -156,35 +156,24 @@ class SourceMatch:
     def _match_keys(self):
         return {key for key in self._matched if self._matched[key]}
 
-    def _match_sources_def(self):
-        # TODO: incorporate gender and initials into match scoring system
-        yield "A", (self._matched["lastname"]
-                    and self._matched["address"]
-                    and self._matched["birth_date"]
-                    and self._matched["phone"])
-        yield "B", (self._matched["lastname"] and
-                    ((self._matched["address"] and self._matched["birth_date"])
-                     or (self._matched["birth_date"] and self._matched["phone"])
-                     or (self._matched["address"] and self._matched["phone"])))
-        yield "C", (self._matched["lastname"] and
-                    (self._matched["address"]
-                     or self._matched["phone"]
-                     or self._matched["birth_date"]))
-        yield "D", True
+    def _match_sources_def(self) -> str:
+        # TODO: incorporate gender into match scoring system
+        keys = ("lastname", "initials", "address", "birth_date", "phone")
+        values = (self._matched[m] for m in keys)
+        matches = sum(bool(v) for v in values)
+        return {4: "A", 3: "B", 2: "C", 1: "D"}[matches]
 
-    def _match_sources_cbs(self):
-        yield "N", self._matched["lastname"] and self._matched["address"]
-        yield "A", self._matched["address"]
+    def _match_sources_cbs(self) -> str:
+        return "N" if self._matched["lastname"] and self._matched["address"] else "A"
 
     def _get_source(self, response: dict) -> str:
         self._set_match(response)
-        for source, match in self._match_sources():
-            if match:
-                break
-        else:
+        try:
+            source = self._match_sources()
+        except KeyError as e:
             raise RuntimeError(
                 "No source could be defined for this match!",
-                self.data, response)
+                self.data, response) from e
         return source
 
 
