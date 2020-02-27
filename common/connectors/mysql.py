@@ -914,6 +914,11 @@ class MySQLClient:
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
+        elif not self.table_name:
+            if "." in table:
+                self.database, self.table_name = table.split(".")
+            else:
+                self.table_name = table
 
         if fields_as:
             if isinstance(select_fields, str):
