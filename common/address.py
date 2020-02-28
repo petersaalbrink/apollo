@@ -1,4 +1,5 @@
 from logging import debug
+from urllib3.exceptions import HTTPError
 from urllib.parse import quote_plus
 from pycountry import countries
 from .requests import get
@@ -13,7 +14,13 @@ def parse(address: str, country: str = "NL"):
             "United Kingdom": "UK"
         }.get(country, countries.lookup(country).name)
     }
-    response = get(f"http://136.144.209.80:5000/parser", params=params, text_only=True)
+    while True:
+        try:
+            response = get(f"http://136.144.209.80:5000/parser",
+                           params=params, text_only=True)
+            break
+        except (IOError, OSError, HTTPError) as e:
+            debug("Exception: %s: %s", params, e)
     if "status" in response:
         EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
                                              "psaalbrink@matrixiangroup.com"],
@@ -42,6 +49,6 @@ def validate(params: dict):
                 "http://136.144.203.100:5000/validation",
                 params=params, text_only=True)["objects"][0]
             break
-        except Exception as e:
+        except (IOError, OSError, HTTPError) as e:
             debug("Exception: %s: %s", params, e)
     return response
