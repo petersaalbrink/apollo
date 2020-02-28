@@ -7,7 +7,7 @@ from logging import info, debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Iterable, NamedTuple, Optional, Tuple, Union
+from typing import NamedTuple, Optional, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
@@ -161,7 +161,7 @@ class SourceMatch:
         keys = ("lastname", "initials", "address", "birth_date", "phone")
         values = (self._matched[m] for m in keys)
         matches = sum(bool(v) for v in values)
-        return {4: "A", 3: "B", 2: "C", 1: "D"}[matches]
+        return {5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}[matches]
 
     def _match_sources_cbs(self) -> str:
         return "N" if self._matched["lastname"] and self._matched["address"] else "A"
