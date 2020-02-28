@@ -2,34 +2,37 @@ from email.encoders import encode_base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path, PurePath
+from io import BytesIO
+from pathlib import Path
 from smtplib import SMTP
 from sys import argv
 from traceback import format_exc
-from typing import Union
+from typing import List, Union
+from zipfile import ZipFile, ZIP_LZMA
 
 
 class EmailClient:
     """Client for sending plain text emails and attachments."""
 
     def __init__(self,
-                 smtp_server="smtp.gmail.com:587",
-                 login="dev@matrixiangroup.com",
-                 password=None):
+                 smtp_server: str = "smtp.gmail.com:587",
+                 login: str = "dev@matrixiangroup.com",
+                 password: str = None):
         """Client for sending plain text emails and attachments."""
         self._smtp_server = smtp_server
         self._login = login
-        self._password = password
-        if self._password is None:
+        if not password:
             from common.secrets import get_secret
             self._password = get_secret("mail_pass").pwd
+        else:
+            self._password = password
 
     def send_email(self,
                    to_address: Union[str, list] = "psaalbrink@matrixiangroup.com",
                    subject: str = None,
                    message: Union[str, Exception] = None,
                    from_address: str = "dev@matrixiangroup.com",
-                   attachment_path: Union[str, PurePath] = None,
+                   attachment_path: Union[Union[str, Path], List[Union[str, Path]]] = None,
                    error_message: bool = False,
                    ):
         """Send an email to an email address (str) or a list of addresses.
@@ -58,12 +61,30 @@ class EmailClient:
         msg.attach(message)
 
         if attachment_path:
+            if not isinstance(attachment_path, list):
+                filename = f"{Path(attachment_path).stem}.zip"
+                attachment_path = [attachment_path]
+            elif subject:
+                filename = f"{subject}.zip"
+            else:
+                filename = "attachment.zip"
+
+            zipped = BytesIO()
+            zf = ZipFile(zipped, "a", compression=ZIP_LZMA, allowZip64=False)
+
+            for attachment in attachment_path:
+                with open(attachment, "r") as f:
+                    zf.writestr(Path(attachment).name, f.read())
+
+            for f in zf.filelist:
+                f.create_system = 0
+            zipped.seek(0)
+            zipped = zipped.read()
+            zf.close()
+
             p = MIMEBase("application", "octet-stream")
-            with open(attachment_path, "rb") as attachment:
-                p.set_payload(attachment.read())
+            p.set_payload(zipped)
             encode_base64(p)
-            filename = attachment_path.name if isinstance(attachment_path, PurePath) \
-                else attachment_path.split("/")[-1]
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
