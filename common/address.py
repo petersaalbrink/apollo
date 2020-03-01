@@ -1,15 +1,18 @@
 from logging import debug
 from urllib3.exceptions import HTTPError
-from urllib.parse import quote_plus
+from urllib.parse import quote
 from pycountry import countries
 from .requests import get
 from .connectors import EmailClient
 
 
 def parse(address: str, country: str = "NL"):
+    for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
+        address = address.replace(s, "")
     params = {
-        "address": quote_plus(address).replace("+", " "),
+        "address": quote(address),
         "country": {
+            "NL": "Netherlands",
             "UK": "UK",
             "United Kingdom": "UK"
         }.get(country, countries.lookup(country).name)
@@ -24,7 +27,7 @@ def parse(address: str, country: str = "NL"):
     if "status" in response:
         EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
                                              "psaalbrink@matrixiangroup.com"],
-                                 subject="VPS11 Address Parser error",
+                                 subject="Address Parser error",
                                  message=f"params = {params}\n"
                                          f"response = {response}")
     return response
