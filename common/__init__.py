@@ -3,7 +3,10 @@ from .connectors.elastic import ESClient
 from .connectors.email import EmailClient
 from .connectors.mongodb import MongoDB
 from .connectors.mysql import MySQLClient
-from .handlers import Timer, ZipData, csv_write, csv_read, Log, send_email
+from .handlers import (Timer, ZipData,
+                       csv_write, csv_read,
+                       Log, send_email,
+                       pip_upgrade)
 from .parsers import Checks, flatten, levenshtein
 from .persondata import NoMatch, NamesData, PersonData
 from .persondata_legacy import PersonMatch, PhoneNumberFinder
@@ -40,5 +43,6 @@ __all__ = [
     "DistributionPlot",
     "plot_stacked_bar",
     "FileTransfer",
+    "pip_upgrade",
     "__version__",
 ]

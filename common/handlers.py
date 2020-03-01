@@ -383,3 +383,10 @@ class TicToc(ContextDecorator):
     def __exit__(self, *exc_info: Any) -> None:
         """Stop the context manager timer"""
         self.stop()
+
+
+def pip_upgrade():
+    import pkg_resources
+    from subprocess import run
+    packages = [dist.project_name for dist in pkg_resources.working_set]
+    run(["pip", "install", "--upgrade", *packages])
