@@ -8,6 +8,7 @@ from io import TextIOWrapper
 from inspect import ismethod
 from itertools import islice
 from pathlib import PurePath, Path
+import pkg_resources
 from subprocess import run
 from time import perf_counter
 from typing import (Any,
@@ -386,7 +387,5 @@ class TicToc(ContextDecorator):
 
 
 def pip_upgrade():
-    import pkg_resources
-    from subprocess import run
     packages = [dist.project_name for dist in pkg_resources.working_set]
     run(["pip", "install", "--upgrade", *packages])
