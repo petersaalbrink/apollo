@@ -8,6 +8,7 @@ from typing import (Callable,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
+from urllib3.exceptions import HTTPError
 from urllib3.util.retry import Retry
 
 
@@ -106,9 +107,13 @@ def get(url,
     global common_session, get_kwargs
     if use_proxies:
         kwargs.update(next(get_kwargs))
-    return (common_session.get(url, **kwargs).json()
-            if text_only else
-            common_session.get(url, **kwargs))
+    while True:
+        try:
+            return (common_session.get(url, **kwargs).json()
+                    if text_only else
+                    common_session.get(url, **kwargs))
+        except (IOError, OSError, HTTPError):
+            pass
 
 
 def thread(function: Callable,
