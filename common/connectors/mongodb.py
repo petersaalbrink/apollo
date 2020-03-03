@@ -56,7 +56,7 @@ class MongoDB(MongoClient):
             return mongo_client.__getattr__(database)
         return mongo_client
 
-    # noinspection PyPep8Naming, PyShadowingBuiltins
+    # noinspection PyPep8Naming
     @staticmethod
     def InsertOne(document):
         return InsertOne(document)

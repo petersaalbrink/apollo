@@ -40,6 +40,7 @@ class Query(str):
     pass
 
 
+# noinspection SqlInjection
 class MySQLClient:
     """Client for connecting to Matrixian's MySQL database.
 
