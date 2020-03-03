@@ -10,6 +10,7 @@ from typing import (Any,
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import (ElasticsearchException,
+                                      NotFoundError,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
 
@@ -19,20 +20,23 @@ class ESClient(Elasticsearch):
 
     def __init__(self,
                  es_index: str = None,
-                 dev: bool = True,
                  **kwargs
                  ):
         """Client for ElasticSearch"""
         from common.env import getenv
         from common.secrets import get_secret
         usr, pwd = get_secret("es")
-        if dev:
-            self._host = getenv("MX_ELASTIC_IP_DEV")
-            if not es_index:
-                es_index = "dev_peter.person_data_20190716"
+        if es_index:
+            if "production_" in es_index:
+                self._host = getenv("MX_ELASTIC_IP_PROD")
+            else:
+                self._host = getenv("MX_ELASTIC_IP_DEV")
         else:
-            self._host = getenv("MX_ELASTIC_IP_PROD")
-            if not es_index:
+            if kwargs.pop("dev", True):
+                self._host = getenv("MX_ELASTIC_IP_DEV")
+                es_index = "dev_peter.person_data_20190716"
+            else:
+                self._host = getenv("MX_ELASTIC_IP_PROD")
                 es_index = "production_realestate.realestate"
         self.es_index = es_index
         self._port = int(getenv("MX_ELASTIC_PORT", 9200))
@@ -40,6 +44,7 @@ class ESClient(Elasticsearch):
         config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
         super().__init__(hosts, **config)
         self.size = kwargs.pop("size", 20)
+        self.index_exists = None
 
     def __repr__(self):
         return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
@@ -70,6 +75,11 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
+        if not self.index_exists:
+            if self.index_exists is None:
+                self.index_exists = self.indices.exists(self.es_index)
+            if self.index_exists is False:
+                raise NotFoundError(404, self.es_index)
         if "index" in kwargs:
             index = kwargs.pop("index")
         else:
