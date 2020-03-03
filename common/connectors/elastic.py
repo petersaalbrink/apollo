@@ -45,6 +45,7 @@ class ESClient(Elasticsearch):
         super().__init__(hosts, **config)
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
+        self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
@@ -105,7 +106,10 @@ class ESClient(Elasticsearch):
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
                 except (OSError, HTTPWarning, TransportError):
-                    pass
+                    if self.retry_on_timeout:
+                        pass
+                    else:
+                        raise
                 except ElasticsearchException as e:
                     raise ElasticsearchException(q) from e
             if size != 0:
