@@ -71,7 +71,12 @@ def get_session(
     status_forcelist=(500, 502, 504),
     session=None,
 ) -> Session:
+    # noinspection PyUnusedLocal
+    def hook(response, *args, **kwargs):
+        if 400 <= response.status_code < 500:
+            response.raise_for_status()
     session = session or Session()
+    session.hooks["response"] = [hook]
     retry = Retry(
         total=retries,
         read=retries,

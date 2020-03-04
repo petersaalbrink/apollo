@@ -1,4 +1,5 @@
-from collections import namedtuple, MutableMapping
+from collections import namedtuple
+from collections.abc import MutableMapping
 from contextlib import suppress
 from datetime import datetime
 from json import dumps, loads
