@@ -1,6 +1,6 @@
 from logging import debug
+from typing import Union
 from urllib3.exceptions import HTTPError
-from urllib.parse import quote
 from pycountry import countries
 from .requests import get
 from .connectors import EmailClient
@@ -10,7 +10,7 @@ def parse(address: str, country: str = "NL"):
     for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
         address = address.replace(s, "")
     params = {
-        "address": quote(address),
+        "address": address,
         "country": {
             "NL": "Netherlands",
             "UK": "UK",
@@ -33,10 +33,17 @@ def parse(address: str, country: str = "NL"):
     return response
 
 
-def validate(params: dict):
+def validate(params: Union[dict, str]) -> dict:
+
+    if isinstance(params, str):
+        params = {"input_street": params}
+
+    if "country" not in params:
+        params["country"] = "NL"
+    if "script" not in params:
+        params["script"] = "POSTNL"
+
     keys = (
-        "country",
-        "script",
         "input_street",
         "input_building",
         "input_housenumber",
@@ -44,8 +51,12 @@ def validate(params: dict):
         "input_postcode",
         "input_city",
     )
-    if not all(key in params for key in keys):
-        raise KeyError(f"Missing keys: {[key for key in keys if key not in params]}")
+    for key in keys:
+        if key.lstrip("input_") in params:
+            params[key] = params.pop(key.lstrip("input_"))
+        if key not in params:
+            params[key] = ""
+
     while True:
         try:
             response = get(

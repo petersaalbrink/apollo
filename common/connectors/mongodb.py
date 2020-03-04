@@ -36,17 +36,17 @@ class MongoDB(MongoClient):
         if not client and not database:
             database, collection = "dev_peter", "person_data_20190716"
         hosts = {
-            "address": ("MX_MONGO_IP_ADDR", "addr"),
-            "dev": ("MX_MONGO_IP_DEV", "mongo"),
-            "prod": ("MX_MONGO_IP_PROD", "mongo_prod"),
+            "address": "MX_MONGO_ADDR",
+            "dev": "MX_MONGO_DEV",
+            "prod": "MX_MONGO_PROD",
         }
         if host not in hosts:
             raise ValueError(f"Host `{host}` not recognized")
-        host, secret = hosts[host]
+        host = hosts[host]
         from common.env import getenv
         from common.secrets import get_secret
-        usr, pwd = get_secret(secret)
-        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{getenv(host)}"
+        usr, pwd = get_secret(host)
+        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{getenv(f'{host}_IP')}"
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:

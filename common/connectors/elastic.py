@@ -25,18 +25,20 @@ class ESClient(Elasticsearch):
         """Client for ElasticSearch"""
         from common.env import getenv
         from common.secrets import get_secret
-        usr, pwd = get_secret("es")
+        usr, pwd = get_secret("MX_ELASTIC")
         if es_index:
             if "production_" in es_index:
-                self._host = getenv("MX_ELASTIC_IP_PROD")
+                self._host = getenv("MX_ELASTIC_PROD_IP")
+            elif "addressvalidation" in es_index:
+                self._host = getenv("MX_ELASTIC_ADDR_IP")
             else:
-                self._host = getenv("MX_ELASTIC_IP_DEV")
+                self._host = getenv("MX_ELASTIC_DEV_IP")
         else:
             if kwargs.pop("dev", True):
-                self._host = getenv("MX_ELASTIC_IP_DEV")
+                self._host = getenv("MX_ELASTIC_DEV_IP")
                 es_index = "dev_peter.person_data_20190716"
             else:
-                self._host = getenv("MX_ELASTIC_IP_PROD")
+                self._host = getenv("MX_ELASTIC_PROD_IP")
                 es_index = "production_realestate.realestate"
         self.es_index = es_index
         self._port = int(getenv("MX_ELASTIC_PORT", 9200))

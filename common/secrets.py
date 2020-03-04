@@ -3,6 +3,7 @@ from collections import namedtuple
 from contextlib import suppress
 from json import loads
 from pathlib import Path
+from re import compile
 from requests import post
 try:
     from getpass import getpass
@@ -11,75 +12,74 @@ try:
 except (ImportError, AttributeError):
     getpass = input
 
-NAMES = {
-    "es": "Elasticsearch dev server",
-    "mongo": "MongoDB dev server",
-    "addr": "MongoDB addressvalidation server",
-    "sql": "MySQL dev server",
-    "ccv": "CCV FTP server",
-    "bk": "BuurtKadoos FTP server",
-    "ng": "NutsGroep FTP server",
-    "ftp": "VPS11 FTP server",
-    "mongo_stg": "MongoDB stg server",
-    "mongo_prod": "MongoDB prod server",
-    "bstorage": "Matrixian Synaman File Transfer",
-    "da": "DigitalAudience FTP server",
-    "platform": "Matrixian Platform",
-    "dev_platform": "Matrixian Platform (development)",
-}
-
 Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
 
 def change_secret(name: str) -> Credentials:
+    names = {
+        "MX_ELASTIC": "Elasticsearch servers",
+        "MX_FTP_BK": "BuurtKadoos FTP server",
+        "MX_FTP_BSTORAGE": "Matrixian Synaman File Transfer",
+        "MX_FTP_CCV": "CCV FTP server",
+        "MX_FTP_DA": "DigitalAudience FTP server",
+        "MX_FTP_NG": "NutsGroep FTP server",
+        "MX_FTP_VPS": "VPS11 FTP server",
+        "MX_MAIL": "EmailClient account",
+        "MX_MONGO_ADDR": "MongoDB addressvalidation server",
+        "MX_MONGO_DEV": "MongoDB dev server",
+        "MX_MONGO_PROD": "MongoDB prod server",
+        "MX_MYSQL_DEV": "MySQL dev server",
+        "MX_MYSQL_PR": "MySQL Postregister server",
+        "MX_PLATFORM_DATA": "Matrixian Platform (Data Team)",
+        "MX_PLATFORM_DEV": "Matrixian Platform (development)",
+        "MX_PLATFORM_PROD": "Matrixian Platform",
+        "MX_WEBHOOK_PETER": "Flask Webhook (peter)",
+        "MX_WEBHOOK_DATATEAM": "Flask Webhook (datateam)",
+    }
+    usr = input(f"{names.get(name, name)} username: ")
+    pwd = getpass(f"{names.get(name, name)} password: ")
+    pwd = b64encode(bytes(pwd.encode())).decode()
+    if pwd:
+        re = compile(r"=.*\n")
+        file = Path(Path.home() / ".common/.env")
+        with open(file) as f:
+            data = [line for line in f]
+        data = [re.sub(f"={usr}\n", line)
+                if line.startswith(f"{name}_USR")
+                else line for line in data]
+        data = [re.sub(f"={pwd}\n", line)
+                if line.startswith(f"{name}_PWD")
+                else line for line in data]
+        with open(file, "w") as f:
+            f.writelines(data)
 
-    file = Path(Path.home() / ".common/.secrets")
+    # Decode secret and return
+    pwd = b64decode(bytes(pwd.encode())).decode()
+    secret = Credentials(usr, pwd)
 
-    # Remove the line from the file and re-write it
-    with open(file) as f:
-        data = [line for line in f if not line.startswith(name)]
-    with open(file, "w") as f:
-        f.writelines(data)
-
-    # Add new secret
-    return get_secret(name=name)
+    return secret
 
 
 def get_secret(name: str) -> Credentials:
+    from .env import getenv
 
-    file = Path(Path.home() / ".common/.secrets")
-
-    # Create secrets, if it doesn't exist yet
-    if not file.exists():
-        try:
-            file.parent.mkdir()
-        except FileExistsError:
-            pass
-        with open(file, "w") as f:
-            f.write("mail_pass::::TmtUZ01wbThvVDNjSzk1NA==\n")
-
-    # Get secret, if it has been saved
-    with open(file) as f:
-        for line in f:
-            secret = line.rstrip("\r\n").split("::")
-            if secret != [""]:
-                key, usr, pwd = secret
-                if key == name:
-                    return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
+    # Read secret from environment variables
+    usr = getenv(f"{name}_USR")
+    pwd = getenv(f"{name}_PWD")
+    if pwd:
+        pwd = b64decode(bytes(pwd.encode())).decode()
 
     # Ask secret, if needed
-    usr = input(f"{NAMES.get(name, name)} username: ")
-    pwd = getpass(f"{NAMES.get(name, name)} password: ")
-    pwd = b64encode(bytes(pwd.encode())).decode()
-    if pwd:
-        with open(file, "a") as f:
-            f.write(f"{name}::{usr}::{pwd}\n")
+    if not usr or not pwd:
+        usr, pwd = change_secret(name)
 
-    return Credentials(usr, b64decode(bytes(pwd.encode())).decode())
+    # Return secret
+    secret = Credentials(usr, pwd)
+    return secret
 
 
 def get_token() -> dict:
-    usr, pwd = get_secret("data_platform")
+    usr, pwd = get_secret("MX_PLATFORM_DATA")
     while True:
         with suppress(KeyError):
             posted = post("https://api.matrixiangroup.com/token",

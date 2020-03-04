@@ -11,6 +11,7 @@ phonenumbers
 pycountry
 pymailcheck
 pymongo
+pytest
 python-dateutil
 python-dotenv
 pyxlsb

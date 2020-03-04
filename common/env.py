@@ -17,7 +17,7 @@ def getenv():
             dst.write(src.read())
 
     # Load .env
-    load_dotenv(dotenv_path=file, override=True)
+    load_dotenv(dotenv_path=file, override=False)
 
 
 getenv()

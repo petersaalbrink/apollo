@@ -16,28 +16,41 @@ class EmailClient:
 
     def __init__(self,
                  smtp_server: str = "smtp.gmail.com:587",
-                 login: str = "dev@matrixiangroup.com",
+                 login: str = None,
                  password: str = None):
         """Client for sending plain text emails and attachments."""
+        self._server = None
         self._smtp_server = smtp_server
-        self._login = login
-        if not password:
+        if not login or not password:
             from common.secrets import get_secret
-            self._password = get_secret("mail_pass").pwd
+            self._login, self._password = get_secret("MX_MAIL")
         else:
-            self._password = password
+            self._login, self._password = login, password
+
+    def _connect(self):
+        self._server = SMTP(self._smtp_server)
+        self._server.starttls()
+        self._server.login(self._login, self._password)
+
+    def connection(self):
+        self._connect()
+        self._server.quit()
+        return True
 
     def send_email(self,
                    to_address: Union[str, list] = "psaalbrink@matrixiangroup.com",
                    subject: str = None,
                    message: Union[str, Exception] = None,
-                   from_address: str = "dev@matrixiangroup.com",
+                   from_address: str = None,
                    attachment_path: Union[Union[str, Path], List[Union[str, Path]]] = None,
                    error_message: bool = False,
                    ):
         """Send an email to an email address (str) or a list of addresses.
         To attach a file, include the Path to the file
         or just the filename (str) if it's in the current working directory."""
+
+        if not from_address:
+            from_address = self._login
 
         msg = MIMEMultipart()
         msg["From"] = from_address
@@ -88,8 +101,6 @@ class EmailClient:
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)
 
-        server = SMTP(self._smtp_server)
-        server.starttls()
-        server.login(self._login, self._password)
-        server.sendmail(from_address, to_address, msg.as_string())
-        server.quit()
+        self._connect()
+        self._server.sendmail(from_address, to_address, msg.as_string())
+        self._server.quit()
