@@ -1,3 +1,4 @@
+import pytest
 from common import EmailClient, ESClient, MongoDB, MySQLClient
 
 
@@ -5,16 +6,20 @@ def test_email():
     assert EmailClient().connection()
 
 
-def test_elastic():
-    assert ESClient("dev_realestate.realestate").ping()
-    assert ESClient("production_cdqc.person_data").ping()
-    assert ESClient("addressvalidation.netherlands").ping()
+@pytest.mark.parametrize("es_index", [
+    "dev_realestate.realestate",
+    "production_cdqc.person_data",
+    "addressvalidation.netherlands"])
+def test_elastic(es_index: str):
+    assert ESClient(es_index).ping()
 
 
-def test_mongo():
-    assert MongoDB(host="address", client=True).server_info()
-    assert MongoDB(host="dev", client=True).server_info()
-    assert MongoDB(host="prod", client=True).server_info()
+@pytest.mark.parametrize("host", [
+    "address",
+    "dev",
+    "prod"])
+def test_mongo(host: str):
+    assert MongoDB(host=host, client=True).server_info()
 
 
 def test_mysql():
