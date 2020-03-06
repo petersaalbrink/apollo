@@ -1,4 +1,6 @@
 __pycache__
 common.egg-info
 common_classes_mx.egg-info
-
+.hypothesis
+tests/.hypothesis
+.pytest_cache

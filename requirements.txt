@@ -1,5 +1,6 @@
 dataclasses
 elasticsearch
+hypothesis
 matplotlib
 mysql-connector-python
 nameparser
