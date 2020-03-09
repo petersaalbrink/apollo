@@ -85,7 +85,7 @@ class EmailClient:
             with BytesIO() as zipped:
                 with ZipFile(zipped, "a", compression=ZIP_LZMA, allowZip64=False) as zf:
                     for attachment in attachment_path:
-                        with open(attachment, "r") as f:
+                        with open(attachment, "r", encoding="latin-1") as f:
                             zf.writestr(Path(attachment).name, f.read())
                     for f in zf.filelist:
                         f.create_system = 0
