@@ -1,4 +1,5 @@
 from datetime import datetime
+from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
 
@@ -123,3 +124,21 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
         return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
     else:
         return int(matrix[size_x - 1, size_y - 1])
+
+
+def dateformat(date: str) -> str:
+    """Parse a date from a datestring and return the format.
+    Example::
+        dateformat("28/08/2014") == "%d/%m/%Y"
+    """
+    for div in "/-":
+        if div in date:
+            break
+    else:
+        raise ValueError(f"Couldn't find date divider in {date}")
+    year_first = date.find(f"{parse(date).year}") == 0
+    if year_first:
+        fmt = f"%Y{div}%m{div}%d"
+    else:
+        fmt = f"%d{div}%m{div}%Y"
+    return fmt

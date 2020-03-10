@@ -82,21 +82,17 @@ class EmailClient:
             else:
                 filename = "attachment.zip"
 
-            zipped = BytesIO()
-            zf = ZipFile(zipped, "a", compression=ZIP_LZMA, allowZip64=False)
-
-            for attachment in attachment_path:
-                with open(attachment, "r") as f:
-                    zf.writestr(Path(attachment).name, f.read())
-
-            for f in zf.filelist:
-                f.create_system = 0
-            zipped.seek(0)
-            zipped = zipped.read()
-            zf.close()
+            with BytesIO() as zipped:
+                with ZipFile(zipped, "a", compression=ZIP_LZMA, allowZip64=False) as zf:
+                    for attachment in attachment_path:
+                        with open(attachment, "r", encoding="latin-1") as f:
+                            zf.writestr(Path(attachment).name, f.read())
+                    for f in zf.filelist:
+                        f.create_system = 0
+                payload = zipped.getvalue()
 
             p = MIMEBase("application", "octet-stream")
-            p.set_payload(zipped)
+            p.set_payload(payload)
             encode_base64(p)
             p.add_header("Content-Disposition", f"attachment; filename={filename}")
             msg.attach(p)

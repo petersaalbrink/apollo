@@ -7,7 +7,7 @@ from .handlers import (Timer, ZipData,
                        csv_write, csv_read,
                        Log, send_email,
                        pip_upgrade)
-from .parsers import Checks, flatten, levenshtein
+from .parsers import Checks, flatten, levenshtein, dateformat
 from .persondata import NoMatch, NamesData, PersonData
 from .persondata_legacy import PersonMatch, PhoneNumberFinder
 from .platform import FileTransfer
@@ -44,5 +44,6 @@ __all__ = [
     "plot_stacked_bar",
     "FileTransfer",
     "pip_upgrade",
+    "dateformat",
     "__version__",
 ]
