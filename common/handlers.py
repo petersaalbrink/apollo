@@ -21,7 +21,7 @@ from typing import (Any,
                     Tuple,
                     Union)
 from zipfile import ZipFile
-from tqdm.std import tqdm, trange
+from tqdm import tqdm, trange
 from .connectors.email import EmailClient
 
 tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")

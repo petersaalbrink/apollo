@@ -5,8 +5,6 @@ from functools import partial
 from logging import info
 from pathlib import Path
 from random import sample
-# noinspection PyUnresolvedReferences
-from re import Pattern
 from typing import (Any,
                     Dict,
                     Generator,
@@ -16,15 +14,14 @@ from typing import (Any,
                     Mapping,
                     MutableMapping,
                     Optional,
+                    Pattern,
                     Sequence,
                     Tuple,
                     Type,
                     Union)
 
-from mysql.connector import connect
-from mysql.connector.abstracts import (
-    MySQLCursorAbstract as MySQLCursor,
-    MySQLConnectionAbstract as MySQLConnection)
+from mysql.connector import connect, MySQLConnection
+from mysql.connector.cursor import MySQLCursor
 from mysql.connector.constants import ClientFlag
 from mysql.connector.errors import (DatabaseError,
                                     InterfaceError,
