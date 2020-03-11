@@ -692,7 +692,7 @@ class PersonData(MatchQueries,
             for response in responses:
                 response = flatten(response)
                 for key in self._requested_fields:
-                    if key not in self.result and response[key]:
+                    if key not in self.result and response.get(key):
                         # t = Timer()
                         if (key in ("phoneNumber_number", "phoneNumber_mobile")
                                 and not self._phone_valid(response[key])):
