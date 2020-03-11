@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from secrets import token_hex
-from subprocess import run, CalledProcessError
+from subprocess import run, CalledProcessError, DEVNULL
 from time import time
 from typing import Sequence, Union
 from bson import DBRef, ObjectId
@@ -15,26 +15,35 @@ class FileTransfer:
     def __init__(self,
                  user_id: str = None,
                  username: str = None,
+                 email: str = None,
                  filename: str = None):
 
+        # Check
+        if sum((user_id is not None, username is not None, email is not None)) != 1:
+            raise ValueError("Provide either a name, ID, or email for the user.")
+        if filename is None:
+            raise ValueError("Provide a filename.")
+
+        # Connect
         db = MongoDB("production_api.user", host="prod")
         self.db = MongoDB("production_api.filetransferFile", host="prod")
         self.test_connections()
 
-        if user_id and username:
-            raise ValueError("Provide either a name or ID for the user.")
-        elif user_id:
-            doc = db.find_one({"_id": ObjectId(user_id)})
-            self.user_id = user_id
-            self.username = doc["username"]
+        # Find user details
+        if user_id:
+            q = {"_id": ObjectId(user_id)}
         elif username:
-            doc = db.find_one({"username": username})
-            self.user_id = doc["_id"]
-            self.username = username
+            q = {"username": username}
+        elif email:
+            q = {"email": email}
         else:
-            raise ValueError("Provide either a name or ID for the user.")
+            raise ValueError("Provide either a name, ID or email for the user.")
+        doc = db.find_one(q)
+        self.user_id = doc["_id"]
+        self.username = doc["username"]
         self.email = doc["email"]
 
+        # Prepare parameters
         self.filename = filename
         self.insert_filename = Path(filename).name
         self.filepath = (
@@ -75,7 +84,7 @@ class FileTransfer:
     @staticmethod
     def test_ssh():
         try:
-            run("ssh consucom echo ssh ok", shell=True).check_returncode()
+            run(["ssh", "consucom", "echo", "ssh", "ok"], check=True, stdout=DEVNULL)
         except CalledProcessError as e:
             raise RuntimeError(
                 "Make sure you have an entry for consucom in ~/.ssh/config."
