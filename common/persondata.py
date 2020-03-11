@@ -524,11 +524,6 @@ class PersonData(MatchQueries,
             self._phone_url = "http://94.168.87.210:4000/call/"
         self._email_url = ("http://develop.platform.matrixiangroup.com"
                            ":4000/email?email=")
-        try:
-            self._local = (rget("https://api.ipify.org").text
-                           in {"37.97.136.149", "94.168.87.210"})
-        except (ConnectionError, IOError):
-            self._local = False
 
         # kwargs
         self._email = kwargs.pop("email", False)
@@ -724,12 +719,11 @@ class PersonData(MatchQueries,
         if f"{number}".startswith(("8", "9")):
             valid = False
         if valid:
-            if self._local:
-                with suppress(ElasticsearchException):
-                    query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
-                    result = self._vn.find(query=query, first_only=True)
-                    if result:
-                        return result["valid"]
+            with suppress(ElasticsearchException):
+                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
+                result = self._vn.find(query=query, first_only=True)
+                if result:
+                    return result["valid"]
             if self._call_to_validate:
                 if self._respect_hours:
                     t = localtime().tm_hour
@@ -739,13 +733,9 @@ class PersonData(MatchQueries,
                 while True:
                     with suppress(RetryError, MaxRetryError):
                         response = get(f"{self._phone_url}{phone}",
-                                       # headers={"Connection": "close"},
                                        auth=("datateam", "matrixian"))
-                        if not response.ok:
-                            self._phone_url = "http://94.168.87.210:4000/call/"
-                        else:
+                        if response.ok:
                             valid = loads(response.text)
-                            # response.close()
                             break
         return valid
 
