@@ -3,7 +3,7 @@ from pathlib import Path
 from secrets import token_hex
 from subprocess import run, CalledProcessError
 from time import time
-from typing import List, Union
+from typing import Sequence, Union
 from bson import DBRef, ObjectId
 from pendulum import timezone
 from pymongo.errors import PyMongoError
@@ -21,24 +21,29 @@ class FileTransfer:
         self.db = MongoDB("production_api.filetransferFile", host="prod")
         self.test_connections()
 
-        if (not user_id and not username) or (user_id and username):
+        if user_id and username:
             raise ValueError("Provide either a name or ID for the user.")
         elif user_id:
+            doc = db.find_one({"_id": ObjectId(user_id)})
             self.user_id = user_id
-            self.username = db.find_one({"_id": ObjectId(user_id)})["username"]
+            self.username = doc["username"]
         elif username:
-            self.user_id = db.find_one({"username": username})["_id"]
+            doc = db.find_one({"username": username})
+            self.user_id = doc["_id"]
             self.username = username
+        else:
+            raise ValueError("Provide either a name or ID for the user.")
+        self.email = doc["email"]
 
         self.filename = filename
         self.insert_filename = Path(filename).name
         self.filepath = (
             f"/var/www/platform_projects/public/upload/filetransfer"
-            f"/{user_id}/{token_hex(10)}{round(time())}")
+            f"/{self.user_id}/{token_hex(10)}{round(time())}")
         self.cmds = (
-            f"""ssh consucom "install -d -m 0777 {self.filepath}" """,
-            f"""scp {self.filename} consucom:{self.filepath}/ """,
-            f"""ssh consucom "chmod 777 {self.filepath}/{self.insert_filename}" """
+            ["ssh", "consucom", "install", "-d", "-m", "0777", self.filepath],
+            ["scp", self.filename, f"consucom:{self.filepath}/"],
+            ["ssh", "consucom", "chmod", "777", f"{self.filepath}/{self.insert_filename}"],
         )
         self.doc = {
             "createdDate": datetime.now(tz=timezone("Europe/Amsterdam")),
@@ -56,7 +61,7 @@ class FileTransfer:
 
     def filetransfer_file_upload(self) -> "FileTransfer":
         for cmd in self.cmds:
-            run(cmd, shell=True).check_returncode()
+            run(cmd, check=True)
         return self
 
     def test_mongo(self):
@@ -86,14 +91,25 @@ class FileTransfer:
         return self
 
     def notify(self,
-               to_address: Union[str, List[str]],
+               to_address: Union[str, Sequence[str]] = None,
                username: str = None
                ) -> "FileTransfer":
+        # Prepare message
         template = Path(__file__).parent / "etc/email.html"
         with open(template) as f:
             message = f.read()
         message = message.replace("USERNAME", username or self.username)
         message = message.replace("FILENAME", self.insert_filename)
+
+        # Prepare receivers
+        if isinstance(to_address, str):
+            to_address = (to_address, self.email)
+        elif isinstance(to_address, Sequence):
+            to_address = (*to_address, self.email)
+        else:
+            to_address = self.email
+
+        # Send email
         EmailClient().send_email(
             to_address=to_address,
             subject="Nieuw bestand in Filetransfer",
