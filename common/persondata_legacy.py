@@ -5,17 +5,17 @@ from datetime import datetime
 from json import dumps, loads
 from logging import info, debug
 from re import sub
+from socket import gethostname
 from time import localtime, sleep
 from typing import NamedTuple, Union
 
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
-from requests import get as rget
 from requests.exceptions import RetryError
 from text_unidecode import unidecode
 from urllib3.exceptions import MaxRetryError
 
-from .connectors.elastic import ESClient
+from .connectors.elastic import ESClient, ElasticsearchException
 from .connectors.mongodb import MongoDB
 from .handlers import Timer
 from .requests import get
@@ -256,11 +256,13 @@ class PhoneNumberFinder:
             "matchedNames",
         ])
         self.year = datetime.now().year
-        self.url = "http://localhost:5000/call/+31"
+        if gethostname() == "matrixian":
+            self.url = "http://localhost:5000/call/+31"
+        else:
+            self.url = "http://94.168.87.210:4000/call/+31"
 
         self.es = ESClient()
-        self.vn = MongoDB("dev_peter.validated_numbers")
-        self.local = rget('https://api.ipify.org').text == "94.168.87.210"
+        self._vn = ESClient("dev_peter.validated_numbers")
 
         self.data = None
         self.queries = {}
@@ -384,9 +386,10 @@ class PhoneNumberFinder:
         if phone.startswith(("8", "9")):
             valid = False
         if valid:
-            if self.local:
-                result = self.vn.find_one({"phoneNumber": int(phone)}, {"_id": False, "valid": True})
-                debug("MongoDB lookup: %s", t.end())
+            with suppress(ElasticsearchException):
+                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": int(phone)}}]}}}
+                result = self._vn.find(query=query, first_only=True)
+                debug("Elastic lookup: %s", t.end())
                 if result:
                     return result["valid"]
             if self.respect_hours:
@@ -437,8 +440,9 @@ class PhoneNumberFinder:
                     debug("After validating: %s", t.end())
                     result = number
                     source = self._get_source(data, record)
-                    score = self.calculate_score(self.score(
-                        data, records, record, fuzzy, number, number_type))
+                    # Mobile numbers get score 1:
+                    score = 1 if f"{number}"[0] == "6" else self.calculate_score(
+                        self.score(data, records, record, fuzzy, number, number_type))
                 debug("Total for %s: %s", number_type, t.end())
         debug("Took %s, result: %s", t.end(), result)
         return result, source, score

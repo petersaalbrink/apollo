@@ -59,7 +59,10 @@ class EmailClient:
         elif isinstance(to_address, list):
             msg["To"] = ",".join(to_address)
         if not subject:
-            subject = Path(argv[0]).stem
+            if argv[0] not in {"", "-c"}:
+                subject = Path(argv[0]).stem
+            else:
+                subject = Path.cwd().stem
         msg["Subject"] = subject
         if not message:
             message = ""
