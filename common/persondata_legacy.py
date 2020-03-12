@@ -440,8 +440,9 @@ class PhoneNumberFinder:
                     debug("After validating: %s", t.end())
                     result = number
                     source = self._get_source(data, record)
-                    score = self.calculate_score(self.score(
-                        data, records, record, fuzzy, number, number_type))
+                    # Mobile numbers get score 1:
+                    score = 1 if f"{number}".startswith("06") else self.calculate_score(
+                        self.score(data, records, record, fuzzy, number, number_type))
                 debug("Total for %s: %s", number_type, t.end())
         debug("Took %s, result: %s", t.end(), result)
         return result, source, score
