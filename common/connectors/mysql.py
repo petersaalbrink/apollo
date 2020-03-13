@@ -20,16 +20,14 @@ from typing import (Any,
                     Type,
                     Union)
 
-from mysql.connector import connect, MySQLConnection
 from mysql.connector.cursor import MySQLCursor
-from mysql.connector.constants import ClientFlag
-from mysql.connector.errors import (DatabaseError,
-                                    InterfaceError,
-                                    OperationalError)
-from pandas.core.arrays.datetimelike import (NaTType,
-                                             Timestamp,
-                                             Timedelta)
-from pandas.core.dtypes.missing import isna
+from mysql.connector import (connect,
+                             MySQLConnection,
+                             ClientFlag,
+                             DatabaseError,
+                             InterfaceError,
+                             OperationalError)
+from pandas import NaT, Timestamp, Timedelta, isna
 from ..handlers import tqdm, trange
 
 
@@ -203,7 +201,7 @@ class MySQLClient:
             timedelta: "TIMESTAMP",
             Timedelta: "DECIMAL",
             Timestamp: "DATETIME",
-            NaTType: "DATETIME",
+            NaT: "DATETIME",
             datetime: "DATETIME",
             date: "DATE",
             datetime.date: "DATE"
@@ -578,7 +576,7 @@ class MySQLClient:
         type_dict: dict = {field: type_dict[field] for field in data[0]}
 
         # Get the field lenghts for each type
-        date_types: set = {timedelta, datetime, Timedelta, Timestamp, NaTType}
+        date_types: set = {timedelta, datetime, Timedelta, Timestamp, NaT}
         float_types: set = {float, Decimal}
         union: set = date_types.union(float_types)
         dates: dict = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
@@ -611,7 +609,7 @@ class MySQLClient:
 
     def _fields(self, fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
         fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in [date, datetime.date] else f"`{name}` {self._types[type_]}"
+                  if type_ not in {date, datetime.date} else f"`{name}` {self._types[type_]}"
                   for name, (type_, length) in fields.items()]
         return ", ".join(fields)
 
@@ -761,9 +759,7 @@ class MySQLClient:
                                 if ("date" in field
                                         or "time" in field
                                         or "datum" in field):
-                                    if isinstance(row[field],
-                                                  (Timestamp,
-                                                   NaTType)):
+                                    if isinstance(row[field], Timestamp) or row[field] is NaT:
                                         row[field] = row[field].to_pydatetime()
                                     elif isinstance(row[field], Timedelta):
                                         row[field] = row[field].total_seconds()
