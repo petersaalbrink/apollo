@@ -9,15 +9,17 @@ def test_email():
 @pytest.mark.parametrize("es_index", [
     "dev_realestate.realestate",
     "production_cdqc.person_data",
-    "addressvalidation.netherlands"])
+    "addressvalidation.netherlands",
+])
 def test_elastic(es_index: str):
     assert ESClient(es_index).ping()
 
 
 @pytest.mark.parametrize("host", [
-    "address",
+    # "address",
     "dev",
-    "prod"])
+    # "prod",
+])
 def test_mongo(host: str):
     assert MongoDB(host=host, client=True).server_info()
 
