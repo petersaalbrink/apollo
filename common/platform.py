@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from secrets import token_hex
-from subprocess import run, CalledProcessError, DEVNULL
+from subprocess import run, CalledProcessError, DEVNULL, PIPE
 from time import time
 from typing import Sequence, Union
 from bson import DBRef, ObjectId
@@ -9,6 +9,10 @@ from pendulum import timezone
 from pymongo.errors import PyMongoError
 from .connectors.email import EmailClient
 from .connectors.mongodb import MongoDB
+
+
+class FileTransferError(Exception):
+    pass
 
 
 class FileTransfer:
@@ -46,9 +50,8 @@ class FileTransfer:
         # Prepare parameters
         self.filename = filename
         self.insert_filename = Path(filename).name
-        self.filepath = (
-            f"/var/www/platform_projects/public/upload/filetransfer"
-            f"/{self.user_id}/{token_hex(10)}{round(time())}")
+        self.ftpath = f"/var/www/platform_projects/public/upload/filetransfer/{self.user_id}"
+        self.filepath = f"{self.ftpath}/{token_hex(10)}{round(time())}"
         self.cmds = (
             ["ssh", "consucom", "install", "-d", "-m", "0777", self.filepath],
             ["scp", self.filename, f"consucom:{self.filepath}/"],
@@ -70,14 +73,22 @@ class FileTransfer:
 
     def filetransfer_file_upload(self) -> "FileTransfer":
         for cmd in self.cmds:
-            run(cmd, check=True)
+            p = run(cmd, stdout=PIPE, stderr=PIPE)
+            try:
+                p.check_returncode()
+            except CalledProcessError as e:
+                raise FileTransferError(
+                    f"Error:\n{p.stdout.decode()}\n{p.stderr.decode()}\n"
+                    f"Make sure you have full access to user directory,"
+                    f" use command: `sudo chmod 777 {self.ftpath}` on consucom."
+                ) from e
         return self
 
     def test_mongo(self):
         try:
             self.db.find_one()
         except PyMongoError as e:
-            raise RuntimeError(
+            raise FileTransferError(
                 "Make sure you have access to MongoDB prod/live server."
             ) from e
 
@@ -86,7 +97,7 @@ class FileTransfer:
         try:
             run(["ssh", "consucom", "echo", "ssh", "ok"], check=True, stdout=DEVNULL)
         except CalledProcessError as e:
-            raise RuntimeError(
+            raise FileTransferError(
                 "Make sure you have an entry for consucom in ~/.ssh/config."
             ) from e
 

@@ -128,7 +128,8 @@ class MySQLClient:
                  database: str = None,
                  table: str = None,
                  buffered: bool = False,
-                 dictionary: bool = False
+                 dictionary: bool = False,
+                 **kwargs
                  ):
         """Create client for MySQL, and connect to a specific database.
         You can provide a database and optionally a table name.
@@ -177,7 +178,7 @@ class MySQLClient:
             "password": pwd,
             "host": getenv("MX_MYSQL_DEV_IP"),
             "database": self.database,
-            "raise_on_warnings": True,
+            "raise_on_warnings": kwargs.get("raise_on_warnings", False),
             "client_flags": [ClientFlag.SSL],
             "ssl_ca": f'{path / "server-ca.pem"}',
             "ssl_cert": f'{path / "client-cert.pem"}',
