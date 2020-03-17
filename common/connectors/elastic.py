@@ -23,23 +23,28 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
-        from common.env import getenv
-        from common.secrets import get_secret
+        from ..env import getenv
+        from ..secrets import get_secret
         usr, pwd = get_secret("MX_ELASTIC")
         if es_index:
             if "production_" in es_index:
-                self._host = getenv("MX_ELASTIC_PROD_IP")
+                envv = "MX_ELASTIC_PROD_IP"
             elif "addressvalidation" in es_index:
-                self._host = getenv("MX_ELASTIC_ADDR_IP")
+                envv = "MX_ELASTIC_ADDR_IP"
             else:
-                self._host = getenv("MX_ELASTIC_DEV_IP")
+                envv = "MX_ELASTIC_DEV_IP"
         else:
             if kwargs.pop("dev", True):
-                self._host = getenv("MX_ELASTIC_DEV_IP")
+                envv = "MX_ELASTIC_DEV_IP"
                 es_index = "dev_peter.person_data_20190716"
             else:
-                self._host = getenv("MX_ELASTIC_PROD_IP")
+                envv = "MX_ELASTIC_PROD_IP"
                 es_index = "production_realestate.realestate"
+        self._host = getenv(envv)
+        if not self._host:
+            from ..env import envfile
+            raise RuntimeError(f"Make sure a host is configured for variable"
+                               f" name '{envv}' in file '{envfile}'")
         self.es_index = es_index
         self._port = int(getenv("MX_ELASTIC_PORT", 9200))
         hosts = [{"host": self._host, "port": self._port}]
@@ -119,7 +124,7 @@ class ESClient(Elasticsearch):
                     result = result["hits"]["hits"]
                 if source_only:
                     result = [doc["_source"] for doc in result]
-                if first_only:
+                if first_only or size == 1:
                     with suppress(IndexError):
                         result = result[0]
             results.append(result)
@@ -201,7 +206,7 @@ class ESClient(Elasticsearch):
         scroll = kwargs.pop("scroll", "10m")
 
         if not index:
-            index = "dev_realestate.realestate"
+            index = self.es_index
 
         data = self.search(index=index, scroll=scroll, size=10_000, body=query)
 

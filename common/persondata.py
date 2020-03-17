@@ -666,7 +666,6 @@ class PersonData(MatchQueries,
                     {"dateOfRecord": "desc"}
                 ]}, size=1)
             if response:
-                response = response[0]
                 if self._responses[key]["_id"] != response["_id"]:
                     occurring = True
         return occurring
@@ -918,18 +917,16 @@ class NamesData:
         None is returned. Names are cleaned before output.
 
         The output can be used to fill missing gender data."""
-        return {doc["firstname"]: doc["gender"] for doc in
-                MongoDB("dev_peter.names_data").find({"data": "firstnames"}, {"firstname": True, "gender": True})}
+        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in
+                ESClient("dev_peter.names_data").findall(
+                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
 
     @staticmethod
     def titles() -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
-        with suppress(ConnectionError, IOError):
-            if rget("https://api.ipify.org").text in {"94.168.87.210", "37.97.136.149"}:
-                return set(doc["title"] for doc in
-                           MongoDB("dev_peter.names_data").find({"data": "titles"}, {"title": True}))
-        return {"ac", "ad", "ba", "bc", "bi", "bsc", "d", "de", "dr", "drs", "het", "ing",
-                "ir", "jr", "llb", "llm", "ma", "mr", "msc", "o", "phd", "sr", "t", "van"}
+        return set(doc["_source"]["title"] for doc in
+                   ESClient("dev_peter.names_data").findall(
+                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
 
     @staticmethod
     def surnames() -> dict:
@@ -952,8 +949,8 @@ class NamesData:
             else:
                 return 4
 
-        db = MongoDB("dev_peter.names_data")
+        es = ESClient("dev_peter.names_data")
+        names_data = es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
         # Return only names that occur commonly
-        names_data = list(db.find({"data": "surnames"}, {"_id": True, "number": True, "surname": True}))
-        names_data = {doc["surname"]: cutoff(doc["number"]) for doc in names_data}
+        names_data = {doc["_source"]["surname"]: cutoff(doc["_source"]["number"]) for doc in names_data}
         return names_data

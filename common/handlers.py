@@ -7,9 +7,11 @@ from functools import partial, wraps
 from io import TextIOWrapper
 from inspect import ismethod
 from itertools import islice
-from pathlib import PurePath, Path
+import logging
+from pathlib import Path
 import pkg_resources
 from subprocess import run
+import sys
 from time import perf_counter
 from typing import (Any,
                     Callable,
@@ -29,7 +31,7 @@ trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 
 
 def csv_write(data: Union[List[dict], dict],
-              filename: Union[PurePath, str],
+              filename: Union[Path, str],
               **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
     encoding: str = kwargs.pop("encoding", "utf-8")
@@ -57,7 +59,7 @@ def csv_write(data: Union[List[dict], dict],
             csv.writerow(data)
 
 
-def csv_read(filename: Union[PurePath, str],
+def csv_read(filename: Union[Path, str],
              **kwargs,
              ) -> MutableMapping:
     """Simple generator for reading from a csv file.
@@ -82,8 +84,6 @@ class Log:
     def __init__(self, level: str = None, filename: str = None):
         """Simple logger class that, when initiated, by default logs
         debug to stderr."""
-        import sys
-        import logging
         self.level = {
             "notset": logging.NOTSET,
             "debug": logging.DEBUG,
@@ -113,6 +113,54 @@ class Log:
 
     def __str__(self):
         return self.__repr__()
+
+
+def get_logger(level: str = None,
+               filename: str = None,
+               name: str = None
+               ) -> logging.Logger:
+    """Create an advanced Logger that will output to both file and stream.
+    The logger can be set with:
+        level (default: debug)
+        filename (default: )
+        name (default: root)
+    """
+    # get level, name, and filename
+    level = {
+        "notset": logging.NOTSET,
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warn": logging.WARNING,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "fatal": logging.FATAL,
+        "critical": logging.FATAL,
+    }.get(level.lower() if level else level, logging.DEBUG)
+    if not name and __name__ not in {"__main__", "common.handlers"}:
+        name = __name__
+    if not filename:
+        filename = f"{name or Path(sys.argv[0]).stem}.log"
+    # create logger
+    logger = logging.getLogger(name=name)
+    logger.setLevel(level=level)
+    # create formatter
+    formatter = logging.Formatter(
+        fmt="%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
+            "%(module)s:%(funcName)s:%(lineno)d:%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S")
+    # create file handler which logs even debug messages,
+    # add formatter to handler and handler to logger
+    fh = logging.FileHandler(filename=filename, encoding="utf-8")
+    fh.setLevel(level=level)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    # create console handler with a higher log level,
+    # add formatter to handler and handler to logger
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
 
 
 def send_email(function: Callable = None, *,
@@ -178,7 +226,7 @@ def send_email(function: Callable = None, *,
 class ZipData:
     """Class for processing zip archives containing csv data files."""
     def __init__(self,
-                 file_path: Union[PurePath, str],
+                 file_path: Union[Path, str],
                  data_as_dicts: bool = True,
                  assure_columns: bool = False,
                  **kwargs):
