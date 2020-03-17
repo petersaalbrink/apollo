@@ -29,10 +29,9 @@ def _write_pem():
         "SERVER_CA",
     )
     for key in keys:
-        key = f"MX_MYSQL_{key}"
-        data = os.environ[key]
+        data = os.environ[f"MX_MYSQL_{key}"]
         pem = key.replace("_", "-").lower()
-        with open(Path(Path.cwd() / pem), "w") as f:
+        with open(Path(Path.cwd() / f"{pem}.pem"), "w") as f:
             f.write(data)
 
 
