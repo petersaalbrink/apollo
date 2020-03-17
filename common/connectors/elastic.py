@@ -206,7 +206,7 @@ class ESClient(Elasticsearch):
         scroll = kwargs.pop("scroll", "10m")
 
         if not index:
-            index = "dev_realestate.realestate"
+            index = self.es_index
 
         data = self.search(index=index, scroll=scroll, size=10_000, body=query)
 
