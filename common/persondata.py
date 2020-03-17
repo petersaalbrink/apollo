@@ -666,7 +666,6 @@ class PersonData(MatchQueries,
                     {"dateOfRecord": "desc"}
                 ]}, size=1)
             if response:
-                response = response[0]
                 if self._responses[key]["_id"] != response["_id"]:
                     occurring = True
         return occurring
