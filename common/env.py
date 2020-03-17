@@ -32,7 +32,7 @@ def _write_pem():
         key = f"MX_MYSQL_{key}"
         data = os.environ[key]
         pem = key.replace("_", "-").lower()
-        with open(Path(commondir / pem), "w") as f:
+        with open(Path(Path.cwd() / pem), "w") as f:
             f.write(data)
 
 

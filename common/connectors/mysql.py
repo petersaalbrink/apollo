@@ -159,7 +159,7 @@ class MySQLClient:
         Default::
             sql = MySQLClient("mx_traineeship_peter")
         """
-        from ..env import getenv
+        from ..env import getenv, commondir
         from ..secrets import get_secret
         usr, pwd = get_secret("MX_MYSQL_DEV")
         if database:
@@ -174,17 +174,17 @@ class MySQLClient:
         envv = "MX_MYSQL_DEV_IP"
         host = getenv(envv)
         if not host:
-            from common.env import envfile
+            from ..env import envfile
             raise RuntimeError(f"Make sure a host is configured for variable"
                                f" name '{envv}' in file '{envfile}'")
-        path = Path.home() / ".common"
-        if not list(path.glob("*.pem")):
+        if not list(commondir.glob("*.pem")):
             try:
                 from ..env import _write_pem
                 _write_pem()
+                commondir = Path.cwd()
             except Exception:
                 raise RuntimeError(f"Please make sure all '.pem' SSL certificate "
-                                   f"files are placed in directory '{path}'")
+                                   f"files are placed in directory '{commondir}'")
         self.__config = {
             "user": usr,
             "password": pwd,
@@ -192,9 +192,9 @@ class MySQLClient:
             "database": self.database,
             "raise_on_warnings": kwargs.get("raise_on_warnings", False),
             "client_flags": [ClientFlag.SSL],
-            "ssl_ca": f'{path / "server-ca.pem"}',
-            "ssl_cert": f'{path / "client-cert.pem"}',
-            "ssl_key": f'{path / "client-key.pem"}',
+            "ssl_ca": f'{commondir / "server-ca.pem"}',
+            "ssl_cert": f'{commondir / "client-cert.pem"}',
+            "ssl_key": f'{commondir / "client-key.pem"}',
         }
         self.cnx = None
         self.cursor = None
