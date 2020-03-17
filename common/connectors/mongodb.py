@@ -43,15 +43,15 @@ class MongoDB(MongoClient):
         if host not in hosts:
             raise ValueError(f"Host `{host}` not recognized")
         host = hosts[host]
-        from common.env import getenv
-        from common.secrets import get_secret
+        from ..env import getenv
+        from ..secrets import get_secret
         usr, pwd = get_secret(host)
         envv = f"{host}_IP"
         host = getenv(envv)
         if not host:
-            from common.env import envfile
-            raise ValueError(f"Make sure a host is configured for variable"
-                             f" name '{envv}' in file '{envfile}'")
+            from ..env import envfile
+            raise RuntimeError(f"Make sure a host is configured for variable"
+                               f" name '{envv}' in file '{envfile}'")
         uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:

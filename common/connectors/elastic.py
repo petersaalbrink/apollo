@@ -23,8 +23,8 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
-        from common.env import getenv
-        from common.secrets import get_secret
+        from ..env import getenv
+        from ..secrets import get_secret
         usr, pwd = get_secret("MX_ELASTIC")
         if es_index:
             if "production_" in es_index:
@@ -42,9 +42,9 @@ class ESClient(Elasticsearch):
                 es_index = "production_realestate.realestate"
         self._host = getenv(envv)
         if not self._host:
-            from common.env import envfile
-            raise ValueError(f"Make sure a host is configured for variable"
-                             f" name '{envv}' in file '{envfile}'")
+            from ..env import envfile
+            raise RuntimeError(f"Make sure a host is configured for variable"
+                               f" name '{envv}' in file '{envfile}'")
         self.es_index = es_index
         self._port = int(getenv("MX_ELASTIC_PORT", 9200))
         hosts = [{"host": self._host, "port": self._port}]

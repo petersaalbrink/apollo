@@ -22,7 +22,7 @@ class EmailClient:
         self._server = None
         self._smtp_server = smtp_server
         if not login or not password:
-            from common.secrets import get_secret
+            from ..secrets import get_secret
             self._login, self._password = get_secret("MX_MAIL")
         else:
             self._login, self._password = login, password
