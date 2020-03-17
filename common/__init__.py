@@ -5,8 +5,8 @@ from .connectors.mongodb import MongoDB
 from .connectors.mysql import MySQLClient
 from .handlers import (Timer, ZipData,
                        csv_write, csv_read,
-                       Log, send_email,
-                       pip_upgrade)
+                       Log, get_logger,
+                       send_email, pip_upgrade)
 from .parsers import Checks, flatten, levenshtein, dateformat
 from .persondata import NoMatch, NamesData, PersonData
 from .persondata_legacy import PersonMatch, PhoneNumberFinder
@@ -24,6 +24,7 @@ __all__ = [
     "csv_write",
     "csv_read",
     "Log",
+    "get_logger",
     "send_email",
     "parse",
     "validate",
