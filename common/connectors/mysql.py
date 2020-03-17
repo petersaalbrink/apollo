@@ -173,10 +173,16 @@ class MySQLClient:
         self.database = database
         self.table_name = table
         path = Path(common.__file__).parent / "certificates"
+        envv = "MX_MYSQL_DEV_IP"
+        host = getenv(envv)
+        if not host:
+            from common.env import envfile
+            raise ValueError(f"Make sure a host is configured for variable"
+                             f" name '{envv}' in file '{envfile}'")
         self.__config = {
             "user": usr,
             "password": pwd,
-            "host": getenv("MX_MYSQL_DEV_IP"),
+            "host": host,
             "database": self.database,
             "raise_on_warnings": kwargs.get("raise_on_warnings", False),
             "client_flags": [ClientFlag.SSL],

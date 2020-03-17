@@ -2,18 +2,19 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+envfile = Path(Path.home() / ".common/.env")
+
 
 def getenv():
-    file = Path(Path.home() / ".common/.env")
 
     # Create .env, if it doesn't exist yet
-    if not file.exists():
+    if not envfile.exists():
         try:
-            file.parent.mkdir()
+            envfile.parent.mkdir()
         except FileExistsError:
             pass
         env = Path(__file__).parent / "etc/.env"
-        with open(env) as src, open(file, "w") as dst:
+        with open(env) as src, open(envfile, "w") as dst:
             dst.write(src.read())
 
     # Load .env

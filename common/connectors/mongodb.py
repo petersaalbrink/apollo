@@ -46,7 +46,13 @@ class MongoDB(MongoClient):
         from common.env import getenv
         from common.secrets import get_secret
         usr, pwd = get_secret(host)
-        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{getenv(f'{host}_IP')}"
+        envv = f"{host}_IP"
+        host = getenv(envv)
+        if not host:
+            from common.env import envfile
+            raise ValueError(f"Make sure a host is configured for variable"
+                             f" name '{envv}' in file '{envfile}'")
+        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:
