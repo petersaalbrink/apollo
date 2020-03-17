@@ -30,6 +30,10 @@ def _write_pem():
     )
     for key in keys:
         data = os.environ[f"MX_MYSQL_{key}"]
+        for s in ("-----BEGIN CERTIFICATE-----", "-----BEGIN RSA PRIVATE KEY-----"):
+            data = data.replace(s, f"{s}\n")
+        for s in ("-----END CERTIFICATE-----", "-----END RSA PRIVATE KEY-----"):
+            data = data.replace(s, f"\n{s}\n")
         pem = key.replace("_", "-").lower()
         with open(Path(Path.cwd() / f"{pem}.pem"), "w") as f:
             f.write(data)
