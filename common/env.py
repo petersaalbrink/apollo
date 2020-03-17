@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-envfile = Path(Path.home() / ".common/.env")
+commondir = Path.home() / ".common"
+envfile = Path(commondir / ".env")
 
 
 def getenv():
@@ -18,7 +19,21 @@ def getenv():
             dst.write(src.read())
 
     # Load .env
-    load_dotenv(dotenv_path=file, override=False)
+    load_dotenv(dotenv_path=envfile, override=False)
+
+
+def _write_pem():
+    keys = (
+        "CLIENT_CERT",
+        "CLIENT_KEY",
+        "SERVER_CA",
+    )
+    for key in keys:
+        key = f"MX_MYSQL_{key}"
+        data = os.environ[key]
+        pem = key.replace("_", "-").lower()
+        with open(Path(commondir / pem), "w") as f:
+            f.write(data)
 
 
 getenv()

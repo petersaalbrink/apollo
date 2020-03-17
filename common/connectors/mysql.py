@@ -159,9 +159,8 @@ class MySQLClient:
         Default::
             sql = MySQLClient("mx_traineeship_peter")
         """
-        import common
-        from common.env import getenv
-        from common.secrets import get_secret
+        from ..env import getenv
+        from ..secrets import get_secret
         usr, pwd = get_secret("MX_MYSQL_DEV")
         if database:
             if "." in database:
@@ -172,13 +171,20 @@ class MySQLClient:
             database, table = database.split(".")
         self.database = database
         self.table_name = table
-        path = Path(common.__file__).parent / "certificates"
         envv = "MX_MYSQL_DEV_IP"
         host = getenv(envv)
         if not host:
             from common.env import envfile
-            raise ValueError(f"Make sure a host is configured for variable"
-                             f" name '{envv}' in file '{envfile}'")
+            raise RuntimeError(f"Make sure a host is configured for variable"
+                               f" name '{envv}' in file '{envfile}'")
+        path = Path.home() / ".common"
+        if not list(path.glob("*.pem")):
+            try:
+                from ..env import _write_pem
+                _write_pem()
+            except Exception:
+                raise RuntimeError(f"Please make sure all '.pem' SSL certificate "
+                                   f"files are placed in directory '{path}'")
         self.__config = {
             "user": usr,
             "password": pwd,
