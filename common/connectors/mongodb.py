@@ -2,6 +2,7 @@ from typing import List, Union
 from urllib.parse import quote_plus
 
 from pymongo.database import Collection, Database
+from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
 from pymongo.operations import (InsertOne,
                                 UpdateOne,
@@ -58,9 +59,19 @@ class MongoDB(MongoClient):
             if "." in database:
                 database, collection = database.split(".")
             if collection:
-                return mongo_client.__getattr__(database).__getattr__(collection)
+                collection = mongo_client.__getattr__(database).__getattr__(collection)
+                cls.test_connection(collection)
+                return collection
             return mongo_client.__getattr__(database)
         return mongo_client
+
+    @staticmethod
+    def test_connection(collection: Collection):
+        try:
+            collection.find_one()
+        except ServerSelectionTimeoutError as e:
+            raise ServerSelectionTimeoutError(
+                "Are you contected with a Matrixian network?") from e
 
     # noinspection PyPep8Naming
     @staticmethod

@@ -122,7 +122,7 @@ def get_logger(level: str = None,
     """Create an advanced Logger that will output to both file and stream.
     The logger can be set with:
         level (default: debug)
-        filename (default: )
+        filename (default: sys.argv[0])
         name (default: root)
     """
     # get level, name, and filename
