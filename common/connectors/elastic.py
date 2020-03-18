@@ -65,6 +65,7 @@ class ESClient(Elasticsearch):
              hits_only: bool = True,
              source_only: bool = False,
              first_only: bool = False,
+             with_id: bool = False,
              *args, **kwargs
              ) -> Union[List[dict], List[List[dict]], Dict[str, Dict[str, Any]]]:
         """Perform an ElasticSearch query, and return the hits.
@@ -96,12 +97,15 @@ class ESClient(Elasticsearch):
             size = kwargs.pop("size", 1)
             return self.search(index=index, size=size, body={}, *args, **kwargs)
         if isinstance(query, dict):
-            query = [query]
+            query = (query,)
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
             info("Returning hits only if any([source_only, first_only])")
             hits_only = True
+        if with_id:
+            info("Returning hits only if with_id is True, with _source flattened")
+            hits_only, source_only, first_only = True, False, False
         size = kwargs.pop("size", self.size)
         results = []
         for q in query:
@@ -122,6 +126,8 @@ class ESClient(Elasticsearch):
             if size != 0:
                 if hits_only:
                     result = result["hits"]["hits"]
+                if with_id:
+                    result = [{**doc, **doc.pop("_source")} for doc in result]
                 if source_only:
                     result = [doc["_source"] for doc in result]
                 if first_only or size == 1:
