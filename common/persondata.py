@@ -349,7 +349,8 @@ class MatchQueries:
             fuzziness en wildcard op initials in should met minimum_should_match=1
         """
         yield "full", self._base_query(must=[], should=[
-            {"match": {self._es_mapping[field]: self.data[field]}}
+            {"match_phrase" if field == "lastname" else "match":
+                 {self._es_mapping[field]: self.data[field]}}
             for field in self.data if field != "telephone" and self.data[field]],
                                        minimum_should_match=self._strictness)
         if (self.data.postalCode and self.data.houseNumber
@@ -357,23 +358,27 @@ class MatchQueries:
             yield "initial", self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
                 {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                {"match": {"lastname": {
+                    "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                 {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if self.data.lastname and self.data.initials:
             if self.data.date_of_birth:
                 yield "dob", self._base_query(must=[
                     {"match": {"birth.date": self.data.date_of_birth}},
-                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"match": {"lastname": {
+                        "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.number:
                 yield "number", self._base_query(must=[
                     {"match": {"phoneNumber.number": self.data.number}},
-                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"match": {"lastname": {
+                        "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.mobile:
                 yield "mobile", self._base_query(must=[
                     {"match": {"phoneNumber.mobile": self.data.mobile}},
-                    {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}},
+                    {"match": {"lastname": {
+                        "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.houseNumber
@@ -381,7 +386,8 @@ class MatchQueries:
             query = self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
                 {"match": {"address.current.houseNumber": self.data.houseNumber}},
-                {"match": {"lastname": {"query": self.data.lastname, "fuzziness": 2}}}])
+                {"match": {"lastname": {
+                    "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}}])
             if self.data.initials:
                 query["query"]["bool"]["should"] = {
                     "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
