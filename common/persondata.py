@@ -12,13 +12,11 @@ from typing import Optional, Tuple, Union
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
 from phonenumbers.phonenumberutil import NumberParseException
-from requests import get as rget
 from requests.exceptions import RetryError
 from text_unidecode import unidecode
 from urllib3.exceptions import MaxRetryError
 
 from .connectors.elastic import ESClient, ElasticsearchException
-from .connectors.mongodb import MongoDB
 from .requests import get
 from .parsers import flatten, levenshtein
 
@@ -91,6 +89,7 @@ class SourceMatch:
     def __init__(self):
         super().__init__()
         self.data = self._matched = None
+        self._source_match = {5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}
 
     def _match_sources(self) -> str:
         """Assign self._match_sources_def or
@@ -160,7 +159,7 @@ class SourceMatch:
         keys = ("lastname", "initials", "address", "birth_date", "phone")
         values = (self._matched[m] for m in keys)
         matches = sum(bool(v) for v in values)
-        return {5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}[matches]
+        return self._source_match[matches]
 
     def _match_sources_cbs(self) -> str:
         return "N" if self._matched["lastname"] and self._matched["address"] else "A"
@@ -228,7 +227,7 @@ class SourceScore:
 
         def n_score(result: Score, score: float) -> float:
             for var in [result.phoneNumberNumber, result.lastNameNumber]:
-                score = score * (1 - ((var - 1) / x))
+                score *= (1 - ((var - 1) / x))
             return score
 
         def fuzzy_score(result: Score, score: float) -> float:
@@ -244,9 +243,9 @@ class SourceScore:
 
         def missing_score(result: Score, score: float) -> float:
             if result.dateOfBirth is None:
-                score = .9 * score
+                score *= .9
             if result.gender is None:
-                score = .9 * score
+                score *= .9
             return score
 
         def occurring_score(result: Score, score: float) -> float:
@@ -350,7 +349,7 @@ class MatchQueries:
         """
         yield "full", self._base_query(must=[], should=[
             {"match_phrase" if field == "lastname" else "match":
-                 {self._es_mapping[field]: self.data[field]}}
+             {self._es_mapping[field]: self.data[field]}}
             for field in self.data if field != "telephone" and self.data[field]],
                                        minimum_should_match=self._strictness)
         if (self.data.postalCode and self.data.houseNumber
