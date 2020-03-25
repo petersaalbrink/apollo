@@ -91,7 +91,7 @@ class Checks:
         }.get(var, 0)
 
 
-def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
+def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
 
     By default, returns the percentage score.
@@ -100,31 +100,38 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
     measures = {"distance", "percentage"}
     if measure not in measures:
         raise ValueError(f"measure should be one of {measures}")
-    size_x = len(seq1) + 1
-    size_y = len(seq2) + 1
-    matrix = zeros((size_x, size_y))
-    for _x in range(size_x):
-        matrix[_x, 0] = _x
-    for _y in range(size_y):
-        matrix[0, _y] = _y
-    for _x in range(1, size_x):
-        for _y in range(1, size_y):
-            if seq1[_x - 1] == seq2[_y - 1]:
-                matrix[_x, _y] = min(
-                    matrix[_x - 1, _y] + 1,
-                    matrix[_x - 1, _y - 1],
-                    matrix[_x, _y - 1] + 1
-                )
+
+    size_1, size_2 = len(seq1), len(seq2)
+    size_1p, size_2p = size_1 + 1, size_2 + 1
+
+    distances = zeros((size_1p, size_2p))
+
+    for t1 in range(size_1p):
+        distances[t1][0] = t1
+
+    for t2 in range(size_2p):
+        distances[0][t2] = t2
+
+    for t1 in range(1, size_1p):
+        for t2 in range(1, size_2p):
+            if seq1[t1 - 1] == seq2[t2 - 1]:
+                distances[t1][t2] = distances[t1 - 1][t2 - 1]
             else:
-                matrix[_x, _y] = min(
-                    matrix[_x - 1, _y] + 1,
-                    matrix[_x - 1, _y - 1] + 1,
-                    matrix[_x, _y - 1] + 1
-                )
+                a = distances[t1][t2 - 1]
+                b = distances[t1 - 1][t2]
+                c = distances[t1 - 1][t2 - 1]
+
+                if c >= a <= b:
+                    distances[t1][t2] = a + 1
+                elif c >= b <= a:
+                    distances[t1][t2] = b + 1
+                else:
+                    distances[t1][t2] = c + 1
+
     if measure == "percentage":
-        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+        return 1 - (distances[size_1, size_2]) / max(size_1, size_2)
     else:
-        return int(matrix[size_x - 1, size_y - 1])
+        return int(distances[size_1][size_2])
 
 
 def dateformat(date: str) -> str:
