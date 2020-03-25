@@ -1,10 +1,11 @@
 from datetime import datetime
+from typing import Any, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
 
 
-def flatten(nested_dict: dict, sep: str = "_"):
+def flatten(nested_dict: dict, sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
     def _flatten(input_dict):
@@ -35,45 +36,45 @@ class Checks:
     """Collection of several methods for preparation of MySQL data for MongoDB insertion."""
 
     @staticmethod
-    def percentage(part, whole):
+    def percentage(part, whole) -> float:
         return round(100 * float(part) / float(whole), 2)
 
     @staticmethod
-    def int_or_null(var):
+    def int_or_null(var) -> Optional[int]:
         try:
             return int(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def bool_or_null(var):
+    def bool_or_null(var) -> Optional[bool]:
         return bool(Checks.int_or_null(var)) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_null(var):
+    def str_or_null(var) -> Optional[str]:
         return str(var) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_empty(var):
+    def str_or_empty(var) -> str:
         return str(var) if var and not isna(var) else ""
 
     @staticmethod
-    def float_or_null(var):
+    def float_or_null(var) -> Optional[float]:
         try:
             return float(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def date_or_null(var, f):
+    def date_or_null(var, f) -> Optional[datetime]:
         return datetime.strptime(var, f) if var and not isna(var) else None
 
     @staticmethod
-    def check_null(var):
+    def check_null(var) -> Optional[Any]:
         return var if var and not isna(var) else None
 
     @staticmethod
-    def energy_label(var):
+    def energy_label(var) -> int:
         return {
             "A": 7,
             "A+": 7,
