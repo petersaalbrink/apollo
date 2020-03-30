@@ -116,8 +116,8 @@ class ESClient(Elasticsearch):
                 try:
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
-                except (OSError, HTTPWarning, TransportError):
-                    if self.retry_on_timeout:
+                except (OSError, HTTPWarning, TransportError) as e:
+                    if self.retry_on_timeout and "timeout" in f"{e}".lower():
                         pass
                     else:
                         raise
