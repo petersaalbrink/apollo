@@ -401,16 +401,14 @@ class MatchQueries:
                     "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
             yield "wildcard", query
         if (self.data.postalCode
-                and self.data.houseNumber
-                and self.data.houseNumberExt):
-            yield "address", self._base_query(
-                must=[{"match": {"address.current.postalCode": self.data.postalCode}},
-                      {"match": {"address.current.houseNumber": self.data.houseNumber}}],
-                should=[{"wildcard": {
-                    "address.current.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}},
-                    {"match": {"address.current.houseNumberExt": {
-                        "query": self.data.houseNumberExt[0], "fuzziness": 2}}}],
-                minimum_should_match=1)
+                and self.data.houseNumber):
+            must = [{"match": {"address.current.postalCode": self.data.postalCode}},
+                    {"match": {"address.current.houseNumber": self.data.houseNumber}}]
+            if self.data.houseNumberExt:
+                must.append({"wildcard": {
+                    "address.current.houseNumberExt":
+                        f"*{self.data.houseNumberExt[0].lower()}*"}})
+            yield "address", self._base_query(must=must)
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
                 must=[{"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
