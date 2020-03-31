@@ -197,13 +197,13 @@ class ESClient(Elasticsearch):
         return results
 
     def findall(self,
-                query: Dict[Any, Any],
+                query: Dict[str, Any],
                 index: str = None,
                 **kwargs,
-                ) -> List[Dict[Any, Any]]:
+                ) -> List[Dict[str, Any]]:
         """Used for elastic search queries that are larger than the max
-        window size of 10,000.
-        :param query: Dict[Any, Any]
+        window size of 10,000. Returns all results at once.
+        :param query: Dict[str, Any]
         :param index: str
         :param kwargs: scroll: str
         :return: List[Dict[Any, Any]]
@@ -228,6 +228,49 @@ class ESClient(Elasticsearch):
             scroll_size = len(data["hits"]["hits"])
 
         return results
+
+    def scrollall(self,
+                  query: Dict[str, Any],
+                  index: str = None,
+                  **kwargs,
+                  ) -> Iterator[Union[Dict[str, Any], List[Dict[str, Any]]]]:
+        """Used for elastic search queries that are larger than the max
+        window size of 10,000. Returns an iterator of documents.
+
+        The default behavior of iterating through documents can be changed
+        into iterating through chunks of documents by setting `as_chunks=True`.
+
+        Usage::
+            es = ESClient()
+            q = {"query": {"bool": {"must_not": {"exists": {"field": "id"}}}}}
+            data = iter(es.scrollall(query=q))
+            for doc in data:
+                pass
+        """
+        scroll = kwargs.pop("scroll", "1440m")
+        chunk_size = kwargs.pop("chunk_size", 10_000)
+        as_chunks = kwargs.pop("as_chunks", False)
+        if chunk_size > 10_000:
+            chunk_size = 10_000
+        if not index:
+            index = self.es_index
+        data = self.search(index=index, scroll=scroll, size=chunk_size, body=query)
+        sid = data["_scroll_id"]
+        scroll_size = len(data["hits"]["hits"])
+        if as_chunks:
+            yield data["hits"]["hits"]
+        else:
+            yield from data["hits"]["hits"]
+
+        # We scroll over the results until nothing is returned
+        while scroll_size > 0:
+            data = self.scroll(scroll_id=sid, scroll=scroll)
+            sid = data["_scroll_id"]
+            scroll_size = len(data["hits"]["hits"])
+            if as_chunks:
+                yield data["hits"]["hits"]
+            else:
+                yield from data["hits"]["hits"]
 
     def query(self, field: str = None, value: Union[str, int] = None,
               **kwargs) -> Union[List[dict], Dict[str, Union[Any, dict]]]:
