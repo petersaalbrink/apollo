@@ -352,11 +352,10 @@ class MatchQueries:
              {self._es_mapping[field]: self.data[field]}}
             for field in self.data if field != "telephone" and self.data[field]],
                                        minimum_should_match=self._strictness)
-        if (self.data.postalCode and self.data.houseNumber
+        if (self.data.postalCode
                 and self.data.lastname and self.data.initials):
             yield "initial", self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
-                {"match": {"address.current.houseNumber": self.data.houseNumber}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                 {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
@@ -389,11 +388,9 @@ class MatchQueries:
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
-                and self.data.houseNumber
                 and self.data.lastname):
             query = self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
-                {"match": {"address.current.houseNumber": self.data.houseNumber}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}}])
             if self.data.initials:
@@ -402,7 +399,6 @@ class MatchQueries:
             yield "name", query
             query = self._base_query(must=[
                 {"match": {"address.current.postalCode": self.data.postalCode}},
-                {"match": {"address.current.houseNumber": self.data.houseNumber}},
                 {"wildcard": {
                     "lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
             if self.data.initials:
