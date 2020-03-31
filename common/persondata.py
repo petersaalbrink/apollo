@@ -362,8 +362,17 @@ class MatchQueries:
                 {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if self.data.lastname and self.data.initials:
             if self.data.date_of_birth:
+                if self.data.date_of_birth.day <= 12:
+                    swapped_dob = datetime(year=self.data.date_of_birth.year,
+                                           month=self.data.date_of_birth.day,
+                                           day=self.data.date_of_birth.month)
+                    dob = {"bool": {"minimum_should_match": 1, "should": [
+                        {"match": {"birth.date": self.data.date_of_birth}},
+                        {"match": {"birth.date": swapped_dob}}]}}
+                else:
+                    dob = {"match": {"birth.date": self.data.date_of_birth}}
                 yield "dob", self._base_query(must=[
-                    {"match": {"birth.date": self.data.date_of_birth}},
+                    dob,
                     {"match": {"lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
