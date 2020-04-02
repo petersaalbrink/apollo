@@ -1,10 +1,11 @@
 from datetime import datetime
+from typing import Any, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
 
 
-def flatten(nested_dict: dict, sep: str = "_"):
+def flatten(nested_dict: dict, sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
     def _flatten(input_dict):
@@ -35,45 +36,45 @@ class Checks:
     """Collection of several methods for preparation of MySQL data for MongoDB insertion."""
 
     @staticmethod
-    def percentage(part, whole):
+    def percentage(part, whole) -> float:
         return round(100 * float(part) / float(whole), 2)
 
     @staticmethod
-    def int_or_null(var):
+    def int_or_null(var) -> Optional[int]:
         try:
             return int(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def bool_or_null(var):
+    def bool_or_null(var) -> Optional[bool]:
         return bool(Checks.int_or_null(var)) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_null(var):
+    def str_or_null(var) -> Optional[str]:
         return str(var) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_empty(var):
+    def str_or_empty(var) -> str:
         return str(var) if var and not isna(var) else ""
 
     @staticmethod
-    def float_or_null(var):
+    def float_or_null(var) -> Optional[float]:
         try:
             return float(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def date_or_null(var, f):
+    def date_or_null(var, f) -> Optional[datetime]:
         return datetime.strptime(var, f) if var and not isna(var) else None
 
     @staticmethod
-    def check_null(var):
+    def check_null(var) -> Optional[Any]:
         return var if var and not isna(var) else None
 
     @staticmethod
-    def energy_label(var):
+    def energy_label(var) -> int:
         return {
             "A": 7,
             "A+": 7,
@@ -90,7 +91,7 @@ class Checks:
         }.get(var, 0)
 
 
-def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
+def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
 
     By default, returns the percentage score.
@@ -99,31 +100,38 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> float:
     measures = {"distance", "percentage"}
     if measure not in measures:
         raise ValueError(f"measure should be one of {measures}")
-    size_x = len(seq1) + 1
-    size_y = len(seq2) + 1
-    matrix = zeros((size_x, size_y))
-    for _x in range(size_x):
-        matrix[_x, 0] = _x
-    for _y in range(size_y):
-        matrix[0, _y] = _y
-    for _x in range(1, size_x):
-        for _y in range(1, size_y):
-            if seq1[_x - 1] == seq2[_y - 1]:
-                matrix[_x, _y] = min(
-                    matrix[_x - 1, _y] + 1,
-                    matrix[_x - 1, _y - 1],
-                    matrix[_x, _y - 1] + 1
-                )
+
+    size_1, size_2 = len(seq1), len(seq2)
+    size_1p, size_2p = size_1 + 1, size_2 + 1
+
+    distances = zeros((size_1p, size_2p))
+
+    for t1 in range(size_1p):
+        distances[t1][0] = t1
+
+    for t2 in range(size_2p):
+        distances[0][t2] = t2
+
+    for t1 in range(1, size_1p):
+        for t2 in range(1, size_2p):
+            if seq1[t1 - 1] == seq2[t2 - 1]:
+                distances[t1][t2] = distances[t1 - 1][t2 - 1]
             else:
-                matrix[_x, _y] = min(
-                    matrix[_x - 1, _y] + 1,
-                    matrix[_x - 1, _y - 1] + 1,
-                    matrix[_x, _y - 1] + 1
-                )
+                a = distances[t1][t2 - 1]
+                b = distances[t1 - 1][t2]
+                c = distances[t1 - 1][t2 - 1]
+
+                if c >= a <= b:
+                    distances[t1][t2] = a + 1
+                elif c >= b <= a:
+                    distances[t1][t2] = b + 1
+                else:
+                    distances[t1][t2] = c + 1
+
     if measure == "percentage":
-        return 1 - (matrix[size_x - 1, size_y - 1]) / max(len(seq1), len(seq2))
+        return 1 - (distances[size_1, size_2]) / max(size_1, size_2)
     else:
-        return int(matrix[size_x - 1, size_y - 1])
+        return int(distances[size_1][size_2])
 
 
 def dateformat(date: str) -> str:

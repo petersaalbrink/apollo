@@ -50,8 +50,9 @@ class FileTransfer:
         # Prepare parameters
         self.filename = filename
         self.insert_filename = Path(filename).name
-        self.ftpath = f"/var/www/platform_projects/public/upload/filetransfer/{self.user_id}"
-        self.filepath = f"{self.ftpath}/{token_hex(10)}{round(time())}"
+        self.ftpath = f"/var/www/platform_projects_live_docker/public/upload/filetransfer"
+        self.unique_dir = f"{token_hex(10)}{round(time())}"
+        self.filepath = f"{self.ftpath}/{self.user_id}/{self.unique_dir}"
         self.cmds = (
             ["ssh", "consucom", "install", "-d", "-m", "0777", self.filepath],
             ["scp", self.filename, f"consucom:{self.filepath}/"],
@@ -59,7 +60,7 @@ class FileTransfer:
         )
         self.doc = {
             "createdDate": datetime.now(tz=timezone("Europe/Amsterdam")),
-            "filePath": self.filepath,
+            "filePath": f"{self.user_id}/{self.unique_dir}",
             "fileName": self.insert_filename,
             "fileSize": Path(self.filename).stat().st_size,
             "downloadsCount": 0,
