@@ -1,70 +1,44 @@
-from functools import wraps
-from zipfile import ZipFile
-from io import TextIOWrapper
-from itertools import islice
-from datetime import datetime
-from subprocess import run
-from pathlib import PurePath, Path
 from collections import OrderedDict
-from csv import DictReader, DictWriter
-from requests import Session, Response
-from requests.adapters import HTTPAdapter
-from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Callable, Dict, Iterable, List, MutableMapping, Tuple, Union
-from .connectors import EmailClient
+from contextlib import ContextDecorator
+from csv import DictReader, DictWriter, Error, Sniffer
+from dataclasses import dataclass, field
+from datetime import datetime
+from functools import partial, wraps
+from io import TextIOWrapper
+from inspect import ismethod
+from itertools import islice
+import logging
+from pathlib import Path
+import pkg_resources
+from subprocess import run
+import sys
+from time import perf_counter
+from typing import (Any,
+                    Callable,
+                    ClassVar,
+                    Dict,
+                    List,
+                    MutableMapping,
+                    Optional,
+                    Tuple,
+                    Union)
+from zipfile import ZipFile
+from tqdm import tqdm, trange
+from .connectors.email import EmailClient
 
-session = Session()
-session.mount('http://', HTTPAdapter(
-    pool_connections=100,
-    pool_maxsize=100))
-
-
-def get(url, text_only: bool = False, **kwargs) -> Union[dict, Response]:
-    """Sends a GET request. Returns :class:`Response` object.
-
-    :param text_only: return JSON data from :class:`Response` as dictionary.
-    :param url: URL for the new :class:`Request` object.
-    :param kwargs: Optional arguments that ``request`` takes.
-    """
-    return session.get(url, **kwargs).json() if text_only else session.get(url, **kwargs)
-
-
-def thread(function: Callable, data: Iterable, process: Callable = None):
-    """Thread :param data: with :param function: and optionally do :param process:.
-
-    Example:
-        from common import get, thread
-        thread(
-            function=lambda _: get("http://example.org"),
-            data=range(2000),
-            process=lambda result: print(result.status_code)
-        )"""
-    if process is None:
-        with ThreadPoolExecutor() as executor:
-            return [f.result() for f in
-                    wait({executor.submit(function, row) for row in data},
-                         return_when='FIRST_EXCEPTION').done]
-    else:
-        futures = set()
-        with ThreadPoolExecutor() as executor:
-            for row in data:
-                futures.add(executor.submit(function, row))
-                if len(futures) == 1000:
-                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-                    _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
-            if done:
-                _ = [process(f.result()) for f in done]
+tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
+trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 
 
 def csv_write(data: Union[List[dict], dict],
-              filename: Union[PurePath, str],
+              filename: Union[Path, str],
               **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
     encoding: str = kwargs.pop("encoding", "utf-8")
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
     extrasaction: str = kwargs.pop("extrasaction", "raise")
+    quotechar: str = kwargs.pop("quotechar", '"')
 
     multiple_rows = isinstance(data, list)
     fieldnames = list(data[0].keys()) if multiple_rows else list(data.keys())
@@ -75,6 +49,7 @@ def csv_write(data: Union[List[dict], dict],
                          fieldnames=fieldnames,
                          delimiter=delimiter,
                          extrasaction=extrasaction,
+                         quotechar=quotechar,
                          **kwargs)
         if not_exists:
             csv.writeheader()
@@ -84,24 +59,31 @@ def csv_write(data: Union[List[dict], dict],
             csv.writerow(data)
 
 
-def csv_read(filename: Union[PurePath, str],
-             encoding: str = "utf-8",
-             delimiter: str = ","
+def csv_read(filename: Union[Path, str],
+             **kwargs,
              ) -> MutableMapping:
-    """Simple generator for reading from a csv file. Returns rows as OrderedDict."""
-    with open(filename, encoding=encoding) as f:
-        for row in DictReader(f, delimiter=delimiter):
-            yield row
+    """Simple generator for reading from a csv file.
+    Returns rows as OrderedDict, with None instead of empty string."""
+    with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
+        if kwargs.pop("sniff", False):
+            try:
+                dialect = Sniffer().sniff(f.read())
+            except Error:
+                dialect = "excel"
+            finally:
+                f.seek(0)
+        else:
+            dialect = "excel"
+        for row in DictReader(f, dialect=dialect, **kwargs):
+            yield {k: v if v else None for k, v in row.items()}
 
 
 class Log:
     """Simple logger class that, when initiated, by default logs debug
     to stderr."""
-    def __init__(self, level: str = None):
+    def __init__(self, level: str = None, filename: str = None):
         """Simple logger class that, when initiated, by default logs
         debug to stderr."""
-        import sys
-        import logging
         self.level = {
             "notset": logging.NOTSET,
             "debug": logging.DEBUG,
@@ -111,20 +93,93 @@ class Log:
             "error": logging.ERROR,
             "fatal": logging.FATAL,
             "critical": logging.FATAL,
-        }.get(level, logging.DEBUG)
-        logging.basicConfig(stream=sys.stderr, level=self.level)
+        }.get(level.lower(), logging.DEBUG)
+        self.kwargs = {
+            "level": self.level,
+            "format": "%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
+                      "%(module)s:%(funcName)s:%(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S"
+        }
+        if filename:
+            self.kwargs["handlers"] = (logging.FileHandler(filename=filename,
+                                                           encoding="utf-8"),)
+        else:
+            self.kwargs["stream"] = sys.stderr
+        logging.basicConfig(**self.kwargs)
 
     def __repr__(self):
-        return f"Log({self.level})"
+        kwargs = ", ".join(f"{k}={v}" for k, v in self.kwargs.items())
+        return f"Log({kwargs})"
 
     def __str__(self):
-        return f"Log({self.level})"
+        return self.__repr__()
+
+
+def get_logger(level: str = None,
+               filename: str = None,
+               name: str = None
+               ) -> logging.Logger:
+    """Create an advanced Logger that will output to both file and stream.
+    The logger can be set with:
+        level (default: debug)
+        filename (default: sys.argv[0])
+        name (default: root)
+    """
+    # get level, name, and filename
+    level = {
+        "notset": logging.NOTSET,
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warn": logging.WARNING,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "fatal": logging.FATAL,
+        "critical": logging.FATAL,
+    }.get(level.lower() if level else level, logging.DEBUG)
+    if not name and __name__ not in {"__main__", "common.handlers"}:
+        name = __name__
+    if not filename:
+        filename = f"{name or Path(sys.argv[0]).stem}.log"
+    # create logger
+    logger = logging.getLogger(name=name)
+    logger.setLevel(level=level)
+    # create formatter
+    formatter = logging.Formatter(
+        fmt="%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
+            "%(module)s:%(funcName)s:%(lineno)d:%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S")
+    # create file handler which logs even debug messages,
+    # add formatter to handler and handler to logger
+    fh = logging.FileHandler(filename=filename, encoding="utf-8")
+    fh.setLevel(level=level)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    # create console handler with a higher log level,
+    # add formatter to handler and handler to logger
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
 
 
 def send_email(function: Callable = None, *,
                to_address: Union[str, list] = None,
-               message: str = None):
-    """Function decorator to send emails!"""
+               message: str = None,
+               on_error_only: bool = False,
+               ):
+    """Function decorator to send emails!
+
+    Usage::
+        @send_email
+        def my_func():
+            pass
+
+    or::
+        def my_func():
+            pass
+        send_email(my_func)()
+    """
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
 
@@ -132,11 +187,17 @@ def send_email(function: Callable = None, *,
         if not m:
             m = f"{f.__name__}("
             if args:
-                m = f"{m}{', '.join(map(str, args))}"
-                if kwargs:
-                    m = f"{m}, "
+                if ismethod(f):
+                    args = args[1:]
+                args = [arg for arg in
+                        [f"{arg}" for arg in args]
+                        if len(arg) <= 1_000]
+                m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
             if kwargs:
-                m = f"{m}{', '.join([f'{k}={v}' for k,v in kwargs.items()])}"
+                kwargs = [kwarg for kwarg in
+                          [f'{k}={v}' for k, v in kwargs.items()]
+                          if len(kwarg) <= 1_000]
+                m = f"{m}{', '.join(kwargs)}"
             m = f"{m})"
         return m
 
@@ -146,9 +207,10 @@ def send_email(function: Callable = None, *,
             ec = EmailClient()
             try:
                 f(*args, **kwargs)
-                ec.send_email(to_address=to_address,
-                              message=f"Program finished successfully:\n\n"
-                                      f"{make_message(message, f, args, kwargs)}")
+                if not on_error_only:
+                    ec.send_email(to_address=to_address,
+                                  message=f"Program finished successfully:\n\n"
+                                          f"{make_message(message, f, args, kwargs)}")
             except Exception:
                 ec.send_email(to_address=to_address,
                               message=make_message(message, f, args, kwargs),
@@ -164,7 +226,7 @@ def send_email(function: Callable = None, *,
 class ZipData:
     """Class for processing zip archives containing csv data files."""
     def __init__(self,
-                 file_path: Union[PurePath, str],
+                 file_path: Union[Path, str],
                  data_as_dicts: bool = True,
                  assure_columns: bool = False,
                  **kwargs):
@@ -244,8 +306,13 @@ class ZipData:
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
 
-    def open(self, remove: bool = False, n_lines: int = None, as_generator: bool = False) \
-            -> Union[Dict[str, List[OrderedDict]], List[OrderedDict], List[list]]:
+    def open(self,
+             remove: bool = False,
+             n_lines: int = None,
+             as_generator: bool = False
+             ) -> Union[List[OrderedDict],
+                        List[list],
+                        Dict[str, List[OrderedDict]]]:
         """Load (and optionally remove) data from zip archive. If the
         archive contains multiple csv files, they are returned in
         Dict[str, List[OrderedDict]] format.
@@ -312,3 +379,61 @@ class Timer:
 
     def __repr__(self):
         return f"Timer: {self.end()}".split(".")[0]
+
+
+class TimerError(Exception):
+    """Exception used to report errors in use of Timer class."""
+
+
+@dataclass
+class TicToc(ContextDecorator):
+    """Time code using a class, context manager, or decorator."""
+
+    timers: ClassVar[Dict[str, float]] = dict()
+    name: Optional[str] = None
+    text: str = "Elapsed time: {:0.4f} seconds"
+    logger: Optional[Callable[[str], None]] = print
+    _start_time: Optional[float] = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Initialization: add timer to dict of timers"""
+        if self.name:
+            self.timers.setdefault(self.name, 0)
+
+    def start(self) -> None:
+        """Start a new timer"""
+        if self._start_time is not None:
+            raise TimerError(f"Timer is running. Use .stop() to stop it")
+
+        self._start_time = perf_counter()
+
+    def stop(self) -> float:
+        """Stop the timer, and report the elapsed time"""
+        if self._start_time is None:
+            raise TimerError(f"Timer is not running. Use .start() to start it")
+
+        # Calculate elapsed time
+        elapsed_time = perf_counter() - self._start_time
+        self._start_time = None
+
+        # Report elapsed time
+        if self.logger:
+            self.logger(self.text.format(elapsed_time))
+        if self.name:
+            self.timers[self.name] += elapsed_time
+
+        return elapsed_time
+
+    def __enter__(self) -> "TicToc":
+        """Start a new timer as a context manager"""
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        """Stop the context manager timer"""
+        self.stop()
+
+
+def pip_upgrade():
+    packages = [dist.project_name for dist in pkg_resources.working_set]
+    run(["pip", "install", "--upgrade", *packages])
