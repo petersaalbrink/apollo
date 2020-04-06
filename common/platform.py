@@ -7,8 +7,8 @@ from typing import Sequence, Union
 from bson import DBRef, ObjectId
 from pendulum import timezone
 from pymongo.errors import PyMongoError
-from .connectors.email import EmailClient
-from .connectors.mongodb import MongoDB
+from .connectors.mx_email import EmailClient
+from .connectors.mx_mongo import MongoDB
 
 
 class FileTransferError(Exception):
