@@ -15,8 +15,8 @@ from requests.exceptions import RetryError
 from text_unidecode import unidecode
 from urllib3.exceptions import MaxRetryError
 
-from .connectors.elastic import ESClient, ElasticsearchException
-from .connectors.mongodb import MongoDB
+from .connectors.mx_elastic import ESClient, ElasticsearchException
+from .connectors.mx_mongo import MongoDB
 from .handlers import Timer
 from .requests import get
 from .parsers import Checks, levenshtein

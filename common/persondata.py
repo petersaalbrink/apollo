@@ -16,7 +16,7 @@ from requests.exceptions import RetryError
 from text_unidecode import unidecode
 from urllib3.exceptions import MaxRetryError
 
-from .connectors.elastic import ESClient, ElasticsearchException
+from .connectors.mx_elastic import ESClient, ElasticsearchException
 from .requests import get
 from .parsers import flatten, levenshtein
 

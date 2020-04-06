@@ -1,8 +1,8 @@
 from .address import parse, validate
-from .connectors.elastic import ESClient
-from .connectors.email import EmailClient
-from .connectors.mongodb import MongoDB
-from .connectors.mysql import MySQLClient
+from .connectors.mx_elastic import ESClient
+from .connectors.mx_email import EmailClient
+from .connectors.mx_mongo import MongoDB
+from .connectors.mx_mysql import MySQLClient
 from .handlers import (Timer, ZipData,
                        csv_write, csv_read,
                        Log, get_logger,
