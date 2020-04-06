@@ -169,6 +169,8 @@ class SourceMatch:
         try:
             source = self._match_sources()
         except KeyError as e:
+            if e.args[0] == 0:
+                raise NoMatch
             raise RuntimeError(
                 "No source could be defined for this match!",
                 self.data, response) from e
