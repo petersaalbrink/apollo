@@ -16,6 +16,18 @@ class FileTransferError(Exception):
 
 
 class FileTransfer:
+    """Upload a file to the Matrixian Platform.
+
+    NB. There is no method yet to download files,
+    but it can be made on request.
+
+    Example usage::
+        ft = FileTransfer(
+            username="Data Team",
+            filename="somefile.csv"
+        )
+        ft.transfer().notify()
+    """
     def __init__(self,
                  user_id: str = None,
                  username: str = None,
