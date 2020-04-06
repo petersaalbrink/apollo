@@ -7,7 +7,6 @@ from pathlib import Path
 from random import sample
 from typing import (Any,
                     Dict,
-                    Generator,
                     Iterable,
                     Iterator,
                     List,
@@ -128,7 +127,7 @@ class MySQLClient:
                  database: str = None,
                  table: str = None,
                  buffered: bool = False,
-                 dictionary: bool = False,
+                 dictionary: bool = True,
                  **kwargs
                  ):
         """Create client for MySQL, and connect to a specific database.
@@ -305,6 +304,9 @@ class MySQLClient:
     def fetchall(self) -> List[Tuple[Any]]:
         return self.cursor.fetchall()
 
+    def fetchmany(self, size: int = None) -> List[Tuple[Any]]:
+        return self.cursor.fetchmany(size)
+
     def fetchone(self) -> Tuple[Any]:
         return self.cursor.fetchone()
 
@@ -429,66 +431,52 @@ class MySQLClient:
     def chunk(self,
               query: Union[Query, str] = None,
               size: int = None,
-              use_tqdm: bool = False,
-              retry_on_error: bool = False,
               *args, **kwargs
               ) -> Iterator[Union[List[Dict[str, Any]], List[List[Any]]]]:
         """Returns a generator for downloading a table in chunks
 
         Example::
-            from common.classes import MySQLClient
-            sql = MySQLClient()
-            query = sql.build(
-                table="mx_traineeship_peter.client_data",
-                Province="Noord-Holland",
-                select_fields=['id', 'City']
-            )
-            for rows in sql.chunk(query=query, size=10):
-                print(rows)
+            from common import MySQLClient
+            sql = MySQLClient("real_estate.real_estate")
+            for rows in sql.chunk():
+                for row in rows:
+                    print(row)
         """
-        range_func = partial(trange, desc="chunking", disable=not use_tqdm)
-        count = self.count() if use_tqdm else 1_000_000_000
+        tqdm_func = partial(
+            tqdm,
+            desc="query",
+            disable=not kwargs.pop("use_tqdm", False)
+        )
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
-        fieldnames = kwargs.pop("fieldnames", True)
+        fieldnames = kwargs.pop("fieldnames", None)
+        if fieldnames is not None:
+            self.dictionary = fieldnames
+
         if not query:
             query = self.build(select_fields=select_fields,
                                order_by=order_by,
                                *args, **kwargs)
         if size is None:
-            size = 1
+            size = kwargs.pop("chunk_size", 10_000)
         elif size <= 0:
             raise ValueError("Chunk size must be > 0")
 
-        def _chunk() -> Generator[Union[dict, list], None, None]:
-            if size == 1:
-                for i in range_func(0, count, size):
-                    q = f"{query} LIMIT {i}, {size}"
-                    try:
-                        row = self.row(q, fieldnames=fieldnames, *args, **kwargs)
-                    except IndexError:
-                        break
-                    yield row
-            else:
-                for i in range_func(0, count, size):
-                    q = f"{query} LIMIT {i}, {size}"
-                    if retry_on_error:
-                        while True:
-                            try:
-                                table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                                break
-                            except DatabaseError as e:
-                                raise DatabaseError(q) from e
-                    else:
-                        table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                    if len(table) == 0:
-                        break
-                    yield table
-
-        # Avoid memory leak
-        self.__config["use_pure"] = True
-        yield from iter(_chunk())
-        self.__config["use_pure"] = False
+        self.connect()
+        try:
+            self.execute(query, *args, **kwargs)
+            count = self._cursor_row_count
+            bar = tqdm_func(total=count)
+            while True:
+                data = self.fetchmany(size)
+                bar.update(size)
+                if not data:
+                    break
+                yield data
+        except DatabaseError as e:
+            raise DatabaseError(query) from e
+        finally:
+            self.disconnect()
 
     def iter(self,
              query: Union[Query, str] = None,
