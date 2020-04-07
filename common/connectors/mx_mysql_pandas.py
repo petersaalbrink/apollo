@@ -1,4 +1,5 @@
 from common import MySQLClient
+from sqlalchemy import create_engine
 from pandas import DataFrame, read_sql
 from numpy import ceil
 from tqdm import tqdm
@@ -8,11 +9,17 @@ from functools import partial
 
 class PandasSQL(MySQLClient):
     def __init__(self, database: str = None, table: str = None, **kwargs):
-        super().__init__(database=database, table=table, **kwargs)
-        self.engine = self.connect(conn=True)
-        self.psql_query = None
-        self.psql_count = None
-        self.psql_chunk_total = None
+        super().__init__(**kwargs)
+        self.database = database
+        self.table = table
+        self.sql = MySQLClient(database=database, table=table)
+        config = self.sql.__dict__['_MySQLClient__config']
+        self.engine = create_engine(
+            f"mysql+mysqlconnector://{config['user']}:{config['password']}@{config['host']}",
+            connect_args={k: v for k, v in config.items() if k in ['ssl_ca', 'ssl_cert', 'ssl_key']})
+        self.query = None
+        self.count = None
+        self.chunk_total = None
         self.df = None
 
     def get_df(self, q: str = None, chunk_size: int = None, columns: List[str] = None,
@@ -36,18 +43,18 @@ class PandasSQL(MySQLClient):
         :param limit:
         :return:
         """
-        self.psql_query = q if q else self.build()
+        self.query = q if q else self.sql.build()
         if limit:
-            self.psql_query += f" LIMIT {limit}"
+            self.query += f" LIMIT {limit}"
         _tqdm = partial(tqdm, desc="iterating", disable=not use_tqdm)
 
         if use_tqdm and chunk_size:
-            self.psql_count = int(self.psql_query.upper().split('LIMIT')[-1]) \
-                if 'LIMIT' in self.psql_query.upper() else self.psql_count()
-            self.psql_chunk_total = int(ceil(self.psql_count / chunk_size))
+            self.count = int(self.query.upper().split('LIMIT')[-1]) \
+                if 'LIMIT' in self.query.upper() else self.sql.count()
+            self.chunk_total = int(ceil(self.count / chunk_size))
 
         self.df = read_sql(
-            sql=self.psql_query,
+            sql=self.query,
             con=self.engine,
             chunksize=chunk_size,
             columns=columns,
