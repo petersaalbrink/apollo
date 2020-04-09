@@ -84,11 +84,7 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
-        if not self.index_exists:
-            if self.index_exists is None:
-                self.index_exists = self.indices.exists(self.es_index)
-            if self.index_exists is False:
-                raise NotFoundError(404, self.es_index)
+        self._check_index_exists()
         if "index" in kwargs:
             index = kwargs.pop("index")
         else:
@@ -320,3 +316,15 @@ class ESClient(Elasticsearch):
             return self.find(q, **find_kwargs)
         else:
             return self.find(**find_kwargs)
+
+    def _check_index_exists(self):
+        if not self.index_exists:
+            if self.index_exists is None:
+                self.index_exists = self.indices.exists(self.es_index)
+            if self.index_exists is False:
+                raise NotFoundError(404, self.es_index)
+
+    @property
+    def total(self) -> int:
+        self._check_index_exists()
+        return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
