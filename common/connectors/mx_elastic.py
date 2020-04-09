@@ -297,6 +297,7 @@ class ESClient(Elasticsearch):
             "hits_only": kwargs.pop("hits_only", True),
             "source_only": kwargs.pop("source_only", False),
             "first_only": kwargs.pop("first_only", False),
+            "with_id": kwargs.pop("with_id", False),
         }
 
         if field and value:
