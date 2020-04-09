@@ -220,7 +220,7 @@ class MySQLClient:
         }
 
     def __repr__(self):
-        args = ", ".join(f"{k}={v}" for k, v in self.__dict__.items())
+        args = f"{self.database}{f'.{self.table_name}' if self.table_name else ''}"
         return f"MySQLClient({args})"
 
     def connect(self,

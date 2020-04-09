@@ -1,5 +1,5 @@
 from contextlib import suppress
-from logging import info
+from logging import debug
 from typing import (Any,
                     Dict,
                     Iterator,
@@ -84,11 +84,7 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
-        if not self.index_exists:
-            if self.index_exists is None:
-                self.index_exists = self.indices.exists(self.es_index)
-            if self.index_exists is False:
-                raise NotFoundError(404, self.es_index)
+        self._check_index_exists()
         if "index" in kwargs:
             index = kwargs.pop("index")
         else:
@@ -101,10 +97,10 @@ class ESClient(Elasticsearch):
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
-            info("Returning hits only if any([source_only, first_only])")
+            debug("Returning hits only if any([source_only, first_only])")
             hits_only = True
         if with_id:
-            info("Returning hits only if with_id is True, with _source flattened")
+            debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
         size = kwargs.pop("size", self.size)
         results = []
@@ -297,6 +293,7 @@ class ESClient(Elasticsearch):
             "hits_only": kwargs.pop("hits_only", True),
             "source_only": kwargs.pop("source_only", False),
             "first_only": kwargs.pop("first_only", False),
+            "with_id": kwargs.pop("with_id", False),
         }
 
         if field and value:
@@ -319,3 +316,15 @@ class ESClient(Elasticsearch):
             return self.find(q, **find_kwargs)
         else:
             return self.find(**find_kwargs)
+
+    def _check_index_exists(self):
+        if not self.index_exists:
+            if self.index_exists is None:
+                self.index_exists = self.indices.exists(self.es_index)
+            if self.index_exists is False:
+                raise NotFoundError(404, self.es_index)
+
+    @property
+    def total(self) -> int:
+        self._check_index_exists()
+        return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
