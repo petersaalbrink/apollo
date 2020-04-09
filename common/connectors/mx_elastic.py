@@ -1,5 +1,5 @@
 from contextlib import suppress
-from logging import info
+from logging import debug
 from typing import (Any,
                     Dict,
                     Iterator,
@@ -101,10 +101,10 @@ class ESClient(Elasticsearch):
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
-            info("Returning hits only if any([source_only, first_only])")
+            debug("Returning hits only if any([source_only, first_only])")
             hits_only = True
         if with_id:
-            info("Returning hits only if with_id is True, with _source flattened")
+            debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
         size = kwargs.pop("size", self.size)
         results = []
