@@ -1,10 +1,8 @@
 from contextlib import suppress
 from logging import debug
 from typing import (Any,
-                    Dict,
                     Iterator,
-                    List,
-                    Mapping,
+                    MutableMapping,
                     Sequence,
                     Union)
 
@@ -13,6 +11,30 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       NotFoundError,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
+
+# Types
+Location = Union[
+    Sequence[Union[str, float]],
+    MutableMapping[str, Union[str, float]]
+]
+NestedDict = MutableMapping[str, Union[
+    Any, MutableMapping[str, Union[
+        Any, MutableMapping[str, Union[
+            Any, MutableMapping[str, Union[
+                Any, MutableMapping[str, Any]
+            ]]
+        ]]
+    ]]
+]]
+Query = Union[
+    NestedDict,
+    Sequence[NestedDict]
+]
+Result = Union[
+    NestedDict,
+    Sequence[NestedDict],
+    Sequence[Sequence[NestedDict]],
+]
 
 
 class ESClient(Elasticsearch):
@@ -61,13 +83,13 @@ class ESClient(Elasticsearch):
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
     def find(self,
-             query: Union[dict, List[dict], Iterator[dict]] = None,
+             query: Query = None,
              hits_only: bool = True,
              source_only: bool = False,
              first_only: bool = False,
              with_id: bool = False,
              *args, **kwargs
-             ) -> Union[List[dict], List[List[dict]], Dict[str, Dict[str, Any]]]:
+             ) -> Result:
         """Perform an ElasticSearch query, and return the hits.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
@@ -136,11 +158,9 @@ class ESClient(Elasticsearch):
 
     def geo_distance(self, *,
                      address_id: str = None,
-                     location: Union[
-                         Sequence[Union[str, float]],
-                         Mapping[str, Union[str, float]]] = None,
+                     location: Location = None,
                      distance: str = None
-                     ) -> Sequence[dict]:
+                     ) -> Result:
         """Find all real estate objects within :param distance: of
         :param address_id: or :param location:.
 
@@ -165,25 +185,25 @@ class ESClient(Elasticsearch):
         if address_id:
             query = {"query": {"bool": {"must": [
                 {"match": {"avmData.locationData.address_id.keyword": address_id}}]}}}
-            result: Dict[str, Any] = self.find(query=query, first_only=True)
+            result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
             location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
 
         location = dict(zip(("latitude", "longitude"), location.values())) \
-            if isinstance(location, Mapping) else \
+            if isinstance(location, MutableMapping) else \
             dict(zip(("latitude", "longitude"), location))
 
         query = {"query": {"bool": {"filter": {
-                        "geo_distance": {
-                            "distance": distance,
-                            "geometry.geoPoint": {
-                                "lat": location["latitude"],
-                                "lon": location["longitude"]}}}}},
-                        "sort": [{
-                            "_geo_distance": {
-                                "geometry.geoPoint": {
-                                    "lat": location["latitude"],
-                                    "lon": location["longitude"]},
-                                "order": "asc"}}]}
+            "geo_distance": {
+                "distance": distance,
+                "geometry.geoPoint": {
+                    "lat": location["latitude"],
+                    "lon": location["longitude"]}}}}},
+            "sort": [{
+                "_geo_distance": {
+                    "geometry.geoPoint": {
+                        "lat": location["latitude"],
+                        "lon": location["longitude"]},
+                    "order": "asc"}}]}
 
         results = self.findall(query=query)
 
@@ -193,16 +213,16 @@ class ESClient(Elasticsearch):
         return results
 
     def findall(self,
-                query: Dict[str, Any],
+                query: Query,
                 index: str = None,
                 **kwargs,
-                ) -> List[Dict[str, Any]]:
+                ) -> Result:
         """Used for elastic search queries that are larger than the max
         window size of 10,000. Returns all results at once.
-        :param query: Dict[str, Any]
+        :param query: MutableMapping[str, Any]
         :param index: str
         :param kwargs: scroll: str
-        :return: List[Dict[Any, Any]]
+        :return: Sequence[MutableMapping[Any, Any]]
         """
 
         scroll = kwargs.pop("scroll", "10m")
@@ -226,10 +246,10 @@ class ESClient(Elasticsearch):
         return results
 
     def scrollall(self,
-                  query: Dict[str, Any],
+                  query: Query,
                   index: str = None,
                   **kwargs,
-                  ) -> Iterator[Union[Dict[str, Any], List[Dict[str, Any]]]]:
+                  ) -> Iterator[Result]:
         """Used for elastic search queries that are larger than the max
         window size of 10,000. Returns an iterator of documents.
 
@@ -268,8 +288,11 @@ class ESClient(Elasticsearch):
             else:
                 yield from data["hits"]["hits"]
 
-    def query(self, field: str = None, value: Union[str, int] = None,
-              **kwargs) -> Union[List[dict], Dict[str, Union[Any, dict]]]:
+    def query(self,
+              field: str = None,
+              value: Any = None,
+              **kwargs
+              ) -> Result:
         """Perform a simple ElasticSearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
