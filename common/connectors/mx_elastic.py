@@ -192,18 +192,23 @@ class ESClient(Elasticsearch):
             if isinstance(location, MutableMapping) else \
             dict(zip(("latitude", "longitude"), location))
 
-        query = {"query": {"bool": {"filter": {
-            "geo_distance": {
-                "distance": distance,
-                "geometry.geoPoint": {
-                    "lat": location["latitude"],
-                    "lon": location["longitude"]}}}}},
+        query = {
+            "query": {
+                "bool": {
+                    "filter": {
+                        "geo_distance": {
+                            "distance": distance,
+                            "geometry.geoPoint": {
+                                "lat": location["latitude"],
+                                "lon": location["longitude"]
+                            }}}}},
             "sort": [{
                 "_geo_distance": {
                     "geometry.geoPoint": {
                         "lat": location["latitude"],
                         "lon": location["longitude"]},
-                    "order": "asc"}}]}
+                    "order": "asc"
+                }}]}
 
         results = self.findall(query=query)
 
@@ -351,3 +356,9 @@ class ESClient(Elasticsearch):
     def total(self) -> int:
         self._check_index_exists()
         return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
+
+    def count(self, body=None, index=None, doc_type=None, **kwargs) -> int:
+        if index is None:
+            index = self.es_index
+        count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
+        return count["count"]
