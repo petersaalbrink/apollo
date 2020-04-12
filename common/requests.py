@@ -141,15 +141,15 @@ def thread(function: Callable,
             # noinspection PyUnresolvedReferences
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
-                         return_when='FIRST_EXCEPTION').done]
+                         return_when="FIRST_EXCEPTION").done]
     else:
         futures = set()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == process_chunk_size:
-                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+                    done, futures = wait(futures, return_when="FIRST_EXCEPTION")
                     _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+            done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]
