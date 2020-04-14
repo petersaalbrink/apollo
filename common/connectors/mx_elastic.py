@@ -36,13 +36,13 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
+        config = {"timeout": 300, "retry_on_timeout": True}
         if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
-            hosts = [{"host": "localhost", "port": "9200"}]
-            config = {"timeout": 300, "retry_on_timeout": True}
+            self._host, self._port = "localhost", "9200"
         else:
             from ..env import getenv
             from ..secrets import get_secret
-            usr, pwd = get_secret("MX_ELASTIC")
+            secret = get_secret("MX_ELASTIC")
             if es_index:
                 if "production_" in es_index:
                     envv = "MX_ELASTIC_PROD_IP"
@@ -62,12 +62,12 @@ class ESClient(Elasticsearch):
                 from ..env import envfile
                 raise RuntimeError(f"Make sure a host is configured for variable"
                                    f" name '{envv}' in file '{envfile}'")
-            self.es_index = es_index
             self._port = int(getenv("MX_ELASTIC_PORT", 9200))
-            hosts = [{"host": self._host, "port": self._port}]
-            config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
+            config["http_auth"] = secret
 
+        hosts = [{"host": self._host, "port": self._port}]
         super().__init__(hosts, **config)
+        self.es_index = es_index
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
