@@ -17,15 +17,7 @@ Location = Union[
     Sequence[Union[str, float]],
     MutableMapping[str, Union[str, float]]
 ]
-NestedDict = MutableMapping[str, Union[
-    Any, MutableMapping[str, Union[
-        Any, MutableMapping[str, Union[
-            Any, MutableMapping[str, Union[
-                Any, MutableMapping[str, Any]
-            ]]
-        ]]
-    ]]
-]]
+NestedDict = MutableMapping[str, Any]
 Query = Union[
     NestedDict,
     Sequence[NestedDict]
@@ -33,7 +25,6 @@ Query = Union[
 Result = Union[
     NestedDict,
     Sequence[NestedDict],
-    Sequence[Sequence[NestedDict]],
 ]
 
 
@@ -45,32 +36,37 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
-        from ..env import getenv
-        from ..secrets import get_secret
-        usr, pwd = get_secret("MX_ELASTIC")
-        if es_index:
-            if "production_" in es_index:
-                envv = "MX_ELASTIC_PROD_IP"
-            elif "addressvalidation" in es_index:
-                envv = "MX_ELASTIC_ADDR_IP"
-            else:
-                envv = "MX_ELASTIC_DEV_IP"
+        if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
+            hosts = [{"host": "localhost", "port": "9200"}]
+            config = {"timeout": 300, "retry_on_timeout": True}
         else:
-            if kwargs.pop("dev", True):
-                envv = "MX_ELASTIC_DEV_IP"
-                es_index = "dev_peter.person_data_20190716"
+            from ..env import getenv
+            from ..secrets import get_secret
+            usr, pwd = get_secret("MX_ELASTIC")
+            if es_index:
+                if "production_" in es_index:
+                    envv = "MX_ELASTIC_PROD_IP"
+                elif "addressvalidation" in es_index:
+                    envv = "MX_ELASTIC_ADDR_IP"
+                else:
+                    envv = "MX_ELASTIC_DEV_IP"
             else:
-                envv = "MX_ELASTIC_PROD_IP"
-                es_index = "production_realestate.realestate"
-        self._host = getenv(envv)
-        if not self._host:
-            from ..env import envfile
-            raise RuntimeError(f"Make sure a host is configured for variable"
-                               f" name '{envv}' in file '{envfile}'")
-        self.es_index = es_index
-        self._port = int(getenv("MX_ELASTIC_PORT", 9200))
-        hosts = [{"host": self._host, "port": self._port}]
-        config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
+                if kwargs.pop("dev", True):
+                    envv = "MX_ELASTIC_DEV_IP"
+                    es_index = "dev_peter.person_data_20190716"
+                else:
+                    envv = "MX_ELASTIC_PROD_IP"
+                    es_index = "production_realestate.realestate"
+            self._host = getenv(envv)
+            if not self._host:
+                from ..env import envfile
+                raise RuntimeError(f"Make sure a host is configured for variable"
+                                   f" name '{envv}' in file '{envfile}'")
+            self.es_index = es_index
+            self._port = int(getenv("MX_ELASTIC_PORT", 9200))
+            hosts = [{"host": self._host, "port": self._port}]
+            config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
+
         super().__init__(hosts, **config)
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
