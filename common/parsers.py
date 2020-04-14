@@ -1,11 +1,11 @@
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
 
 
-def flatten(nested_dict: dict, sep: str = "_") -> dict:
+def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
     def _flatten(input_dict):

@@ -12,6 +12,8 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
 
+from common.handlers import tqdm
+
 # Types
 Location = Union[
     Sequence[Union[str, float]],
@@ -247,7 +249,7 @@ class ESClient(Elasticsearch):
         return results
 
     def scrollall(self,
-                  query: Query,
+                  query: Query = None,
                   index: str = None,
                   **kwargs,
                   ) -> Iterator[Result]:
@@ -264,30 +266,49 @@ class ESClient(Elasticsearch):
             for doc in data:
                 pass
         """
+        field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
         chunk_size = kwargs.pop("chunk_size", 10_000)
         as_chunks = kwargs.pop("as_chunks", False)
+        hits_only = kwargs.pop("hits_only", True)
+        source_only = kwargs.pop("source_only", False)
+        use_tqdm = kwargs.pop("use_tqdm", False)
+        total = self.count(body=query, index=index)
+        bar = tqdm(total=total, disable=not use_tqdm)
         if chunk_size > 10_000:
             chunk_size = 10_000
         if not index:
             index = self.es_index
-        data = self.search(index=index, scroll=scroll, size=chunk_size, body=query)
-        sid = data["_scroll_id"]
-        scroll_size = len(data["hits"]["hits"])
+
+        def _return(_data):
+            if hits_only:
+                _data = _data["hits"]["hits"]
+            if source_only:
+                _data = (d["_source"] for d in _data)
+            return _data
+
+        data = self.search(index=index,
+                           scroll=scroll,
+                           size=chunk_size,
+                           _source=field,
+                           body=query)
+        sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
         if as_chunks:
-            yield data["hits"]["hits"]
+            yield _return(data)
         else:
-            yield from data["hits"]["hits"]
+            yield from _return(data)
 
         # We scroll over the results until nothing is returned
         while scroll_size > 0:
+            bar.update(scroll_size)
             data = self.scroll(scroll_id=sid, scroll=scroll)
-            sid = data["_scroll_id"]
-            scroll_size = len(data["hits"]["hits"])
+            sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
             if as_chunks:
-                yield data["hits"]["hits"]
+                yield _return(data)
             else:
-                yield from data["hits"]["hits"]
+                yield from _return(data)
+
+        bar.close()
 
     def query(self,
               field: str = None,
