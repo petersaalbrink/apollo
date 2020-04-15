@@ -301,13 +301,13 @@ class MySQLClient:
             self.cnx.commit()
         self._set_cursor_properties()
 
-    def fetchall(self) -> List[Tuple[Any]]:
+    def fetchall(self) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
         return self.cursor.fetchall()
 
-    def fetchmany(self, size: int = None) -> List[Tuple[Any]]:
+    def fetchmany(self, size: int = None) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
         return self.cursor.fetchmany(size)
 
-    def fetchone(self) -> Tuple[Any]:
+    def fetchone(self) -> Union[MutableMapping[str, Any], Tuple[Any]]:
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
@@ -335,7 +335,10 @@ class MySQLClient:
                 f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}")
         try:
             self.execute(query, *args, **kwargs)
-            column = [value[0] for value in self.fetchall()]
+            if self.dictionary:
+                column = [column["Field"] for column in self.fetchall()]
+            else:
+                column = [value[0] for value in self.fetchall()]
         except DatabaseError as e:
             raise DatabaseError(query) from e
         self.disconnect()
@@ -475,8 +478,7 @@ class MySQLClient:
                 yield data
         except DatabaseError as e:
             raise DatabaseError(query) from e
-        finally:
-            self.disconnect()
+        self.disconnect()
 
     def iter(self,
              query: Union[Query, str] = None,

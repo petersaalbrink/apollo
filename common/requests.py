@@ -2,9 +2,12 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
 from pathlib import Path
 from threading import Lock
-from typing import (Callable,
+from typing import (Any,
+                    Callable,
                     Iterable,
                     Iterator,
+                    List,
+                    Optional,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
@@ -97,7 +100,7 @@ common_session = get_session()
 get_kwargs = iter(get_proxies())
 
 
-def get(url,
+def get(url: str,
         text_only: bool = False,
         use_proxies: bool = False,
         **kwargs
@@ -121,10 +124,31 @@ def get(url,
             pass
 
 
+def post(url: str,
+         text_only: bool = False,
+         **kwargs
+         ) -> Union[dict, Response]:
+    """Sends a POST request. Returns :class:`Response` object.
+
+    :param url: URL for the new :class:`Request` object.
+    :param text_only: return JSON data from :class:`Response` as dictionary.
+    :param kwargs: Optional arguments that ``request`` takes.
+    """
+    global common_session
+    while True:
+        try:
+            return (common_session.post(url, **kwargs).json()
+                    if text_only else
+                    common_session.post(url, **kwargs))
+        except (IOError, OSError, HTTPError):
+            pass
+
+
 def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
-           **kwargs):
+           **kwargs
+           ) -> Optional[List[Any]]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
     Example:
@@ -141,15 +165,15 @@ def thread(function: Callable,
             # noinspection PyUnresolvedReferences
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
-                         return_when='FIRST_EXCEPTION').done]
+                         return_when="FIRST_EXCEPTION").done]
     else:
         futures = set()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == process_chunk_size:
-                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+                    done, futures = wait(futures, return_when="FIRST_EXCEPTION")
                     _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+            done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]
