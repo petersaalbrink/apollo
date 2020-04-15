@@ -269,16 +269,16 @@ class ESClient(Elasticsearch):
         field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
         chunk_size = kwargs.pop("chunk_size", 10_000)
+        if chunk_size > 10_000:
+            chunk_size = 10_000
         as_chunks = kwargs.pop("as_chunks", False)
         hits_only = kwargs.pop("hits_only", True)
         source_only = kwargs.pop("source_only", False)
         use_tqdm = kwargs.pop("use_tqdm", False)
-        total = self.count(body=query, index=index)
-        bar = tqdm(total=total, disable=not use_tqdm)
-        if chunk_size > 10_000:
-            chunk_size = 10_000
         if not index:
             index = self.es_index
+        total = self.count(body=query, index=index)
+        bar = tqdm(total=total, disable=not use_tqdm)
 
         def _return(_data):
             if hits_only:
