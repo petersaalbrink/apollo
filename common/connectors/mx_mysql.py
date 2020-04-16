@@ -470,6 +470,7 @@ class MySQLClient:
         # We set these session variables to avoid error 2013 (Lost connection)
         for var, val in (
             ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
             ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
             ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
             ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
