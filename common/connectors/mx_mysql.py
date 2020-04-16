@@ -466,19 +466,41 @@ class MySQLClient:
             raise ValueError("Chunk size must be > 0")
 
         self.connect()
+
+        # We set these session variables to avoid error 2013 (Lost connection)
+        for var, val in (
+            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
+            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
+        ):
+            self.execute(f"SET SESSION {var}={val}")
+
         try:
             self.execute(query, *args, **kwargs)
             count = self._cursor_row_count
             bar = tqdm_func(total=count)
             while True:
-                data = self.fetchmany(size)
-                bar.update(size)
+                while True:
+                    try:
+                        data = self.fetchmany(size)
+                        break
+                    except OperationalError as e:
+                        if e.errno == 2013:
+                            info("Attempting reconnect: %s", e)
+                            # Try to revive the connection
+                            self.cnx.ping(reconnect=True)
+                        else:
+                            raise
                 if not data:
                     break
                 yield data
+                bar.update(len(data))
         except DatabaseError as e:
             raise DatabaseError(query) from e
+
         self.disconnect()
+        bar.close()
 
     def iter(self,
              query: Union[Query, str] = None,
