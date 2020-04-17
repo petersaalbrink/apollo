@@ -17,6 +17,7 @@ from typing import (Any,
                     Callable,
                     ClassVar,
                     Dict,
+                    Iterable,
                     List,
                     MutableMapping,
                     Optional,
@@ -28,6 +29,10 @@ from .connectors.mx_email import EmailClient
 
 tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
+
+
+def get_tqdm(iterable: Iterable = None, desc: str = None, name: str = None, **kwargs) -> tqdm:
+    return tqdm(iterable=iterable, desc=desc, disable=name != "__main__", **kwargs)
 
 
 def csv_write(data: Union[List[dict], dict],

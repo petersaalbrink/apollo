@@ -6,6 +6,7 @@ from .connectors.mx_mysql import MySQLClient
 from .handlers import (Timer, ZipData,
                        csv_write, csv_read,
                        Log, get_logger,
+                       get_tqdm,
                        send_email, pip_upgrade)
 from .parsers import Checks, flatten, levenshtein, dateformat
 from .persondata import NoMatch, NamesData, PersonData
@@ -25,6 +26,7 @@ __all__ = [
     "csv_read",
     "Log",
     "get_logger",
+    "get_tqdm",
     "send_email",
     "parse",
     "validate",
