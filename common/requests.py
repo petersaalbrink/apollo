@@ -151,6 +151,17 @@ def thread(function: Callable,
            ) -> Optional[List[Any]]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
+    Usage:
+    The :param function: Callable must accept only one input argument;
+    this is an item of the :param data: Iterable.
+    Hence, :param data: must be an Iterable of input values
+    for the :param function: Callable.
+    The Callable optionally can return Any value.
+    Return values will be returned in a list
+    (unless a :param process: Callable is specified).
+    If you want to use tqdm or another process bar, do so manually
+    (e.g., do `bar.update()` inside the :param function: Callable).
+
     Example:
         from common import get, thread
         thread(
