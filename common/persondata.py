@@ -1,3 +1,4 @@
+from bisect import bisect
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -7,7 +8,7 @@ from logging import debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
@@ -188,9 +189,9 @@ class SourceScore:
             "phoneNumber_number": "number_score",
             "address_current_postalCode": "address_score",
         }
+        self._breakpoints = self._scores = None
 
-    @staticmethod
-    def _categorize_score(score: float) -> int:
+    def _categorize_score(self, score: float) -> int:
         """Assign self._categorize_def or self._categorize_cbs
         to this function."""
         pass
@@ -286,28 +287,14 @@ class SourceScore:
         score_percentage = full_score(result_tuple)
         return score_percentage
 
-    @staticmethod
-    def _categorize_def(score: float) -> int:
+    def _categorize_def(self, score: float) -> int:
         if score is not None:
-            if score >= 3 / 4:
-                score = 1
-            elif score >= 2 / 4:
-                score = 2
-            elif score >= 1 / 4:
-                score = 3
-            else:
-                score = 4
+            score = self._scores[bisect(self._breakpoints, score)]
         return score
 
-    @staticmethod
-    def _categorize_cbs(score: float) -> int:
+    def _categorize_cbs(self, score: float) -> int:
         if score is not None:
-            if score >= 2 / 3:
-                score = 3
-            elif score >= 1 / 3:
-                score = 2
-            else:
-                score = 1
+            score = self._scores[bisect(self._breakpoints, score)]
         return score
 
     def _convert_score(self, result_tuple: Score) -> Union[int, float]:
@@ -432,7 +419,7 @@ class MatchQueries:
         return query
 
     @staticmethod
-    def _id_query(responses: list) -> dict:
+    def _id_query(responses: Sequence) -> dict:
         """Take a list of match responses, and return a query
         that will search for the ids of those responses."""
 
@@ -550,9 +537,13 @@ class PersonData(MatchQueries,
         if self._cbs:
             self._match_sources = self._match_sources_cbs
             self._categorize_score = self._categorize_cbs
+            self._breakpoints = [2/3, 1/3]
+            self._scores = [1, 2, 3]
         else:
             self._match_sources = self._match_sources_def
             self._categorize_score = self._categorize_def
+            self._breakpoints = [3/4, 2/4, 1/4]
+            self._scores = [4, 3, 2, 1]
 
     def __repr__(self):
         return f"PersonData(in={self.data}, out={self.result})"
@@ -686,12 +677,12 @@ class PersonData(MatchQueries,
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                responses = [{"_id": d["_id"], **d["_source"]}
+                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
                              for d in self._es.find(
                         self._id_query(self._es.find(
                             q, source_only=True)))]
             else:
-                responses = [{"_id": d["_id"], **d["_source"]}
+                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
                              for d in self._es.find(q)]
             for response in responses:
                 response = flatten(response)
@@ -955,14 +946,14 @@ class NamesData:
         None is returned. Names are cleaned before output.
 
         The output can be used to fill missing gender data."""
-        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in
+        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
                 ESClient("dev_peter.names_data").findall(
                     {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
 
     @staticmethod
     def titles() -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
-        return set(doc["_source"]["title"] for doc in
+        return set(doc["_source"]["title"] for doc in  # noqa
                    ESClient("dev_peter.names_data").findall(
                        {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
 
@@ -975,20 +966,9 @@ class NamesData:
 
         The output can be used for data and matching quality calculations."""
 
-        def cutoff(n: float) -> int:
-            if n <= 15:
-                return 0
-            elif n <= 50:
-                return 1
-            elif n <= 250:
-                return 2
-            elif n <= 1500:
-                return 3
-            else:
-                return 4
-
         es = ESClient("dev_peter.names_data")
         names_data = es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
         # Return only names that occur commonly
-        names_data = {doc["_source"]["surname"]: cutoff(doc["_source"]["number"]) for doc in names_data}
+        names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
+                      for doc in names_data}
         return names_data
