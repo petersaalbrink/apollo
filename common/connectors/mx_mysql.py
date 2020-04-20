@@ -883,9 +883,19 @@ class MySQLClient:
               and_or: str = None,
               **kwargs
               ) -> Query:
-        """Build a MySQL query"""
+        """Build a MySQL query.
+
+        For kwargs values, pass a list to create AND/OR statements,
+        and pass a tuple to create IN statement."""
 
         def search_for(k, v):
+            def replace_quote(_k, _v, _key=None):
+                for _s in '"', "'":
+                    if _s in _v and rf"\{_s}" not in _v:
+                        _v = _v.replace(_s, rf"\{_s}")
+                        _key = rf"""{_k} = "{_v}" """
+                return _k, _v, _key
+
             key = rf"""{k} = "{v}" """
             if isinstance(v, int):
                 key = rf"{k} = {v}"
@@ -909,12 +919,10 @@ class MySQLClient:
                     key = rf"""{k} LIKE "{v}" """
                 elif v.startswith("IN "):
                     key = rf"{k} {v}"
-                if '"' in v and r'\"' not in v:
-                    v = v.replace('"', r'\"')
-                    key = rf"""{k} = "{v}" """
-                if "'" in v and r"\'" not in v:
-                    v = v.replace("'", r"\'")
-                    key = rf"""{k} = "{v}" """
+                key = replace_quote(k, v, key)
+            elif isinstance(v, Sequence):
+                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
+                key = rf"{k} IN {v}"
             elif isinstance(v, Pattern):
                 key = f"""{k} REGEXP "{v.pattern}" """
             return key
@@ -923,6 +931,13 @@ class MySQLClient:
             and_or = "AND"
         elif and_or not in {"AND", "OR"}:
             raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
+
+        def search_key(_field, _value):
+            if isinstance(_value, list):
+                _skey = rf" {and_or} ".join([search_for(_field, _skey) for _skey in _value])
+            else:
+                _skey = search_for(_field, _value)
+            return _skey
 
         if distinct is True:
             distinct = "DISTINCT"
@@ -961,14 +976,12 @@ class MySQLClient:
                 query = rf"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
 
         if not all([field is None, value is None]):
-            query = rf"{query} WHERE {search_for(field, value)}"
+            skey = search_key(field, value)
+            query = rf"{query} WHERE {skey}"
         if kwargs:
             keys = []
             for field, value in kwargs.items():
-                if isinstance(value, list):
-                    skey = rf" {and_or} ".join([search_for(field, skey) for skey in value])
-                else:
-                    skey = search_for(field, value)
+                skey = search_key(field, value)
                 keys.append(skey)
             keys = rf" {and_or} ".join(keys)
             if "WHERE" in query:
