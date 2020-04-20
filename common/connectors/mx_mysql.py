@@ -919,7 +919,7 @@ class MySQLClient:
                     key = rf"""{k} LIKE "{v}" """
                 elif v.startswith("IN "):
                     key = rf"{k} {v}"
-                key = replace_quote(k, v, key)
+                *_, key = replace_quote(k, v, key)
             elif isinstance(v, Sequence):
                 v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
                 key = rf"{k} IN {v}"
