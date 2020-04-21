@@ -25,8 +25,8 @@ Query = Union[
     Sequence[NestedDict]
 ]
 Result = Union[
-    NestedDict,
     Sequence[NestedDict],
+    NestedDict,
 ]
 
 
