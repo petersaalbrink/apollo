@@ -908,6 +908,7 @@ class Cleaner:
 
 
 class NamesData:
+    es = ESClient("dev_peter.names_data")
     uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
     initial_freq = {
         "A": 0.10395171481742668,
@@ -939,6 +940,12 @@ class NamesData:
     }
 
     @staticmethod
+    def affixes() -> set:
+        return {doc["_source"]["affix"] for doc in NamesData.es.findall(
+            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
+        )}
+
+    @staticmethod
     def first_names() -> dict:
         """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
 
@@ -947,14 +954,14 @@ class NamesData:
 
         The output can be used to fill missing gender data."""
         return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
-                ESClient("dev_peter.names_data").findall(
+                NamesData.es.findall(
                     {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
 
     @staticmethod
     def titles() -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
         return set(doc["_source"]["title"] for doc in  # noqa
-                   ESClient("dev_peter.names_data").findall(
+                   NamesData.es.findall(
                        {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
 
     @staticmethod
@@ -966,8 +973,7 @@ class NamesData:
 
         The output can be used for data and matching quality calculations."""
 
-        es = ESClient("dev_peter.names_data")
-        names_data = es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
+        names_data = NamesData.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
         # Return only names that occur commonly
         names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
                       for doc in names_data}
