@@ -379,3 +379,31 @@ class ESClient(Elasticsearch):
             index = self.es_index
         count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
         return count["count"]
+
+    def distinct_count(self, field: str) -> int:
+        """Provide a distinct count of values in a certain field.
+        See:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        """
+        n_buckets = 0
+        query = {
+            "query": {
+                "match_all": {}
+            },
+            "aggs": {
+                field: {
+                    "composite": {
+                        "sources": [
+                            {field: {"terms": {"field": field}}}
+                        ], "size": 1000
+                    }}}}
+        result: MutableMapping[str, Any] = self.find(query, size=0)
+        while True:
+            agg = result["aggregations"][field]
+            buckets = agg["buckets"]
+            if not buckets:
+                break
+            n_buckets += len(buckets)
+            query["aggs"][field]["composite"]["after"] = agg["after_key"]
+            result = self.find(query, size=0)
+        return n_buckets
