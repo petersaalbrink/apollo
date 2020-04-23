@@ -5,29 +5,30 @@ from numpy import zeros
 from pandas import isna
 
 
+def _flatten(input_dict: MutableMapping[str, Any], sep: str):
+    flattened_dict = {}
+    for key, maybe_nested in input_dict.items():
+        if isinstance(maybe_nested, dict):
+            for sub, value in maybe_nested.items():
+                flattened_dict[f"{key}{sep}{sub}"] = value
+        else:
+            flattened_dict[key] = maybe_nested
+    return flattened_dict
+
+
 def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
-    def _flatten(input_dict):
-        flattened_dict = {}
-        for key, maybe_nested in input_dict.items():
-            if isinstance(maybe_nested, dict):
-                for sub, value in maybe_nested.items():
-                    flattened_dict[f"{key}{sep}{sub}"] = value
-            else:
-                flattened_dict[key] = maybe_nested
-        return flattened_dict
-
-    return_dict = _flatten(nested_dict)
+    return_dict = _flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
-            if not isinstance(v, dict):
+            if not isinstance(v, MutableMapping):
                 count += 1
         if count == len(return_dict):
             break
         else:
-            return_dict = _flatten(return_dict)
+            return_dict = _flatten(return_dict, sep)
 
     return return_dict
 
