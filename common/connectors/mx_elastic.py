@@ -111,7 +111,8 @@ class ESClient(Elasticsearch):
             index = self.es_index
         if not query:
             size = kwargs.pop("size", 1)
-            return self.search(index=index, size=size, body={}, *args, **kwargs)
+            result = self.search(index=index, size=size, body={}, *args, **kwargs)
+            return result
         if isinstance(query, dict):
             query = (query,)
         if first_only and not source_only:

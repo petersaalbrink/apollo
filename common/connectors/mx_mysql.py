@@ -423,7 +423,7 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            row = self.fetchall()[0] if self.dictionary else list(self.fetchall()[0])
+            row = self.fetchone() if self.dictionary else list(self.fetchone())
         except DatabaseError as e:
             raise DatabaseError(query) from e
         except IndexError:
@@ -989,14 +989,12 @@ class MySQLClient:
             else:
                 query = rf"{query} WHERE {keys}"
         if group_by:
-            if isinstance(group_by, str):
-                group_by = [group_by]
-            group_by = ", ".join(group_by)
+            if not isinstance(group_by, str):
+                group_by = ", ".join(group_by)
             query = rf"{query} GROUP BY {group_by}"
         if order_by:
-            if isinstance(order_by, str):
-                order_by = [order_by]
-            order_by = ", ".join(order_by)
+            if not isinstance(order_by, str):
+                order_by = ", ".join(order_by)
             query = rf"{query} ORDER BY {order_by}"
         if limit:
             if isinstance(limit, (int, str)):
@@ -1116,28 +1114,18 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            if isinstance(select_fields, str):
-                if self.dictionary:
-                    if limit == 1:
-                        result = self.fetchall()[0]
-                    else:
-                        result = list(self.fetchall())
-                else:
-                    if limit == 1:
-                        result = self.fetchall()[0][0]
-                    else:
-                        result = [value[0] for value in self.fetchall()]
+            if limit == 1:
+                result = self.fetchone()
+                if not self.dictionary and isinstance(select_fields, str):
+                    result = result[0]
+                elif not self.dictionary:
+                    result = list(result)
             else:
-                if self.dictionary:
-                    if limit == 1:
-                        result = self.fetchall()[0]
-                    else:
-                        result = list(self.fetchall())
-                else:
-                    if limit == 1:
-                        result = list(self.fetchall()[0])
-                    else:
-                        result = [list(row) for row in self.fetchall()]
+                result = list(self.fetchall())
+                if not self.dictionary and isinstance(select_fields, str):
+                    result = [value[0] for value in result]
+                elif not self.dictionary:
+                    result = [list(row) for row in result]
         except DatabaseError as e:
             raise DatabaseError(query) from e
         except IndexError:

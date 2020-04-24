@@ -544,6 +544,7 @@ class PersonData(MatchQueries,
             self._categorize_score = self._categorize_def
             self._breakpoints = [3/4, 2/4, 1/4]
             self._scores = [4, 3, 2, 1]
+        self._countries = {"nederland", "netherlands", "nl", "nld"}
 
     def __repr__(self):
         return f"PersonData(in={self.data}, out={self.result})"
@@ -642,13 +643,9 @@ class PersonData(MatchQueries,
             return ("lastname", "address_current_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
 
-    @staticmethod
-    def _check_country(country: str):
-        if (country and country.lower() not in
-                {"nederland", "netherlands", "nl", "nld"}):
-            raise NotImplementedError(
-                f"Not implemented for country "
-                f"{country}.")
+    def _check_country(self, country: str):
+        if country and country.lower() not in self._countries:
+            raise NoMatch(f"Not implemented for country {country}.")
 
     def _check_match(self, key: str):
         """Matches where we found a phone number,
