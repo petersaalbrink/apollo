@@ -3,6 +3,7 @@ from typing import Any, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
+from text_unidecode import unidecode
 
 
 def _flatten(input_dict: MutableMapping[str, Any], sep: str):
@@ -90,6 +91,20 @@ class Checks:
             "G": 1,
             None: 0
         }.get(var, 0)
+
+    @staticmethod
+    def remove_invalid_chars(text: str, replacechar: str) -> str:
+        for c in r"\`*_{}[]()>#+.&!$,":
+            text = text.replace(c, replacechar)
+        return text
+
+    def check_matching_percentage(self, str1: str, str2: str) -> int:
+        str1 = self.remove_invalid_chars(
+            unidecode(str1), "").replace(" ", "").lower().strip()
+        str2 = self.remove_invalid_chars(
+            unidecode(str2), "").replace(" ", "").lower().strip()
+        lev = levenshtein(str1, str2, measure="percentage")
+        return int(lev * 100)
 
 
 def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
