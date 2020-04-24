@@ -192,9 +192,9 @@ class SourceScore:
         self._breakpoints = self._scores = None
 
     def _categorize_score(self, score: float) -> int:
-        """Assign self._categorize_def or self._categorize_cbs
-        to this function."""
-        pass
+        if score is not None:
+            score = self._scores[bisect(self._breakpoints, score)]
+        return score
 
     def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
@@ -286,16 +286,6 @@ class SourceScore:
         # Calculate score
         score_percentage = full_score(result_tuple)
         return score_percentage
-
-    def _categorize_def(self, score: float) -> int:
-        if score is not None:
-            score = self._scores[bisect(self._breakpoints, score)]
-        return score
-
-    def _categorize_cbs(self, score: float) -> int:
-        if score is not None:
-            score = self._scores[bisect(self._breakpoints, score)]
-        return score
 
     def _convert_score(self, result_tuple: Score) -> Union[int, float]:
         score_percentage = self._calc_score(result_tuple)
@@ -536,12 +526,10 @@ class PersonData(MatchQueries,
                              f" of {', '.join(categories)}")
         if self._cbs:
             self._match_sources = self._match_sources_cbs
-            self._categorize_score = self._categorize_cbs
             self._breakpoints = [2/3, 1/3]
             self._scores = [1, 2, 3]
         else:
             self._match_sources = self._match_sources_def
-            self._categorize_score = self._categorize_def
             self._breakpoints = [3/4, 2/4, 1/4]
             self._scores = [4, 3, 2, 1]
         self._countries = {"nederland", "netherlands", "nl", "nld"}
