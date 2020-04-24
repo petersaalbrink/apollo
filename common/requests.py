@@ -97,7 +97,29 @@ def get_session(
 
 
 common_session = get_session()
-get_kwargs = iter(get_proxies())
+get_kwargs = get_proxies()
+
+
+def request(method: str,
+            url: str,
+            **kwargs
+            ) -> Union[dict, Response]:
+    """Sends a request. Returns :class:`Response` object.
+
+    :param method: method for the request.
+    :param url: URL for the new :class:`Request` object.
+    :param kwargs: Optional arguments that ``request`` takes.
+    """
+    if kwargs.pop("use_proxies", False):
+        kwargs.update(next(get_kwargs))
+    while True:
+        try:
+            response = common_session.request(method, url, **kwargs)
+            if kwargs.pop("text_only", False):
+                return response.json()
+            return response
+        except (IOError, OSError, HTTPError):
+            pass
 
 
 def get(url: str,
@@ -112,36 +134,25 @@ def get(url: str,
     :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    global common_session, get_kwargs
-    if use_proxies:
-        kwargs.update(next(get_kwargs))
-    while True:
-        try:
-            return (common_session.get(url, **kwargs).json()
-                    if text_only else
-                    common_session.get(url, **kwargs))
-        except (IOError, OSError, HTTPError):
-            pass
+    kwargs.update(text_only=text_only, use_proxies=use_proxies)
+    kwargs.setdefault("allow_redirects", True)
+    return request("GET", url, **kwargs)
 
 
 def post(url: str,
          text_only: bool = False,
+         use_proxies: bool = False,
          **kwargs
          ) -> Union[dict, Response]:
     """Sends a POST request. Returns :class:`Response` object.
 
     :param url: URL for the new :class:`Request` object.
     :param text_only: return JSON data from :class:`Response` as dictionary.
+    :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    global common_session
-    while True:
-        try:
-            return (common_session.post(url, **kwargs).json()
-                    if text_only else
-                    common_session.post(url, **kwargs))
-        except (IOError, OSError, HTTPError):
-            pass
+    kwargs.update(text_only=text_only, use_proxies=use_proxies)
+    return request("POST", url, **kwargs)
 
 
 def thread(function: Callable,

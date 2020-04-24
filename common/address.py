@@ -5,6 +5,9 @@ from pycountry import countries
 from .requests import get
 from .connectors import EmailClient
 
+LIVE = "136.144.203.100"
+TEST = "136.144.209.80"
+
 
 def parse(address: str, country: str = "NL"):
     for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
@@ -19,8 +22,11 @@ def parse(address: str, country: str = "NL"):
     }
     while True:
         try:
-            response = get(f"http://136.144.209.80:5000/parser",
-                           params=params, text_only=True)
+            response = get(
+                f"http://{LIVE}:5000/parser",
+                params=params,
+                text_only=True
+            )
             break
         except (IOError, OSError, HTTPError) as e:
             debug("Exception: %s: %s", params, e)
@@ -60,8 +66,10 @@ def validate(params: Union[dict, str]) -> dict:
     while True:
         try:
             response = get(
-                "http://136.144.203.100:5000/validation",
-                params=params, text_only=True)["objects"][0]
+                f"http://{LIVE}:5000/validation",
+                params=params,
+                text_only=True
+            )["objects"][0]
             break
         except (IOError, OSError, HTTPError) as e:
             debug("Exception: %s: %s", params, e)
