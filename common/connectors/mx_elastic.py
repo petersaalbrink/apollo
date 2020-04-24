@@ -25,8 +25,8 @@ Query = Union[
     Sequence[NestedDict]
 ]
 Result = Union[
-    NestedDict,
     Sequence[NestedDict],
+    NestedDict,
 ]
 
 
@@ -111,7 +111,8 @@ class ESClient(Elasticsearch):
             index = self.es_index
         if not query:
             size = kwargs.pop("size", 1)
-            return self.search(index=index, size=size, body={}, *args, **kwargs)
+            result = self.search(index=index, size=size, body={}, *args, **kwargs)
+            return result
         if isinstance(query, dict):
             query = (query,)
         if first_only and not source_only:
@@ -133,9 +134,7 @@ class ESClient(Elasticsearch):
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
                 except (OSError, HTTPWarning, TransportError) as e:
-                    if self.retry_on_timeout and "timeout" in f"{e}".lower():
-                        pass
-                    else:
+                    if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
                         raise
                 except ElasticsearchException as e:
                     raise ElasticsearchException(q) from e
@@ -374,8 +373,62 @@ class ESClient(Elasticsearch):
         self._check_index_exists()
         return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
 
-    def count(self, body=None, index=None, doc_type=None, **kwargs) -> int:
+    def count(self,
+              body=None,
+              index=None,
+              doc_type=None,
+              find: MutableMapping[str, MutableMapping] = None,
+              **kwargs
+              ) -> int:
         if index is None:
             index = self.es_index
+        if find:
+            if body:
+                raise ValueError("Provide either `body` or `find`.")
+            body = {"query": find}
         count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
         return count["count"]
+
+    def distinct_count(self,
+                       field: str,
+                       find: MutableMapping[str, MutableMapping] = None
+                       ) -> int:
+        """Provide a distinct count of values in a certain field.
+
+        See:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        """
+
+        if not find:
+            find = {"match_all": {}}
+
+        while True:
+            query = {
+                "query": find,
+                "aggs": {
+                    field: {
+                        "composite": {
+                            "sources": [
+                                {field: {"terms": {"field": field}}}
+                            ], "size": 1000
+                        }}}}
+            try:
+                result: MutableMapping[str, Any] = self.find(query, size=0)
+                break
+            except TransportError as e:
+                if "fielddata" in f"{e}" and field[-8:] != ".keyword":
+                    field = f"{field}.keyword"
+                else:
+                    raise ElasticsearchException(query) from e
+
+        n_buckets = 0
+        while True:
+            agg = result["aggregations"][field]
+            buckets = agg["buckets"]
+            if not buckets:
+                break
+            n_buckets += len(buckets)
+            query["aggs"][field]["composite"]["after"] = agg["after_key"]
+            result = self.find(query, size=0)
+
+        return n_buckets

@@ -168,11 +168,30 @@ def get_logger(level: str = None,
     return logger
 
 
+def __make_message(m: str, f: Callable, args, kwargs):
+    if not m:
+        m = f"{f.__name__}("
+        if args:
+            if ismethod(f):
+                args = args[1:]
+            args = [arg for arg in
+                    [f"{arg}" for arg in args]
+                    if len(arg) <= 1_000]
+            m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
+        if kwargs:
+            kwargs = [kwarg for kwarg in
+                      [f'{k}={v}' for k, v in kwargs.items()]
+                      if len(kwarg) <= 1_000]
+            m = f"{m}{', '.join(kwargs)}"
+        m = f"{m})"
+    return m
+
+
 def send_email(function: Callable = None, *,
                to_address: Union[str, list] = None,
                message: str = None,
                on_error_only: bool = False,
-               ):
+               ) -> Callable:
     """Function decorator to send emails!
 
     Usage::
@@ -188,38 +207,25 @@ def send_email(function: Callable = None, *,
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
 
-    def make_message(m: str, f: Callable, args, kwargs):
-        if not m:
-            m = f"{f.__name__}("
-            if args:
-                if ismethod(f):
-                    args = args[1:]
-                args = [arg for arg in
-                        [f"{arg}" for arg in args]
-                        if len(arg) <= 1_000]
-                m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
-            if kwargs:
-                kwargs = [kwarg for kwarg in
-                          [f'{k}={v}' for k, v in kwargs.items()]
-                          if len(kwarg) <= 1_000]
-                m = f"{m}{', '.join(kwargs)}"
-            m = f"{m})"
-        return m
-
     def decorate(f: Callable = None):
         @wraps(f)
         def wrapped(*args, **kwargs):
+            nonlocal message
             ec = EmailClient()
+            message = __make_message(message, f, args, kwargs)
             try:
                 f(*args, **kwargs)
                 if not on_error_only:
-                    ec.send_email(to_address=to_address,
-                                  message=f"Program finished successfully:\n\n"
-                                          f"{make_message(message, f, args, kwargs)}")
+                    ec.send_email(
+                        to_address=to_address,
+                        message=f"Program finished successfully:\n\n{message}"
+                    )
             except Exception:
-                ec.send_email(to_address=to_address,
-                              message=make_message(message, f, args, kwargs),
-                              error_message=True)
+                ec.send_email(
+                    to_address=to_address,
+                    message=message,
+                    error_message=True
+                )
                 raise
         return wrapped
 
@@ -266,21 +272,7 @@ class ZipData:
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
                         self.fieldnames = csv.fieldnames
-                        if self.assure_columns:
-                            if self._dicts:
-                                self.data[file] = [
-                                    {col: row[col] if col in row else None for col in self.columns}
-                                    for row in islice(csv, n_lines)]
-                            else:
-                                self.data[file] = [csv.fieldnames] + [
-                                    list({col: row[col] if col in row else None for col in self.columns}.values())
-                                    for row in islice(csv, n_lines)]
-                        else:
-                            if self._dicts:
-                                self.data[file] = [row for row in islice(csv, n_lines)]
-                            else:
-                                self.data[file] = [csv.fieldnames] + [
-                                    list(row.values()) for row in islice(csv, n_lines)]
+                        self._helper(file, csv, n_lines)
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
@@ -294,22 +286,37 @@ class ZipData:
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
                         self.fieldnames = csv.fieldnames
-                        if self.assure_columns:
-                            if self._dicts:
-                                for row in islice(csv, n_lines):
-                                    yield {col: row[col] if col in row else None for col in self.columns}
-                            else:
-                                for row in islice(csv, n_lines):
-                                    yield list({col: row[col] if col in row else None for col in self.columns}.values())
-                        else:
-                            if self._dicts:
-                                for row in islice(csv, n_lines):
-                                    yield row
-                            else:
-                                for row in islice(csv, n_lines):
-                                    yield list(row.values())
+                        yield from self._gen_helper(csv, n_lines)
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
+
+    def _helper(self, file: str, csv: DictReader, n_lines: Optional[int]):
+        if self.assure_columns:
+            if self._dicts:
+                self.data[file] = [
+                    {col: row[col] if col in row else None for col in self.columns}
+                    for row in islice(csv, n_lines)]
+            else:
+                self.data[file] = [csv.fieldnames] + [
+                    list({col: row[col] if col in row else None for col in self.columns}.values())
+                    for row in islice(csv, n_lines)]
+        else:
+            if self._dicts:
+                self.data[file] = [row for row in islice(csv, n_lines)]
+            else:
+                self.data[file] = [csv.fieldnames] + [
+                    list(row.values()) for row in islice(csv, n_lines)]
+
+    def _gen_helper(self, csv: DictReader, n_lines: Optional[int]):
+        for row in islice(csv, n_lines):
+            if self.assure_columns and self._dicts:
+                yield {col: row[col] if col in row else None for col in self.columns}
+            elif self.assure_columns:
+                yield list({col: row[col] if col in row else None for col in self.columns}.values())
+            elif self._dicts:
+                yield row
+            else:
+                yield list(row.values())
 
     def open(self,
              remove: bool = False,
@@ -354,8 +361,10 @@ class ZipData:
 
         Optionally, (keyword) arguments are passed through. By default, skips the file header."""
         for file, data in self.data.items():
-            self.data[file] = function(data, *args, **kwargs) if self._dicts else \
-                function(data[1:] if skip_fieldnames else data, *args, **kwargs)
+            if self._dicts:
+                self.data[file] = function(data, *args, **kwargs)
+            else:
+                self.data[file] = function(data[1:] if skip_fieldnames else data, *args, **kwargs)
 
     def write(self, replace: Tuple[str, str] = ("", "")):
         """Archives and deflates all data files."""

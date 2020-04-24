@@ -1,3 +1,4 @@
+from bisect import bisect
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -7,7 +8,7 @@ from logging import debug
 from re import sub
 from socket import gethostname
 from time import localtime, sleep
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
@@ -188,12 +189,12 @@ class SourceScore:
             "phoneNumber_number": "number_score",
             "address_current_postalCode": "address_score",
         }
+        self._breakpoints = self._scores = None
 
-    @staticmethod
-    def _categorize_score(score: float) -> int:
-        """Assign self._categorize_def or self._categorize_cbs
-        to this function."""
-        pass
+    def _categorize_score(self, score: float) -> int:
+        if score is not None:
+            score = self._scores[bisect(self._breakpoints, score)]
+        return score
 
     def _calc_score(self, result_tuple: Score) -> float:
         """Calculate a quality score for the found number."""
@@ -285,30 +286,6 @@ class SourceScore:
         # Calculate score
         score_percentage = full_score(result_tuple)
         return score_percentage
-
-    @staticmethod
-    def _categorize_def(score: float) -> int:
-        if score is not None:
-            if score >= 3 / 4:
-                score = 1
-            elif score >= 2 / 4:
-                score = 2
-            elif score >= 1 / 4:
-                score = 3
-            else:
-                score = 4
-        return score
-
-    @staticmethod
-    def _categorize_cbs(score: float) -> int:
-        if score is not None:
-            if score >= 2 / 3:
-                score = 3
-            elif score >= 1 / 3:
-                score = 2
-            else:
-                score = 1
-        return score
 
     def _convert_score(self, result_tuple: Score) -> Union[int, float]:
         score_percentage = self._calc_score(result_tuple)
@@ -432,7 +409,7 @@ class MatchQueries:
         return query
 
     @staticmethod
-    def _id_query(responses: list) -> dict:
+    def _id_query(responses: Sequence) -> dict:
         """Take a list of match responses, and return a query
         that will search for the ids of those responses."""
 
@@ -549,10 +526,13 @@ class PersonData(MatchQueries,
                              f" of {', '.join(categories)}")
         if self._cbs:
             self._match_sources = self._match_sources_cbs
-            self._categorize_score = self._categorize_cbs
+            self._breakpoints = [2/3, 1/3]
+            self._scores = [1, 2, 3]
         else:
             self._match_sources = self._match_sources_def
-            self._categorize_score = self._categorize_def
+            self._breakpoints = [3/4, 2/4, 1/4]
+            self._scores = [4, 3, 2, 1]
+        self._countries = {"nederland", "netherlands", "nl", "nld"}
 
     def __repr__(self):
         return f"PersonData(in={self.data}, out={self.result})"
@@ -651,13 +631,9 @@ class PersonData(MatchQueries,
             return ("lastname", "address_current_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
 
-    @staticmethod
-    def _check_country(country: str):
-        if (country and country.lower() not in
-                {"nederland", "netherlands", "nl", "nld"}):
-            raise NotImplementedError(
-                f"Not implemented for country "
-                f"{country}.")
+    def _check_country(self, country: str):
+        if country and country.lower() not in self._countries:
+            raise NoMatch(f"Not implemented for country {country}.")
 
     def _check_match(self, key: str):
         """Matches where we found a phone number,
@@ -686,12 +662,12 @@ class PersonData(MatchQueries,
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                responses = [{"_id": d["_id"], **d["_source"]}
+                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
                              for d in self._es.find(
                         self._id_query(self._es.find(
                             q, source_only=True)))]
             else:
-                responses = [{"_id": d["_id"], **d["_source"]}
+                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
                              for d in self._es.find(q)]
             for response in responses:
                 response = flatten(response)
@@ -809,10 +785,81 @@ class PersonData(MatchQueries,
             raise NoMatch
 
 
+class NamesData:
+    def __init__(self):
+        self.es = ESClient("dev_peter.names_data")
+        self.uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
+        self.initial_freq = {
+            "A": 0.10395171481742668,
+            "B": 0.02646425590465198,
+            "C": 0.0624646058908782,
+            "D": 0.02830463793241263,
+            "E": 0.04368881360131388,
+            "F": 0.028797360001816555,
+            "G": 0.046652085281351154,
+            "H": 0.06267525720019877,
+            "I": 0.013224965395575616,
+            "J": 0.1499112822017472,
+            "K": 0.015244050637799001,
+            "L": 0.03944411414236686,
+            "M": 0.14917774707325376,
+            "N": 0.01947222640467436,
+            "O": 0.003400582698897405,
+            "P": 0.04273322203716372,
+            "Q": 0.0010834182963716224,
+            "R": 0.040866938005614986,
+            "S": 0.03767597603233326,
+            "T": 0.03086106951847034,
+            "U": 0.0004628351419562074,
+            "V": 0.005300463759232,
+            "W": 0.040004889089096926,
+            "X": 0.0005470681834522827,
+            "Y": 0.005756428343154263,
+            "Z": 0.0017861046192925779
+        }
+
+    def affixes(self) -> set:
+        return {doc["_source"]["affix"] for doc in self.es.findall(
+            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
+        )}
+
+    def first_names(self) -> dict:
+        """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
+
+        This function returns if any given Dutch first name has more male or female bearers. If the number is equal,
+        None is returned. Names are cleaned before output.
+
+        The output can be used to fill missing gender data."""
+        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
+                self.es.findall(
+                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
+
+    def titles(self) -> set:
+        """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
+        return set(doc["_source"]["title"] for doc in  # noqa
+                   self.es.findall(
+                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
+
+    def surnames(self) -> dict:
+        """Imports a database with surnames frequencies and returns common surnames as a list.
+
+        Only surnames that occur more than 200 times in the Netherlands are regarded as common.
+        If a name occurs twice in the file, the largest number is taken.
+
+        The output can be used for data and matching quality calculations."""
+
+        names_data = self.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
+        # Return only names that occur commonly
+        names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
+                      for doc in names_data}
+        return names_data
+
+
 class Cleaner:
+    title_data = NamesData().titles()
+
     def __init__(self):
         self.data = {}
-        self.title_data = NamesData.titles()
 
     def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
         self.data = data
@@ -914,81 +961,3 @@ class Cleaner:
             self.data["houseNumberExt"] = sub(r"\D+(?=\d)", "", self.data["houseNumberExt"])
         if not self.data["houseNumberExt"]:
             self.data.pop("houseNumberExt")
-
-
-class NamesData:
-    uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
-    initial_freq = {
-        "A": 0.10395171481742668,
-        "B": 0.02646425590465198,
-        "C": 0.0624646058908782,
-        "D": 0.02830463793241263,
-        "E": 0.04368881360131388,
-        "F": 0.028797360001816555,
-        "G": 0.046652085281351154,
-        "H": 0.06267525720019877,
-        "I": 0.013224965395575616,
-        "J": 0.1499112822017472,
-        "K": 0.015244050637799001,
-        "L": 0.03944411414236686,
-        "M": 0.14917774707325376,
-        "N": 0.01947222640467436,
-        "O": 0.003400582698897405,
-        "P": 0.04273322203716372,
-        "Q": 0.0010834182963716224,
-        "R": 0.040866938005614986,
-        "S": 0.03767597603233326,
-        "T": 0.03086106951847034,
-        "U": 0.0004628351419562074,
-        "V": 0.005300463759232,
-        "W": 0.040004889089096926,
-        "X": 0.0005470681834522827,
-        "Y": 0.005756428343154263,
-        "Z": 0.0017861046192925779
-    }
-
-    @staticmethod
-    def first_names() -> dict:
-        """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
-
-        This function returns if any given Dutch first name has more male or female bearers. If the number is equal,
-        None is returned. Names are cleaned before output.
-
-        The output can be used to fill missing gender data."""
-        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in
-                ESClient("dev_peter.names_data").findall(
-                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
-
-    @staticmethod
-    def titles() -> set:
-        """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
-        return set(doc["_source"]["title"] for doc in
-                   ESClient("dev_peter.names_data").findall(
-                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
-
-    @staticmethod
-    def surnames() -> dict:
-        """Imports a database with surnames frequencies and returns common surnames as a list.
-
-        Only surnames that occur more than 200 times in the Netherlands are regarded as common.
-        If a name occurs twice in the file, the largest number is taken.
-
-        The output can be used for data and matching quality calculations."""
-
-        def cutoff(n: float) -> int:
-            if n <= 15:
-                return 0
-            elif n <= 50:
-                return 1
-            elif n <= 250:
-                return 2
-            elif n <= 1500:
-                return 3
-            else:
-                return 4
-
-        es = ESClient("dev_peter.names_data")
-        names_data = es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
-        # Return only names that occur commonly
-        names_data = {doc["_source"]["surname"]: cutoff(doc["_source"]["number"]) for doc in names_data}
-        return names_data

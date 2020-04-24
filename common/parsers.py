@@ -3,31 +3,33 @@ from typing import Any, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
+from text_unidecode import unidecode
+
+
+def _flatten(input_dict: MutableMapping[str, Any], sep: str):
+    flattened_dict = {}
+    for key, maybe_nested in input_dict.items():
+        if isinstance(maybe_nested, dict):
+            for sub, value in maybe_nested.items():
+                flattened_dict[f"{key}{sep}{sub}"] = value
+        else:
+            flattened_dict[key] = maybe_nested
+    return flattened_dict
 
 
 def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
-    def _flatten(input_dict):
-        flattened_dict = {}
-        for key, maybe_nested in input_dict.items():
-            if isinstance(maybe_nested, dict):
-                for sub, value in maybe_nested.items():
-                    flattened_dict[f"{key}{sep}{sub}"] = value
-            else:
-                flattened_dict[key] = maybe_nested
-        return flattened_dict
-
-    return_dict = _flatten(nested_dict)
+    return_dict = _flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
-            if not isinstance(v, dict):
+            if not isinstance(v, MutableMapping):
                 count += 1
         if count == len(return_dict):
             break
         else:
-            return_dict = _flatten(return_dict)
+            return_dict = _flatten(return_dict, sep)
 
     return return_dict
 
@@ -89,6 +91,20 @@ class Checks:
             "G": 1,
             None: 0
         }.get(var, 0)
+
+    @staticmethod
+    def remove_invalid_chars(text: str, replacechar: str) -> str:
+        for c in r"\`*_{}[]()>#+.&!$,":
+            text = text.replace(c, replacechar)
+        return text
+
+    def check_matching_percentage(self, str1: str, str2: str) -> int:
+        str1 = self.remove_invalid_chars(
+            unidecode(str1), "").replace(" ", "").lower().strip()
+        str2 = self.remove_invalid_chars(
+            unidecode(str2), "").replace(" ", "").lower().strip()
+        lev = levenshtein(str1, str2, measure="percentage")
+        return int(lev * 100)
 
 
 def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
