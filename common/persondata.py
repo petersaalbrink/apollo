@@ -797,10 +797,81 @@ class PersonData(MatchQueries,
             raise NoMatch
 
 
+class NamesData:
+    def __init__(self):
+        self.es = ESClient("dev_peter.names_data")
+        self.uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
+        self.initial_freq = {
+            "A": 0.10395171481742668,
+            "B": 0.02646425590465198,
+            "C": 0.0624646058908782,
+            "D": 0.02830463793241263,
+            "E": 0.04368881360131388,
+            "F": 0.028797360001816555,
+            "G": 0.046652085281351154,
+            "H": 0.06267525720019877,
+            "I": 0.013224965395575616,
+            "J": 0.1499112822017472,
+            "K": 0.015244050637799001,
+            "L": 0.03944411414236686,
+            "M": 0.14917774707325376,
+            "N": 0.01947222640467436,
+            "O": 0.003400582698897405,
+            "P": 0.04273322203716372,
+            "Q": 0.0010834182963716224,
+            "R": 0.040866938005614986,
+            "S": 0.03767597603233326,
+            "T": 0.03086106951847034,
+            "U": 0.0004628351419562074,
+            "V": 0.005300463759232,
+            "W": 0.040004889089096926,
+            "X": 0.0005470681834522827,
+            "Y": 0.005756428343154263,
+            "Z": 0.0017861046192925779
+        }
+
+    def affixes(self) -> set:
+        return {doc["_source"]["affix"] for doc in self.es.findall(
+            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
+        )}
+
+    def first_names(self) -> dict:
+        """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
+
+        This function returns if any given Dutch first name has more male or female bearers. If the number is equal,
+        None is returned. Names are cleaned before output.
+
+        The output can be used to fill missing gender data."""
+        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
+                self.es.findall(
+                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
+
+    def titles(self) -> set:
+        """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
+        return set(doc["_source"]["title"] for doc in  # noqa
+                   self.es.findall(
+                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
+
+    def surnames(self) -> dict:
+        """Imports a database with surnames frequencies and returns common surnames as a list.
+
+        Only surnames that occur more than 200 times in the Netherlands are regarded as common.
+        If a name occurs twice in the file, the largest number is taken.
+
+        The output can be used for data and matching quality calculations."""
+
+        names_data = self.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
+        # Return only names that occur commonly
+        names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
+                      for doc in names_data}
+        return names_data
+
+
 class Cleaner:
+    title_data = NamesData().titles()
+
     def __init__(self):
         self.data = {}
-        self.title_data = NamesData.titles()
 
     def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
         self.data = data
@@ -902,76 +973,3 @@ class Cleaner:
             self.data["houseNumberExt"] = sub(r"\D+(?=\d)", "", self.data["houseNumberExt"])
         if not self.data["houseNumberExt"]:
             self.data.pop("houseNumberExt")
-
-
-class NamesData:
-    es = ESClient("dev_peter.names_data")
-    uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
-    initial_freq = {
-        "A": 0.10395171481742668,
-        "B": 0.02646425590465198,
-        "C": 0.0624646058908782,
-        "D": 0.02830463793241263,
-        "E": 0.04368881360131388,
-        "F": 0.028797360001816555,
-        "G": 0.046652085281351154,
-        "H": 0.06267525720019877,
-        "I": 0.013224965395575616,
-        "J": 0.1499112822017472,
-        "K": 0.015244050637799001,
-        "L": 0.03944411414236686,
-        "M": 0.14917774707325376,
-        "N": 0.01947222640467436,
-        "O": 0.003400582698897405,
-        "P": 0.04273322203716372,
-        "Q": 0.0010834182963716224,
-        "R": 0.040866938005614986,
-        "S": 0.03767597603233326,
-        "T": 0.03086106951847034,
-        "U": 0.0004628351419562074,
-        "V": 0.005300463759232,
-        "W": 0.040004889089096926,
-        "X": 0.0005470681834522827,
-        "Y": 0.005756428343154263,
-        "Z": 0.0017861046192925779
-    }
-
-    @staticmethod
-    def affixes() -> set:
-        return {doc["_source"]["affix"] for doc in NamesData.es.findall(
-            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
-        )}
-
-    @staticmethod
-    def first_names() -> dict:
-        """Import a file with first names and gender occurrence, and return a {first_name: gender} dictionary.
-
-        This function returns if any given Dutch first name has more male or female bearers. If the number is equal,
-        None is returned. Names are cleaned before output.
-
-        The output can be used to fill missing gender data."""
-        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
-                NamesData.es.findall(
-                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
-
-    @staticmethod
-    def titles() -> set:
-        """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
-        return set(doc["_source"]["title"] for doc in  # noqa
-                   NamesData.es.findall(
-                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
-
-    @staticmethod
-    def surnames() -> dict:
-        """Imports a database with surnames frequencies and returns common surnames as a list.
-
-        Only surnames that occur more than 200 times in the Netherlands are regarded as common.
-        If a name occurs twice in the file, the largest number is taken.
-
-        The output can be used for data and matching quality calculations."""
-
-        names_data = NamesData.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
-        # Return only names that occur commonly
-        names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
-                      for doc in names_data}
-        return names_data

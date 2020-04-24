@@ -29,7 +29,7 @@ class PersonMatch:
     def __init__(self, strictness: int = 3, validate_phone: bool = False):
         self.drop_fields = {"source", "previous", "common", "country", "place", "fax", "id", "year",
                             "postalCodeMin", "purposeOfUse", "latitude", "longitude", "title", "state", "dateOfRecord"}
-        self.title_data = NamesData.titles()
+        self.title_data = NamesData().titles()
         self.data = {}
         self.result = {}
         self.results = []
