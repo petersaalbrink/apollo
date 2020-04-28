@@ -610,7 +610,8 @@ class MySQLClient:
         floats_list: list = list(zip(
             floats_dict.values(),
             list(map(max, zip(
-                *[[tuple(map(len, f"{value}".split("."))) for key, value in row.items()
+                *[[tuple(map(len, f"{value}".split(".") if value is not None else []))
+                   for key, value in row.items()
                    if key in floats_dict.keys()]
                   for row in data])))
         ))
