@@ -4,6 +4,7 @@ from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
 from text_unidecode import unidecode
+from .exceptions import ParseError
 
 
 def _flatten(input_dict: MutableMapping[str, Any], sep: str):
@@ -115,7 +116,7 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[floa
     """
     measures = {"distance", "percentage"}
     if measure not in measures:
-        raise ValueError(f"measure should be one of {measures}")
+        raise ParseError(f"measure should be one of {measures}")
 
     size_1, size_2 = len(seq1), len(seq2)
     size_1p, size_2p = size_1 + 1, size_2 + 1
@@ -159,7 +160,7 @@ def dateformat(date: str) -> str:
         if div in date:
             break
     else:
-        raise ValueError(f"Couldn't find date divider in {date}")
+        raise ParseError(f"Couldn't find date divider in {date}")
     year_first = date.find(f"{parse(date).year}") == 0
     if year_first:
         fmt = f"%Y{div}%m{div}%d"

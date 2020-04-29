@@ -9,10 +9,7 @@ from pendulum import timezone
 from pymongo.errors import PyMongoError
 from .connectors.mx_email import EmailClient
 from .connectors.mx_mongo import MongoDB
-
-
-class FileTransferError(Exception):
-    pass
+from .exceptions import FileTransferError
 
 
 class FileTransfer:
@@ -36,9 +33,9 @@ class FileTransfer:
 
         # Check
         if sum((user_id is not None, username is not None, email is not None)) != 1:
-            raise ValueError("Provide either a name, ID, or email for the user.")
+            raise FileTransferError("Provide either a name, ID, or email for the user.")
         if filename is None:
-            raise ValueError("Provide a filename.")
+            raise FileTransferError("Provide a filename.")
 
         # Connect
         db = MongoDB("production_api.user", host="prod")
@@ -53,7 +50,7 @@ class FileTransfer:
         elif email:
             q = {"email": email}
         else:
-            raise ValueError("Provide either a name, ID or email for the user.")
+            raise FileTransferError("Provide either a name, ID or email for the user.")
         doc = db.find_one(q)
         self.user_id = doc["_id"]
         self.username = doc["username"]

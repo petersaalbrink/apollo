@@ -27,6 +27,8 @@ from mysql.connector import (connect,
                              InterfaceError,
                              OperationalError)
 from pandas import NaT, Timestamp, Timedelta, isna
+
+from ..exceptions import MySQLClientError
 from ..handlers import tqdm, trange
 
 
@@ -174,16 +176,16 @@ class MySQLClient:
         host = getenv(envv)
         if not host:
             from ..env import envfile
-            raise RuntimeError(f"Make sure a host is configured for variable"
-                               f" name '{envv}' in file '{envfile}'")
+            raise MySQLClientError(f"Make sure a host is configured for variable"
+                                   f" name '{envv}' in file '{envfile}'")
         if not list(commondir.glob("*.pem")):
             try:
                 from ..env import _write_pem
                 _write_pem()
                 commondir = Path.cwd()
             except Exception:
-                raise RuntimeError(f"Please make sure all '.pem' SSL certificate "
-                                   f"files are placed in directory '{commondir}'")
+                raise MySQLClientError(f"Please make sure all '.pem' SSL certificate "
+                                       f"files are placed in directory '{commondir}'")
         self.__config = {
             "user": usr,
             "password": pwd,
@@ -328,7 +330,7 @@ class MySQLClient:
                ) -> List[str]:
         """Fetch one column from MySQL"""
         if not self.table_name:
-            raise ValueError("Provide a table.")
+            raise MySQLClientError("Provide a table.")
         self.connect()
         if not query:
             query = Query(
@@ -340,7 +342,7 @@ class MySQLClient:
             else:
                 column = [value[0] for value in self.fetchall()]
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         self.disconnect()
         return column
 
@@ -369,7 +371,7 @@ class MySQLClient:
               ) -> int:
         """Fetch row count from MySQL"""
         if table is None and self.table_name is None:
-            raise ValueError("No table name provided.")
+            raise MySQLClientError("No table name provided.")
         if table and "." in table:
             self.database, table = table.split(".")
         elif table is None and self.table_name is not None:
@@ -425,7 +427,7 @@ class MySQLClient:
             self.execute(query)
             row = self.fetchone() if self.dictionary else list(self.fetchone())
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         except IndexError:
             row = {} if self.dictionary else []
         self.disconnect()
@@ -463,7 +465,7 @@ class MySQLClient:
         if size is None:
             size = kwargs.pop("chunk_size", 10_000)
         elif size <= 0:
-            raise ValueError("Chunk size must be > 0")
+            raise MySQLClientError("Chunk size must be > 0")
 
         self.connect()
 
@@ -498,7 +500,7 @@ class MySQLClient:
                 yield data
                 bar.update(len(data))
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
 
         self.disconnect()
         bar.close()
@@ -571,17 +573,17 @@ class MySQLClient:
 
         # Setup
         if not data or not data[0]:
-            raise ValueError("Provide non-empty data.")
+            raise MySQLClientError("Provide non-empty data.")
         elif fieldnames and isinstance(data[0], dict):
-            pass
+            pass  # noqa
         elif not fieldnames and not isinstance(data[0], dict):
-            raise ValueError("Provide fieldnames if you don't have data dicts!")
+            raise MySQLClientError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
             fieldnames = data[0].keys()
         elif isinstance(data[0], (list, tuple)):
             data = [dict(zip(fieldnames, row)) for row in data]
         else:
-            raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
+            raise MySQLClientError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
 
         # Try taking a sample
         with suppress(ValueError):
@@ -630,7 +632,7 @@ class MySQLClient:
         type_dict: dict = {field: all_types[field] for field in type_dict}
 
         if len(type_dict) != len(fieldnames):
-            raise ValueError("Lengths don't match; does every data row have the same number of fields?")
+            raise MySQLClientError("Lengths don't match; does every data row have the same number of fields?")
 
         return type_dict
 
@@ -727,10 +729,10 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload."""
         if not data or not data[0]:
-            raise ValueError("No data provided.")
+            raise MySQLClientError("No data provided.")
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
@@ -760,7 +762,7 @@ class MySQLClient:
                 except (DatabaseError, InterfaceError) as e:
                     errors += 1
                     if errors >= self._max_errors:
-                        raise
+                        raise MySQLClientError(query) from e
                     e = f"{e}"
                     info("%s", e)
                     if "truncated" in e or "Out of range value" in e:
@@ -795,8 +797,7 @@ class MySQLClient:
                                   else value for value in row]
                                  for row in chunk]
                     else:
-                        print(query)
-                        raise
+                        raise MySQLClientError(query) from e
         return len(data)
 
     def add_index(self,
@@ -836,10 +837,10 @@ class MySQLClient:
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
         """
         if not data:
-            raise ValueError("No data provided.")
+            raise MySQLClientError("No data provided.")
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = self.table_name
         elif "." in table:
             self.database, table = table.split(".")
@@ -931,7 +932,7 @@ class MySQLClient:
         if not and_or:
             and_or = "AND"
         elif and_or not in {"AND", "OR"}:
-            raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
+            raise MySQLClientError(f"`and_or` should be either AND or OR, not {and_or}.")
 
         def search_key(_field, _value):
             if isinstance(_value, list):
@@ -946,7 +947,7 @@ class MySQLClient:
             distinct = ""
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
@@ -1020,13 +1021,13 @@ class MySQLClient:
             except DatabaseError as e:
                 errors += 1
                 if errors >= self._max_errors:
-                    raise
+                    raise MySQLClientError(query) from e
                 e = f"{e}"
                 if ("truncated" in e or "Out of range value" in e
                         and query.strip().upper().startswith("INSERT")):
                     self._increase_max_field_len(e)
                 else:
-                    raise
+                    raise MySQLClientError(query) from e
 
     def query(self,
               # q: Union[Query, str] = None, /,
@@ -1094,7 +1095,7 @@ class MySQLClient:
         if query:
             return self._execute_query(query)
         if select_fields and len(select_fields) == 0:
-            raise TypeError(f"Empty {type(select_fields)} not accepted.")
+            raise MySQLClientError(f"Empty {type(select_fields)} not accepted.")
         if table and (isinstance(table, Query)
                       or table.strip().upper().startswith("SELECT")):
             query = table
@@ -1128,7 +1129,7 @@ class MySQLClient:
                 elif not self.dictionary:
                     result = [list(row) for row in result]
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         except IndexError:
             result = {} if self.dictionary else []
         self.disconnect()

@@ -26,6 +26,7 @@ from typing import (Any,
 from zipfile import ZipFile
 from tqdm import tqdm, trange
 from .connectors.mx_email import EmailClient
+from .exceptions import TimerError, ZipDataError
 
 tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
@@ -253,7 +254,7 @@ class ZipData:
         if isinstance(file_path, str):
             file_path = Path(file_path)
         if file_path.suffix != ".zip":
-            raise TypeError(f"File '{file_path}' should be a .zip file.")
+            raise ZipDataError(f"File '{file_path}' should be a .zip file.")
         self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
@@ -393,10 +394,6 @@ class Timer:
 
     def __repr__(self):
         return f"Timer: {self.end()}".split(".")[0]
-
-
-class TimerError(Exception):
-    """Exception used to report errors in use of Timer class."""
 
 
 @dataclass

@@ -1,4 +1,4 @@
-from common import MySQLClient
+from .mx_mysql import MySQLClient
 from sqlalchemy import create_engine
 from sqlalchemy.types import Integer, Float, DateTime, Text
 from pandas import DataFrame, read_sql
