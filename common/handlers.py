@@ -429,7 +429,7 @@ class TicToc(ContextDecorator):
 
         # Report elapsed time
         if self.logger:
-            self.logger(self.text.format(elapsed_time))
+            self.logger(self.text.format(elapsed_time))  # noqa
         if self.name:
             self.timers[self.name] += elapsed_time
 
@@ -443,6 +443,55 @@ class TicToc(ContextDecorator):
     def __exit__(self, *exc_info: Any) -> None:
         """Stop the context manager timer"""
         self.stop()
+
+
+class FunctionTimer:
+    """Code timing context manager."""
+
+    def __init__(self, name: str = None):
+        """Initialization: add timer to dict of timers"""
+        self.name = name
+        self._start_time: Optional[float] = None
+
+    def start(self) -> None:
+        """Start a new timer"""
+        if self._start_time is not None:
+            raise TimerError(f"Timer is running. Use .stop() to stop it")
+
+        self._start_time = perf_counter()
+
+    def stop(self) -> float:
+        """Stop the timer, and report the elapsed time"""
+        if self._start_time is None:
+            raise TimerError(f"Timer is not running. Use .start() to start it")
+
+        # Calculate elapsed time
+        elapsed_time = perf_counter() - self._start_time
+        self._start_time = None
+
+        # Report elapsed time
+        logging.info("%s:%.8f", self.name, elapsed_time)  # noqa
+
+        return elapsed_time
+
+    def __enter__(self) -> "FunctionTimer":
+        """Start a new timer as a context manager"""
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        """Stop the context manager timer"""
+        self.stop()
+
+
+def timer(func):
+    def decorate(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            with FunctionTimer(name=f.__name__):
+                f(*args, **kwargs)
+        return wrapped
+    return decorate(func)
 
 
 def pip_upgrade():
