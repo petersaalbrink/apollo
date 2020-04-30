@@ -484,14 +484,11 @@ class FunctionTimer:
         self.stop()
 
 
-def timer(func):
-    def decorate(f):
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            with FunctionTimer(name=f.__name__):
-                f(*args, **kwargs)
-        return wrapped
-    return decorate(func)
+def timer(f):
+    def wrapped(*args, **kwargs):
+        with FunctionTimer(name=f.__name__):
+            return f(*args, **kwargs)
+    return wrapped
 
 
 def pip_upgrade():
