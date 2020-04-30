@@ -12,7 +12,8 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
 
-from common.handlers import tqdm
+from ..exceptions import ESClientError
+from ..handlers import tqdm
 
 # Types
 Location = Union[
@@ -62,8 +63,8 @@ class ESClient(Elasticsearch):
             self._host = getenv(envv)
             if not self._host:
                 from ..env import envfile
-                raise RuntimeError(f"Make sure a host is configured for variable"
-                                   f" name '{envv}' in file '{envfile}'")
+                raise ESClientError(f"Make sure a host is configured for variable"
+                                    f" name '{envv}' in file '{envfile}'")
             self._port = int(getenv("MX_ELASTIC_PORT", 9200))
             config["http_auth"] = secret
 
@@ -137,7 +138,7 @@ class ESClient(Elasticsearch):
                     if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
                         raise
                 except ElasticsearchException as e:
-                    raise ElasticsearchException(q) from e
+                    raise ESClientError(q) from e
             if size != 0:
                 if hits_only:
                     result = result["hits"]["hits"]
@@ -177,7 +178,7 @@ class ESClient(Elasticsearch):
         """
 
         if not any((address_id, location)) or all((address_id, location)):
-            raise ValueError("Provide either an address_id or a location")
+            raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
             query = {"query": {"bool": {"must": [
@@ -344,7 +345,7 @@ class ESClient(Elasticsearch):
             q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
             return self.find(q, **find_kwargs)
         elif field or value:
-            raise ValueError("Provide both field and value.")
+            raise ESClientError("Provide both field and value.")
 
         args = {}
         for k in kwargs:
@@ -384,7 +385,7 @@ class ESClient(Elasticsearch):
             index = self.es_index
         if find:
             if body:
-                raise ValueError("Provide either `body` or `find`.")
+                raise ESClientError("Provide either `body` or `find`.")
             body = {"query": find}
         count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
         return count["count"]
@@ -419,7 +420,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                 if "fielddata" in f"{e}" and field[-8:] != ".keyword":
                     field = f"{field}.keyword"
                 else:
-                    raise ElasticsearchException(query) from e
+                    raise ESClientError(query) from e
 
         n_buckets = 0
         while True:

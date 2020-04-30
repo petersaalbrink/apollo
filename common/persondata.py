@@ -18,8 +18,9 @@ from text_unidecode import unidecode
 from urllib3.exceptions import MaxRetryError
 
 from .connectors.mx_elastic import ESClient, ElasticsearchException
-from .requests import get
+from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
+from .requests import get
 
 
 class BaseDataClass(MutableMapping):
@@ -172,7 +173,7 @@ class SourceMatch:
         except KeyError as e:
             if e.args[0] == 0:
                 raise NoMatch
-            raise RuntimeError(
+            raise MatchError(
                 "No source could be defined for this match!",
                 self.data, response) from e
         return source
@@ -433,10 +434,6 @@ class MatchQueries:
         }
 
 
-class NoMatch(Exception):
-    pass
-
-
 class PersonData(MatchQueries,
                  SourceMatch,
                  SourceScore):
@@ -522,8 +519,8 @@ class PersonData(MatchQueries,
         categories = ("all", "name", "address", "phone")
         if (self._response_type not in categories and
                 not isinstance(self._response_type, (tuple, list))):
-            raise ValueError(f"Requested fields should be one"
-                             f" of {', '.join(categories)}")
+            raise MatchError(f"Requested fields should be one"
+                                f" of {', '.join(categories)}")
         if self._cbs:
             self._match_sources = self._match_sources_cbs
             self._breakpoints = [2/3, 1/3]
