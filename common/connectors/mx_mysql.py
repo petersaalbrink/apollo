@@ -317,7 +317,7 @@ class MySQLClient:
             q = self.build(select_fields="1", limit=1)
             self._execute_query(q)
             return True
-        except DatabaseError:
+        except (DatabaseError, MySQLClientError):
             return False
 
     def truncate(self):
