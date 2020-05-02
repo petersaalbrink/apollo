@@ -314,7 +314,8 @@ class MySQLClient:
 
     def exists(self) -> bool:
         try:
-            self.query(select_fields="1", limit=1)
+            q = self.build(select_fields="1", limit=1)
+            self._execute_query(q)
             return True
         except DatabaseError:
             return False
