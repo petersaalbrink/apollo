@@ -1092,14 +1092,14 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
+        if table and (isinstance(table, Query)
+                      or table.strip().upper().startswith("SELECT")):
+            query = table
         if query:
             return self._execute_query(query)
         if select_fields and len(select_fields) == 0:
             raise MySQLClientError(f"Empty {type(select_fields)} not accepted.")
-        if table and (isinstance(table, Query)
-                      or table.strip().upper().startswith("SELECT")):
-            query = table
-        else:
+        if not query:
             query = self.build(table=table,
                                field=field,
                                value=value,
