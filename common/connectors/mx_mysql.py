@@ -314,9 +314,10 @@ class MySQLClient:
 
     def exists(self) -> bool:
         try:
-            self.query(select_fields="1", limit=1)
+            q = self.build(select_fields="1", limit=1)
+            self._execute_query(q)
             return True
-        except DatabaseError:
+        except (DatabaseError, MySQLClientError):
             return False
 
     def truncate(self):
@@ -763,11 +764,10 @@ class MySQLClient:
                     errors += 1
                     if errors >= self._max_errors:
                         raise MySQLClientError(query) from e
-                    e = f"{e}"
                     info("%s", e)
-                    if "truncated" in e or "Out of range value" in e:
-                        self._increase_max_field_len(e, table=table, chunk=chunk)
-                    elif ("Column count doesn't match value count" in e
+                    if "truncated" in e.args[1] or "Out of range value" in e.args[1]:
+                        self._increase_max_field_len(e.args[1], table=table, chunk=chunk)
+                    elif ("Column count doesn't match value count" in e.args[1]
                           and isinstance(data[0], dict)):
                         cols = {col: self.create_definition([{col: data[0][col]}])[col]
                                 for col in set(self.column()).symmetric_difference(set(data[0]))}
@@ -780,9 +780,9 @@ class MySQLClient:
                         self.connect()
                         self.execute(Query(f"ALTER TABLE {table} {cols}"))
                         self.disconnect()
-                    elif ("Timestamp" in e
-                          or "Timedelta" in e
-                          or "NaTType" in e):
+                    elif ("Timestamp" in e.args[1]
+                          or "Timedelta" in e.args[1]
+                          or "NaTType" in e.args[1]):
                         for row in chunk:
                             for field in row:
                                 if ("date" in field
@@ -792,7 +792,7 @@ class MySQLClient:
                                         row[field] = row[field].to_pydatetime()
                                     elif isinstance(row[field], Timedelta):
                                         row[field] = row[field].total_seconds()
-                    elif "Unknown column 'nan'" in e:
+                    elif "Unknown column 'nan'" in e.args[1]:
                         chunk = [[None if value == "" or isna(value)
                                   else value for value in row]
                                  for row in chunk]
@@ -1022,10 +1022,9 @@ class MySQLClient:
                 errors += 1
                 if errors >= self._max_errors:
                     raise MySQLClientError(query) from e
-                e = f"{e}"
-                if ("truncated" in e or "Out of range value" in e
+                if ("truncated" in e.args[1] or "Out of range value" in e.args[1]
                         and query.strip().upper().startswith("INSERT")):
-                    self._increase_max_field_len(e)
+                    self._increase_max_field_len(e.args[1])
                 else:
                     raise MySQLClientError(query) from e
 
@@ -1092,14 +1091,14 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
+        if table and (isinstance(table, Query)
+                      or table.strip().upper().startswith("SELECT")):
+            query = table
         if query:
             return self._execute_query(query)
         if select_fields and len(select_fields) == 0:
             raise MySQLClientError(f"Empty {type(select_fields)} not accepted.")
-        if table and (isinstance(table, Query)
-                      or table.strip().upper().startswith("SELECT")):
-            query = table
-        else:
+        if not query:
             query = self.build(table=table,
                                field=field,
                                value=value,

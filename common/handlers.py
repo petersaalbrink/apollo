@@ -121,9 +121,22 @@ class Log:
         return self.__repr__()
 
 
+_logging_levels = {
+    "notset": logging.NOTSET,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "fatal": logging.FATAL,
+    "critical": logging.FATAL,
+}
+
+
 def get_logger(level: str = None,
                filename: str = None,
-               name: str = None
+               name: str = None,
+               **kwargs
                ) -> logging.Logger:
     """Create an advanced Logger that will output to both file and stream.
     The logger can be set with:
@@ -132,16 +145,14 @@ def get_logger(level: str = None,
         name (default: root)
     """
     # get level, name, and filename
-    level = {
-        "notset": logging.NOTSET,
-        "debug": logging.DEBUG,
-        "info": logging.INFO,
-        "warn": logging.WARNING,
-        "warning": logging.WARNING,
-        "error": logging.ERROR,
-        "fatal": logging.FATAL,
-        "critical": logging.FATAL,
-    }.get(level.lower() if level else level, logging.DEBUG)
+    stream_level = _logging_levels.get(
+        kwargs.get("stream_level"),
+        logging.WARNING
+    )
+    level = _logging_levels.get(
+        f"{level}".lower(),
+        logging.DEBUG
+    )
     if not name and __name__ not in {"__main__", "common.handlers"}:
         name = __name__
     if not filename:
@@ -157,13 +168,13 @@ def get_logger(level: str = None,
     # create file handler which logs even debug messages,
     # add formatter to handler and handler to logger
     fh = logging.FileHandler(filename=filename, encoding="utf-8")
-    fh.setLevel(level=level)
+    fh.setLevel(level)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     # create console handler with a higher log level,
     # add formatter to handler and handler to logger
     ch = logging.StreamHandler()
-    ch.setLevel(logging.WARNING)
+    ch.setLevel(stream_level)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     return logger
@@ -484,14 +495,15 @@ class FunctionTimer:
         self.stop()
 
 
-def timer(func):
-    def decorate(f):
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            with FunctionTimer(name=f.__name__):
-                f(*args, **kwargs)
-        return wrapped
-    return decorate(func)
+def timer(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        start_time = perf_counter()
+        return_value = f(*args, **kwargs)
+        elapsed_time = perf_counter() - start_time
+        logging.info("%s:%.8f", f.__name__, elapsed_time)
+        return return_value
+    return wrapped
 
 
 def pip_upgrade():

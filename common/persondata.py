@@ -852,11 +852,15 @@ class NamesData:
         return names_data
 
 
+_module_data = {}
+
+
 class Cleaner:
-    title_data = NamesData().titles()
 
     def __init__(self):
         self.data = {}
+        if "title_data" not in _module_data:
+            _module_data["title_data"] = NamesData().titles()
 
     def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
         self.data = data
@@ -915,7 +919,7 @@ class Cleaner:
             self.data["lastname"] = sub(r"[^\sA-Za-z\u00C0-\u017F]", "", self.data["lastname"])
             self.data["lastname"] = unidecode(self.data["lastname"].strip())
             self.data["lastname"] = self.data["lastname"].replace("÷", "o").replace("y", "ij")
-            if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in self.title_data:
+            if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
                 self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
         if not self.data["lastname"]:
             self.data.pop("lastname")
