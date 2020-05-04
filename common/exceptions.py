@@ -18,6 +18,10 @@ class MySQLClientError(ConnectorError):
     pass
 
 
+class DataError(CommonError):
+    pass
+
+
 class FileTransferError(CommonError):
     pass
 
