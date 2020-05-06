@@ -26,7 +26,7 @@ from typing import (Any,
 from zipfile import ZipFile
 from tqdm import tqdm, trange
 from .connectors.mx_email import EmailClient
-from .exceptions import TimerError, ZipDataError
+from .exceptions import DataError, TimerError, ZipDataError
 
 tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
@@ -40,6 +40,8 @@ def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
               **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
+    if not data:
+        raise DataError("Nothing to do.")
     encoding: str = kwargs.pop("encoding", "utf-8")
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
@@ -226,12 +228,13 @@ def send_email(function: Callable = None, *,
             ec = EmailClient()
             message = __make_message(message, f, args, kwargs)
             try:
-                f(*args, **kwargs)
+                return_value = f(*args, **kwargs)
                 if not on_error_only:
                     ec.send_email(
                         to_address=to_address,
                         message=f"Program finished successfully:\n\n{message}"
                     )
+                return return_value
             except Exception:
                 ec.send_email(
                     to_address=to_address,
