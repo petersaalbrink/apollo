@@ -1,4 +1,3 @@
-from bisect import bisect
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -93,11 +92,6 @@ class SourceMatch:
         self.data = self._matched = None
         self._source_match = {5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}
 
-    def _match_sources(self) -> str:
-        """Assign self._match_sources_def or
-        self._match_sources_cbs to this function."""
-        pass
-
     def _lastname_match(self, response):
         return (response.get("lastname")
                 and self.data.lastname
@@ -156,15 +150,12 @@ class SourceMatch:
     def _match_keys(self):
         return {key for key in self._matched if self._matched[key]}
 
-    def _match_sources_def(self) -> str:
+    def _match_sources(self) -> str:
         # TODO: incorporate gender into match scoring system
         keys = ("lastname", "initials", "address", "birth_date", "phone")
         values = (self._matched[m] for m in keys)
         matches = sum(bool(v) for v in values)
         return self._source_match[matches]
-
-    def _match_sources_cbs(self) -> str:
-        return "N" if self._matched["lastname"] and self._matched["address"] else "A"
 
     def _get_source(self, response: dict) -> str:
         self._set_match(response)
@@ -190,11 +181,18 @@ class SourceScore:
             "phoneNumber_number": "number_score",
             "address_current_postalCode": "address_score",
         }
-        self._breakpoints = self._scores = None
 
-    def _categorize_score(self, score: float) -> int:
+    @staticmethod
+    def _categorize_score(score: float) -> int:
         if score is not None:
-            score = self._scores[bisect(self._breakpoints, score)]
+            if score >= 3 / 4:
+                score = 1
+            elif score >= 2 / 4:
+                score = 2
+            elif score >= 1 / 4:
+                score = 3
+            else:
+                score = 4
         return score
 
     def _calc_score(self, result_tuple: Score) -> float:
@@ -311,7 +309,6 @@ class MatchQueries:
             "gender": "gender",
             "date_of_birth": "birth.date",
         }
-        self._cbs = kwargs.pop("cbs", False)
         self._name_only_query = kwargs.pop("name_only_query", False)
         self._strictness = kwargs.pop("strictness", 5)
         self._use_sources = kwargs.pop("sources", ())
@@ -520,15 +517,7 @@ class PersonData(MatchQueries,
         if (self._response_type not in categories and
                 not isinstance(self._response_type, (tuple, list))):
             raise MatchError(f"Requested fields should be one"
-                                f" of {', '.join(categories)}")
-        if self._cbs:
-            self._match_sources = self._match_sources_cbs
-            self._breakpoints = [2/3, 1/3]
-            self._scores = [1, 2, 3]
-        else:
-            self._match_sources = self._match_sources_def
-            self._breakpoints = [3/4, 2/4, 1/4]
-            self._scores = [4, 3, 2, 1]
+                             f" of {', '.join(categories)}")
         self._countries = {"nederland", "netherlands", "nl", "nld"}
 
     def __repr__(self):
