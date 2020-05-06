@@ -228,12 +228,13 @@ def send_email(function: Callable = None, *,
             ec = EmailClient()
             message = __make_message(message, f, args, kwargs)
             try:
-                f(*args, **kwargs)
+                return_value = f(*args, **kwargs)
                 if not on_error_only:
                     ec.send_email(
                         to_address=to_address,
                         message=f"Program finished successfully:\n\n{message}"
                     )
+                return return_value
             except Exception:
                 ec.send_email(
                     to_address=to_address,
