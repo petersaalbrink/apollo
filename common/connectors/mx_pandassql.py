@@ -1,57 +1,26 @@
-from mysql.connector import ClientFlag
-from common.env import getenv, commondir
-from common.secrets import get_secret
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.orm import sessionmaker
+# Connections
+from common.connectors.mx_sqlalchemy import SQLClient
+
+# SQL Alchemy
 from sqlalchemy.dialects.mysql import CHAR, DECIMAL, INTEGER
+
+# Data handlers
 from pandas import DataFrame, read_sql
 from numpy import ceil
-from tqdm import tqdm
-from typing import List
+from typing import Sequence, List, Union
 from functools import partial
 from re import IGNORECASE, search
-from typing import Sequence, Union
+from tqdm import tqdm
 
 
-class PandasSQL:
+class PandasSQL(SQLClient):
     def __init__(self, database: str = None, table: str = None, **kwargs):
-        self.database = database
-        self.table = table
-        envv = "MX_MYSQL_DEV_IP"
-        usr, pwd = get_secret("MX_MYSQL_DEV")
-        host = getenv(envv)
-        self.__config = {
-            "user": usr,
-            "password": pwd,
-            "host": host,
-            "database": database,
-            "raise_on_warnings": kwargs.get("raise_on_warnings", False),
-            "client_flags": [ClientFlag.SSL]
-        }
-        self.__ssl = {
-            "ssl_ca": f'{commondir / "server-ca.pem"}',
-            "ssl_cert": f'{commondir / "client-cert.pem"}',
-            "ssl_key": f'{commondir / "client-key.pem"}',
-        }
-        connection_string = f"mysql+mysqlconnector://{self.__config['user']}:{self.__config['password']}@" \
-                            f"{self.__config['host']}/{self.__config['database']}"
-        self.engine = create_engine(connection_string, connect_args=self.__ssl)
-        self.session = sessionmaker(bind=self.engine)()
+        super().__init__(database=database, table=table, kwargs=kwargs)
         self.psql_query = None
         self.psql_count = None
         self.psql_chunk_total = None
         self.df = None
         self.dtypes = {}
-
-    def count(self) -> int:
-        q = f"SELECT COUNT(*) FROM {self.database}.{self.table}"
-        return self.session.execute(q).scalar()
-
-    def get_dtypes(self) -> dict:
-        md = MetaData()
-        md.reflect(bind=self.engine)
-        dtypes = {col.name: col.type for col in md.tables[self.table].c}
-        return dtypes
 
     def set_dtypes(self, df, database, table) -> dict:
         # Create types from DataFrame
@@ -212,6 +181,8 @@ class PandasSQL:
 
 if __name__ == '__main__':
     p_sql = PandasSQL(database='real_estate', table='real_estate')
-    dataframe = p_sql.get_df(limit=10_000)
+    for chunk in p_sql.get_df(chunk_size=10_000, use_tqdm=True):
+        pass
+    exit()
     p_sql.to_sql(table='test', database='avix', method='append')
 
