@@ -73,16 +73,25 @@ def csv_read(filename: Union[Path, str],
     """Simple generator for reading from a csv file.
     Returns rows as OrderedDict, with None instead of empty string."""
     with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
+
+        # Try to sniff the dialect, if wanted
         if kwargs.pop("sniff", False):
             try:
-                dialect = Sniffer().sniff(f.read())
+                kwargs["dialect"] = Sniffer().sniff(f.read())
             except Error:
-                dialect = "excel"
+                kwargs["dialect"] = "excel"
             finally:
                 f.seek(0)
-        else:
-            dialect = "excel"
-        for row in DictReader(f, dialect=dialect, **kwargs):
+
+        # Try to find a commonly used delimiter
+        if "delimiter" not in kwargs:
+            row = next(DictReader(f, **kwargs))
+            if len(row) == 1 and ";" in list(row.keys())[0]:
+                kwargs["delimiter"] = ";"
+            f.seek(0)
+
+        # Yield the data
+        for row in DictReader(f, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
 
 

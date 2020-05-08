@@ -1,3 +1,4 @@
+from ast import literal_eval
 from contextlib import suppress
 from datetime import datetime, timedelta, date
 from decimal import Decimal
@@ -892,14 +893,39 @@ class MySQLClient:
 
         def search_for(k, v):
             def replace_quote(_k, _v, _key=None):
-                for _s in '"', "'":
-                    if _s in _v and rf"\{_s}" not in _v:
-                        _v = _v.replace(_s, rf"\{_s}")
-                        _key = rf"""{_k} = "{_v}" """
+                if _key:
+                    op = _key.replace(_k, "").replace(_v, "").strip('" ')
+                else:
+                    op = "="
+                if '"' in _v and "'" in _v:
+                    for _s in ('"', "'"):
+                        if rf"\{_s}" not in _v:
+                            _v = _v.replace(_s, rf"\{_s}")
+                            if _v[0] == "(":
+                                _key = rf"""{_k} {op} {_v} """
+                            else:
+                                q = '"' if "'" in _v else "'"
+                                _key = rf"""{_k} {op} {q}{_v}{q} """
+                else:
+                    for _s in ('"', "'"):
+                        if _s in _v:
+                            q = '"' if "'" in _v else "'"
+                            _key = rf"""{_k} {op} {q}{_v}{q} """
                 return _k, _v, _key
 
             key = rf"""{k} = "{v}" """
-            if isinstance(v, int):
+            if f"{v}".startswith(("IN ", "!IN ")) or isinstance(v, (tuple, list)):
+                _not = "NOT" if f"{v}".startswith("!IN ") else ""
+                if isinstance(v, str):
+                    v = v.lstrip("!IN ")
+                    if "NULL" in v and '"NULL"' not in v:
+                        v = v.replace("NULL", '"NULL"')
+                    v = literal_eval(v)
+                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
+                key = rf"{k} {_not} IN {v}"
+                key = key.replace('"NULL"', "NULL")
+                key = key.replace("'NULL'", "NULL")
+            elif isinstance(v, int):
                 key = rf"{k} = {v}"
             elif isinstance(v, str):
                 if v == "NULL":
@@ -908,9 +934,6 @@ class MySQLClient:
                     key = rf"{k} IS NULL"
                 elif v == "!NULL":
                     key = rf"{k} IS NOT NULL"
-                elif "!IN " in v:
-                    v = v.replace("!", "NOT ")
-                    key = rf"{k} {v}"
                 elif v.startswith("!"):
                     key = rf"""{k} != "{v[1:]}" """
                 elif v.startswith((">", "<")):
@@ -919,12 +942,8 @@ class MySQLClient:
                     key = rf"""{k} {v[:2]} {v[2:]} """
                 elif "%" in v:
                     key = rf"""{k} LIKE "{v}" """
-                elif v.startswith("IN "):
-                    key = rf"{k} {v}"
-                *_, key = replace_quote(k, v, key)
-            elif isinstance(v, Sequence):
-                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
-                key = rf"{k} IN {v}"
+                if '"' in v or "'" in v:
+                    *_, key = replace_quote(k, v, key)
             elif isinstance(v, Pattern):
                 key = f"""{k} REGEXP "{v.pattern}" """
             return key
