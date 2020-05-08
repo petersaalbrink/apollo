@@ -1,3 +1,4 @@
+from ast import literal_eval
 from contextlib import suppress
 from datetime import datetime, timedelta, date
 from decimal import Decimal
@@ -919,7 +920,7 @@ class MySQLClient:
                     v = v.lstrip("!IN ")
                     if "NULL" in v and '"NULL"' not in v:
                         v = v.replace("NULL", '"NULL"')
-                    v = eval(v)
+                    v = literal_eval(v)
                 v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
                 key = rf"{k} {_not} IN {v}"
                 key = key.replace('"NULL"', "NULL")
