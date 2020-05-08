@@ -1,3 +1,4 @@
+from ast import literal_eval
 from contextlib import suppress
 from datetime import datetime, timedelta, date
 from decimal import Decimal
@@ -7,7 +8,6 @@ from pathlib import Path
 from random import sample
 from typing import (Any,
                     Dict,
-                    Generator,
                     Iterable,
                     Iterator,
                     List,
@@ -28,6 +28,8 @@ from mysql.connector import (connect,
                              InterfaceError,
                              OperationalError)
 from pandas import NaT, Timestamp, Timedelta, isna
+
+from ..exceptions import MySQLClientError
 from ..handlers import tqdm, trange
 
 
@@ -128,7 +130,7 @@ class MySQLClient:
                  database: str = None,
                  table: str = None,
                  buffered: bool = False,
-                 dictionary: bool = False,
+                 dictionary: bool = True,
                  **kwargs
                  ):
         """Create client for MySQL, and connect to a specific database.
@@ -175,16 +177,16 @@ class MySQLClient:
         host = getenv(envv)
         if not host:
             from ..env import envfile
-            raise RuntimeError(f"Make sure a host is configured for variable"
-                               f" name '{envv}' in file '{envfile}'")
+            raise MySQLClientError(f"Make sure a host is configured for variable"
+                                   f" name '{envv}' in file '{envfile}'")
         if not list(commondir.glob("*.pem")):
             try:
                 from ..env import _write_pem
                 _write_pem()
                 commondir = Path.cwd()
             except Exception:
-                raise RuntimeError(f"Please make sure all '.pem' SSL certificate "
-                                   f"files are placed in directory '{commondir}'")
+                raise MySQLClientError(f"Please make sure all '.pem' SSL certificate "
+                                       f"files are placed in directory '{commondir}'")
         self.__config = {
             "user": usr,
             "password": pwd,
@@ -221,7 +223,7 @@ class MySQLClient:
         }
 
     def __repr__(self):
-        args = ", ".join(f"{k}={v}" for k, v in self.__dict__.items())
+        args = f"{self.database}{f'.{self.table_name}' if self.table_name else ''}"
         return f"MySQLClient({args})"
 
     def connect(self,
@@ -302,17 +304,21 @@ class MySQLClient:
             self.cnx.commit()
         self._set_cursor_properties()
 
-    def fetchall(self) -> List[Tuple[Any]]:
+    def fetchall(self) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
         return self.cursor.fetchall()
 
-    def fetchone(self) -> Tuple[Any]:
+    def fetchmany(self, size: int = None) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
+        return self.cursor.fetchmany(size)
+
+    def fetchone(self) -> Union[MutableMapping[str, Any], Tuple[Any]]:
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
         try:
-            self.query(select_fields="1", limit=1)
+            q = self.build(select_fields="1", limit=1)
+            self._execute_query(q)
             return True
-        except DatabaseError:
+        except (DatabaseError, MySQLClientError):
             return False
 
     def truncate(self):
@@ -326,16 +332,19 @@ class MySQLClient:
                ) -> List[str]:
         """Fetch one column from MySQL"""
         if not self.table_name:
-            raise ValueError("Provide a table.")
+            raise MySQLClientError("Provide a table.")
         self.connect()
         if not query:
             query = Query(
                 f"SHOW COLUMNS FROM {self.table_name} FROM {self.database}")
         try:
             self.execute(query, *args, **kwargs)
-            column = [value[0] for value in self.fetchall()]
+            if self.dictionary:
+                column = [column["Field"] for column in self.fetchall()]
+            else:
+                column = [value[0] for value in self.fetchall()]
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         self.disconnect()
         return column
 
@@ -364,7 +373,7 @@ class MySQLClient:
               ) -> int:
         """Fetch row count from MySQL"""
         if table is None and self.table_name is None:
-            raise ValueError("No table name provided.")
+            raise MySQLClientError("No table name provided.")
         if table and "." in table:
             self.database, table = table.split(".")
         elif table is None and self.table_name is not None:
@@ -418,9 +427,9 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            row = self.fetchall()[0] if self.dictionary else list(self.fetchall()[0])
+            row = self.fetchone() if self.dictionary else list(self.fetchone())
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         except IndexError:
             row = {} if self.dictionary else []
         self.disconnect()
@@ -429,66 +438,74 @@ class MySQLClient:
     def chunk(self,
               query: Union[Query, str] = None,
               size: int = None,
-              use_tqdm: bool = False,
-              retry_on_error: bool = False,
               *args, **kwargs
               ) -> Iterator[Union[List[Dict[str, Any]], List[List[Any]]]]:
         """Returns a generator for downloading a table in chunks
 
         Example::
-            from common.classes import MySQLClient
-            sql = MySQLClient()
-            query = sql.build(
-                table="mx_traineeship_peter.client_data",
-                Province="Noord-Holland",
-                select_fields=['id', 'City']
-            )
-            for rows in sql.chunk(query=query, size=10):
-                print(rows)
+            from common import MySQLClient
+            sql = MySQLClient("real_estate.real_estate")
+            for rows in sql.chunk():
+                for row in rows:
+                    print(row)
         """
-        range_func = partial(trange, desc="chunking", disable=not use_tqdm)
-        count = self.count() if use_tqdm else 1_000_000_000
+        tqdm_func = partial(
+            tqdm,
+            desc="query",
+            disable=not kwargs.pop("use_tqdm", False)
+        )
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
-        fieldnames = kwargs.pop("fieldnames", True)
+        fieldnames = kwargs.pop("fieldnames", None)
+        if fieldnames is not None:
+            self.dictionary = fieldnames
+
         if not query:
             query = self.build(select_fields=select_fields,
                                order_by=order_by,
                                *args, **kwargs)
         if size is None:
-            size = 1
+            size = kwargs.pop("chunk_size", 10_000)
         elif size <= 0:
-            raise ValueError("Chunk size must be > 0")
+            raise MySQLClientError("Chunk size must be > 0")
 
-        def _chunk() -> Generator[Union[dict, list], None, None]:
-            if size == 1:
-                for i in range_func(0, count, size):
-                    q = f"{query} LIMIT {i}, {size}"
+        self.connect()
+
+        # We set these session variables to avoid error 2013 (Lost connection)
+        for var, val in (
+            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
+            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
+        ):
+            self.execute(f"SET SESSION {var}={val}")
+
+        try:
+            self.execute(query, *args, **kwargs)
+            count = self._cursor_row_count
+            bar = tqdm_func(total=count)
+            while True:
+                while True:
                     try:
-                        row = self.row(q, fieldnames=fieldnames, *args, **kwargs)
-                    except IndexError:
+                        data = self.fetchmany(size)
                         break
-                    yield row
-            else:
-                for i in range_func(0, count, size):
-                    q = f"{query} LIMIT {i}, {size}"
-                    if retry_on_error:
-                        while True:
-                            try:
-                                table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                                break
-                            except DatabaseError as e:
-                                raise DatabaseError(q) from e
-                    else:
-                        table = self.table(q, fieldnames=fieldnames, *args, **kwargs)
-                    if len(table) == 0:
-                        break
-                    yield table
+                    except OperationalError as e:
+                        if e.errno == 2013:
+                            info("Attempting reconnect: %s", e)
+                            # Try to revive the connection
+                            self.cnx.ping(reconnect=True)
+                        else:
+                            raise
+                if not data:
+                    break
+                yield data
+                bar.update(len(data))
+        except DatabaseError as e:
+            raise MySQLClientError(query) from e
 
-        # Avoid memory leak
-        self.__config["use_pure"] = True
-        yield from iter(_chunk())
-        self.__config["use_pure"] = False
+        self.disconnect()
+        bar.close()
 
     def iter(self,
              query: Union[Query, str] = None,
@@ -558,17 +575,17 @@ class MySQLClient:
 
         # Setup
         if not data or not data[0]:
-            raise ValueError("Provide non-empty data.")
+            raise MySQLClientError("Provide non-empty data.")
         elif fieldnames and isinstance(data[0], dict):
-            pass
+            pass  # noqa
         elif not fieldnames and not isinstance(data[0], dict):
-            raise ValueError("Provide fieldnames if you don't have data dicts!")
+            raise MySQLClientError("Provide fieldnames if you don't have data dicts!")
         elif not fieldnames:
             fieldnames = data[0].keys()
         elif isinstance(data[0], (list, tuple)):
             data = [dict(zip(fieldnames, row)) for row in data]
         else:
-            raise ValueError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
+            raise MySQLClientError(f"Data array should contain `list`, `tuple`, or `dict`, not {type(data[0])}")
 
         # Try taking a sample
         with suppress(ValueError):
@@ -597,7 +614,8 @@ class MySQLClient:
         floats_list: list = list(zip(
             floats_dict.values(),
             list(map(max, zip(
-                *[[tuple(map(len, f"{value}".split("."))) for key, value in row.items()
+                *[[tuple(map(len, f"{value}".split(".") if value is not None else []))
+                   for key, value in row.items()
                    if key in floats_dict.keys()]
                   for row in data])))
         ))
@@ -616,7 +634,7 @@ class MySQLClient:
         type_dict: dict = {field: all_types[field] for field in type_dict}
 
         if len(type_dict) != len(fieldnames):
-            raise ValueError("Lengths don't match; does every data row have the same number of fields?")
+            raise MySQLClientError("Lengths don't match; does every data row have the same number of fields?")
 
         return type_dict
 
@@ -713,10 +731,10 @@ class MySQLClient:
 
         The data is split into chunks of appropriate size before upload."""
         if not data or not data[0]:
-            raise ValueError("No data provided.")
+            raise MySQLClientError("No data provided.")
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = self.table_name
         if "." in table:
             self.database, table = table.split(".")
@@ -746,12 +764,11 @@ class MySQLClient:
                 except (DatabaseError, InterfaceError) as e:
                     errors += 1
                     if errors >= self._max_errors:
-                        raise
-                    e = f"{e}"
+                        raise MySQLClientError(query) from e
                     info("%s", e)
-                    if "truncated" in e or "Out of range value" in e:
-                        self._increase_max_field_len(e, table=table, chunk=chunk)
-                    elif ("Column count doesn't match value count" in e
+                    if "truncated" in e.args[1] or "Out of range value" in e.args[1]:
+                        self._increase_max_field_len(e.args[1], table=table, chunk=chunk)
+                    elif ("Column count doesn't match value count" in e.args[1]
                           and isinstance(data[0], dict)):
                         cols = {col: self.create_definition([{col: data[0][col]}])[col]
                                 for col in set(self.column()).symmetric_difference(set(data[0]))}
@@ -764,9 +781,9 @@ class MySQLClient:
                         self.connect()
                         self.execute(Query(f"ALTER TABLE {table} {cols}"))
                         self.disconnect()
-                    elif ("Timestamp" in e
-                          or "Timedelta" in e
-                          or "NaTType" in e):
+                    elif ("Timestamp" in e.args[1]
+                          or "Timedelta" in e.args[1]
+                          or "NaTType" in e.args[1]):
                         for row in chunk:
                             for field in row:
                                 if ("date" in field
@@ -776,13 +793,12 @@ class MySQLClient:
                                         row[field] = row[field].to_pydatetime()
                                     elif isinstance(row[field], Timedelta):
                                         row[field] = row[field].total_seconds()
-                    elif "Unknown column 'nan'" in e:
+                    elif "Unknown column 'nan'" in e.args[1]:
                         chunk = [[None if value == "" or isna(value)
                                   else value for value in row]
                                  for row in chunk]
                     else:
-                        print(query)
-                        raise
+                        raise MySQLClientError(query) from e
         return len(data)
 
     def add_index(self,
@@ -822,10 +838,10 @@ class MySQLClient:
             fields={"string_column": (str, 25), "integer_column": (int, 6), "decimal_column": (float, 4.2)}
         """
         if not data:
-            raise ValueError("No data provided.")
+            raise MySQLClientError("No data provided.")
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = self.table_name
         elif "." in table:
             self.database, table = table.split(".")
@@ -870,11 +886,46 @@ class MySQLClient:
               and_or: str = None,
               **kwargs
               ) -> Query:
-        """Build a MySQL query"""
+        """Build a MySQL query.
+
+        For kwargs values, pass a list to create AND/OR statements,
+        and pass a tuple to create IN statement."""
 
         def search_for(k, v):
+            def replace_quote(_k, _v, _key=None):
+                if _key:
+                    op = _key.replace(_k, "").replace(_v, "").strip('" ')
+                else:
+                    op = "="
+                if '"' in _v and "'" in _v:
+                    for _s in ('"', "'"):
+                        if rf"\{_s}" not in _v:
+                            _v = _v.replace(_s, rf"\{_s}")
+                            if _v[0] == "(":
+                                _key = rf"""{_k} {op} {_v} """
+                            else:
+                                q = '"' if "'" in _v else "'"
+                                _key = rf"""{_k} {op} {q}{_v}{q} """
+                else:
+                    for _s in ('"', "'"):
+                        if _s in _v:
+                            q = '"' if "'" in _v else "'"
+                            _key = rf"""{_k} {op} {q}{_v}{q} """
+                return _k, _v, _key
+
             key = rf"""{k} = "{v}" """
-            if isinstance(v, int):
+            if f"{v}".startswith(("IN ", "!IN ")) or isinstance(v, (tuple, list)):
+                _not = "NOT" if f"{v}".startswith("!IN ") else ""
+                if isinstance(v, str):
+                    v = v.lstrip("!IN ")
+                    if "NULL" in v and '"NULL"' not in v:
+                        v = v.replace("NULL", '"NULL"')
+                    v = literal_eval(v)
+                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
+                key = rf"{k} {_not} IN {v}"
+                key = key.replace('"NULL"', "NULL")
+                key = key.replace("'NULL'", "NULL")
+            elif isinstance(v, int):
                 key = rf"{k} = {v}"
             elif isinstance(v, str):
                 if v == "NULL":
@@ -883,9 +934,6 @@ class MySQLClient:
                     key = rf"{k} IS NULL"
                 elif v == "!NULL":
                     key = rf"{k} IS NOT NULL"
-                elif "!IN " in v:
-                    v = v.replace("!", "NOT ")
-                    key = rf"{k} {v}"
                 elif v.startswith("!"):
                     key = rf"""{k} != "{v[1:]}" """
                 elif v.startswith((">", "<")):
@@ -894,14 +942,8 @@ class MySQLClient:
                     key = rf"""{k} {v[:2]} {v[2:]} """
                 elif "%" in v:
                     key = rf"""{k} LIKE "{v}" """
-                elif v.startswith("IN "):
-                    key = rf"{k} {v}"
-                if '"' in v and r'\"' not in v:
-                    v = v.replace('"', r'\"')
-                    key = rf"""{k} = "{v}" """
-                if "'" in v and r"\'" not in v:
-                    v = v.replace("'", r"\'")
-                    key = rf"""{k} = "{v}" """
+                if '"' in v or "'" in v:
+                    *_, key = replace_quote(k, v, key)
             elif isinstance(v, Pattern):
                 key = f"""{k} REGEXP "{v.pattern}" """
             return key
@@ -909,7 +951,14 @@ class MySQLClient:
         if not and_or:
             and_or = "AND"
         elif and_or not in {"AND", "OR"}:
-            raise ValueError(f"`and_or` should be either AND or OR, not {and_or}.")
+            raise MySQLClientError(f"`and_or` should be either AND or OR, not {and_or}.")
+
+        def search_key(_field, _value):
+            if isinstance(_value, list):
+                _skey = rf" {and_or} ".join([search_for(_field, _skey) for _skey in _value])
+            else:
+                _skey = search_for(_field, _value)
+            return _skey
 
         if distinct is True:
             distinct = "DISTINCT"
@@ -917,7 +966,7 @@ class MySQLClient:
             distinct = ""
         if not table:
             if not self.table_name:
-                raise ValueError("Provide a table name.")
+                raise MySQLClientError("Provide a table name.")
             table = f"{self.database}.{self.table_name}"
         elif "." not in table:
             table = f"{self.database}.{table}"
@@ -948,14 +997,12 @@ class MySQLClient:
                 query = rf"SELECT {distinct} {', '.join(select_fields)} FROM {table}"
 
         if not all([field is None, value is None]):
-            query = rf"{query} WHERE {search_for(field, value)}"
+            skey = search_key(field, value)
+            query = rf"{query} WHERE {skey}"
         if kwargs:
             keys = []
             for field, value in kwargs.items():
-                if isinstance(value, list):
-                    skey = rf" {and_or} ".join([search_for(field, skey) for skey in value])
-                else:
-                    skey = search_for(field, value)
+                skey = search_key(field, value)
                 keys.append(skey)
             keys = rf" {and_or} ".join(keys)
             if "WHERE" in query:
@@ -963,14 +1010,12 @@ class MySQLClient:
             else:
                 query = rf"{query} WHERE {keys}"
         if group_by:
-            if isinstance(group_by, str):
-                group_by = [group_by]
-            group_by = ", ".join(group_by)
+            if not isinstance(group_by, str):
+                group_by = ", ".join(group_by)
             query = rf"{query} GROUP BY {group_by}"
         if order_by:
-            if isinstance(order_by, str):
-                order_by = [order_by]
-            order_by = ", ".join(order_by)
+            if not isinstance(order_by, str):
+                order_by = ", ".join(order_by)
             query = rf"{query} ORDER BY {order_by}"
         if limit:
             if isinstance(limit, (int, str)):
@@ -995,13 +1040,12 @@ class MySQLClient:
             except DatabaseError as e:
                 errors += 1
                 if errors >= self._max_errors:
-                    raise
-                e = f"{e}"
-                if ("truncated" in e or "Out of range value" in e
+                    raise MySQLClientError(query) from e
+                if ("truncated" in e.args[1] or "Out of range value" in e.args[1]
                         and query.strip().upper().startswith("INSERT")):
-                    self._increase_max_field_len(e)
+                    self._increase_max_field_len(e.args[1])
                 else:
-                    raise
+                    raise MySQLClientError(query) from e
 
     def query(self,
               # q: Union[Query, str] = None, /,
@@ -1066,14 +1110,14 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if query:
-            return self._execute_query(query)
-        if select_fields and len(select_fields) == 0:
-            raise TypeError(f"Empty {type(select_fields)} not accepted.")
         if table and (isinstance(table, Query)
                       or table.strip().upper().startswith("SELECT")):
             query = table
-        else:
+        if query:
+            return self._execute_query(query)
+        if select_fields and len(select_fields) == 0:
+            raise MySQLClientError(f"Empty {type(select_fields)} not accepted.")
+        if not query:
             query = self.build(table=table,
                                field=field,
                                value=value,
@@ -1090,30 +1134,20 @@ class MySQLClient:
         self.connect()
         try:
             self.execute(query)
-            if isinstance(select_fields, str):
-                if self.dictionary:
-                    if limit == 1:
-                        result = self.fetchall()[0]
-                    else:
-                        result = list(self.fetchall())
-                else:
-                    if limit == 1:
-                        result = self.fetchall()[0][0]
-                    else:
-                        result = [value[0] for value in self.fetchall()]
+            if limit == 1:
+                result = self.fetchone()
+                if not self.dictionary and isinstance(select_fields, str):
+                    result = result[0]
+                elif not self.dictionary:
+                    result = list(result)
             else:
-                if self.dictionary:
-                    if limit == 1:
-                        result = self.fetchall()[0]
-                    else:
-                        result = list(self.fetchall())
-                else:
-                    if limit == 1:
-                        result = list(self.fetchall()[0])
-                    else:
-                        result = [list(row) for row in self.fetchall()]
+                result = list(self.fetchall())
+                if not self.dictionary and isinstance(select_fields, str):
+                    result = [value[0] for value in result]
+                elif not self.dictionary:
+                    result = [list(row) for row in result]
         except DatabaseError as e:
-            raise DatabaseError(query) from e
+            raise MySQLClientError(query) from e
         except IndexError:
             result = {} if self.dictionary else []
         self.disconnect()

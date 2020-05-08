@@ -1,33 +1,36 @@
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
+from text_unidecode import unidecode
+from .exceptions import ParseError
 
 
-def flatten(nested_dict: dict, sep: str = "_") -> dict:
+def _flatten(input_dict: MutableMapping[str, Any], sep: str):
+    flattened_dict = {}
+    for key, maybe_nested in input_dict.items():
+        if isinstance(maybe_nested, dict):
+            for sub, value in maybe_nested.items():
+                flattened_dict[f"{key}{sep}{sub}"] = value
+        else:
+            flattened_dict[key] = maybe_nested
+    return flattened_dict
+
+
+def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
 
-    def _flatten(input_dict):
-        flattened_dict = {}
-        for key, maybe_nested in input_dict.items():
-            if isinstance(maybe_nested, dict):
-                for sub, value in maybe_nested.items():
-                    flattened_dict[f"{key}{sep}{sub}"] = value
-            else:
-                flattened_dict[key] = maybe_nested
-        return flattened_dict
-
-    return_dict = _flatten(nested_dict)
+    return_dict = _flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
-            if not isinstance(v, dict):
+            if not isinstance(v, MutableMapping):
                 count += 1
         if count == len(return_dict):
             break
         else:
-            return_dict = _flatten(return_dict)
+            return_dict = _flatten(return_dict, sep)
 
     return return_dict
 
@@ -90,6 +93,20 @@ class Checks:
             None: 0
         }.get(var, 0)
 
+    @staticmethod
+    def remove_invalid_chars(text: str, replacechar: str) -> str:
+        for c in r"\`*_{}[]()>#+.&!$,":
+            text = text.replace(c, replacechar)
+        return text
+
+    def check_matching_percentage(self, str1: str, str2: str) -> int:
+        str1 = self.remove_invalid_chars(
+            unidecode(str1), "").replace(" ", "").lower().strip()
+        str2 = self.remove_invalid_chars(
+            unidecode(str2), "").replace(" ", "").lower().strip()
+        lev = levenshtein(str1, str2, measure="percentage")
+        return int(lev * 100)
+
 
 def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
@@ -99,7 +116,7 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[floa
     """
     measures = {"distance", "percentage"}
     if measure not in measures:
-        raise ValueError(f"measure should be one of {measures}")
+        raise ParseError(f"measure should be one of {measures}")
 
     size_1, size_2 = len(seq1), len(seq2)
     size_1p, size_2p = size_1 + 1, size_2 + 1
@@ -143,7 +160,7 @@ def dateformat(date: str) -> str:
         if div in date:
             break
     else:
-        raise ValueError(f"Couldn't find date divider in {date}")
+        raise ParseError(f"Couldn't find date divider in {date}")
     year_first = date.find(f"{parse(date).year}") == 0
     if year_first:
         fmt = f"%Y{div}%m{div}%d"

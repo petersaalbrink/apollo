@@ -2,9 +2,12 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
 from pathlib import Path
 from threading import Lock
-from typing import (Callable,
+from typing import (Any,
+                    Callable,
                     Iterable,
                     Iterator,
+                    List,
+                    Optional,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
@@ -94,10 +97,33 @@ def get_session(
 
 
 common_session = get_session()
-get_kwargs = iter(get_proxies())
+get_kwargs = get_proxies()
 
 
-def get(url,
+def request(method: str,
+            url: str,
+            **kwargs
+            ) -> Union[dict, Response]:
+    """Sends a request. Returns :class:`Response` object.
+
+    :param method: method for the request.
+    :param url: URL for the new :class:`Request` object.
+    :param kwargs: Optional arguments that ``request`` takes.
+    """
+    if kwargs.pop("use_proxies", False):
+        kwargs.update(next(get_kwargs))
+    text_only = kwargs.pop("text_only", False)
+    while True:
+        try:
+            response = common_session.request(method, url, **kwargs)
+            if text_only:
+                return response.json()
+            return response
+        except (IOError, OSError, HTTPError):
+            pass
+
+
+def get(url: str,
         text_only: bool = False,
         use_proxies: bool = False,
         **kwargs
@@ -109,23 +135,44 @@ def get(url,
     :param use_proxies: Use a random User-Agent and proxy.
     :param kwargs: Optional arguments that ``request`` takes.
     """
-    global common_session, get_kwargs
-    if use_proxies:
-        kwargs.update(next(get_kwargs))
-    while True:
-        try:
-            return (common_session.get(url, **kwargs).json()
-                    if text_only else
-                    common_session.get(url, **kwargs))
-        except (IOError, OSError, HTTPError):
-            pass
+    kwargs.update(text_only=text_only, use_proxies=use_proxies)
+    kwargs.setdefault("allow_redirects", True)
+    return request("GET", url, **kwargs)
+
+
+def post(url: str,
+         text_only: bool = False,
+         use_proxies: bool = False,
+         **kwargs
+         ) -> Union[dict, Response]:
+    """Sends a POST request. Returns :class:`Response` object.
+
+    :param url: URL for the new :class:`Request` object.
+    :param text_only: return JSON data from :class:`Response` as dictionary.
+    :param use_proxies: Use a random User-Agent and proxy.
+    :param kwargs: Optional arguments that ``request`` takes.
+    """
+    kwargs.update(text_only=text_only, use_proxies=use_proxies)
+    return request("POST", url, **kwargs)
 
 
 def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
-           **kwargs):
+           **kwargs
+           ) -> Optional[List[Any]]:
     """Thread :param data: with :param function: and optionally do :param process:.
+
+    Usage:
+    The :param function: Callable must accept only one input argument;
+    this is an item of the :param data: Iterable.
+    Hence, :param data: must be an Iterable of input values
+    for the :param function: Callable.
+    The Callable optionally can return Any value.
+    Return values will be returned in a list
+    (unless a :param process: Callable is specified).
+    If you want to use tqdm or another process bar, do so manually
+    (e.g., do `bar.update()` inside the :param function: Callable).
 
     Example:
         from common import get, thread
@@ -141,15 +188,15 @@ def thread(function: Callable,
             # noinspection PyUnresolvedReferences
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
-                         return_when='FIRST_EXCEPTION').done]
+                         return_when="FIRST_EXCEPTION").done]
     else:
         futures = set()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == process_chunk_size:
-                    done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+                    done, futures = wait(futures, return_when="FIRST_EXCEPTION")
                     _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when='FIRST_EXCEPTION')
+            done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]

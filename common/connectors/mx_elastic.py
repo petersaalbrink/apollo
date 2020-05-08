@@ -1,10 +1,8 @@
 from contextlib import suppress
-from logging import info
+from logging import debug
 from typing import (Any,
-                    Dict,
                     Iterator,
-                    List,
-                    Mapping,
+                    MutableMapping,
                     Sequence,
                     Union)
 
@@ -13,6 +11,24 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       NotFoundError,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
+
+from ..exceptions import ESClientError
+from ..handlers import tqdm
+
+# Types
+Location = Union[
+    Sequence[Union[str, float]],
+    MutableMapping[str, Union[str, float]]
+]
+NestedDict = MutableMapping[str, Any]
+Query = Union[
+    NestedDict,
+    Sequence[NestedDict]
+]
+Result = Union[
+    Sequence[NestedDict],
+    NestedDict,
+]
 
 
 class ESClient(Elasticsearch):
@@ -23,33 +39,38 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
-        from ..env import getenv
-        from ..secrets import get_secret
-        usr, pwd = get_secret("MX_ELASTIC")
-        if es_index:
-            if "production_" in es_index:
-                envv = "MX_ELASTIC_PROD_IP"
-            elif "addressvalidation" in es_index:
-                envv = "MX_ELASTIC_ADDR_IP"
-            else:
-                envv = "MX_ELASTIC_DEV_IP"
+        config = {"timeout": 300, "retry_on_timeout": True}
+        if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
+            self._host, self._port = "localhost", "9200"
         else:
-            if kwargs.pop("dev", True):
-                envv = "MX_ELASTIC_DEV_IP"
-                es_index = "dev_peter.person_data_20190716"
+            from ..env import getenv
+            from ..secrets import get_secret
+            secret = get_secret("MX_ELASTIC")
+            if es_index:
+                if "production_" in es_index:
+                    envv = "MX_ELASTIC_PROD_IP"
+                elif "addressvalidation" in es_index:
+                    envv = "MX_ELASTIC_ADDR_IP"
+                else:
+                    envv = "MX_ELASTIC_DEV_IP"
             else:
-                envv = "MX_ELASTIC_PROD_IP"
-                es_index = "production_realestate.realestate"
-        self._host = getenv(envv)
-        if not self._host:
-            from ..env import envfile
-            raise RuntimeError(f"Make sure a host is configured for variable"
-                               f" name '{envv}' in file '{envfile}'")
-        self.es_index = es_index
-        self._port = int(getenv("MX_ELASTIC_PORT", 9200))
+                if kwargs.pop("dev", True):
+                    envv = "MX_ELASTIC_DEV_IP"
+                    es_index = "dev_peter.person_data_20190716"
+                else:
+                    envv = "MX_ELASTIC_PROD_IP"
+                    es_index = "production_realestate.realestate"
+            self._host = getenv(envv)
+            if not self._host:
+                from ..env import envfile
+                raise ESClientError(f"Make sure a host is configured for variable"
+                                    f" name '{envv}' in file '{envfile}'")
+            self._port = int(getenv("MX_ELASTIC_PORT", 9200))
+            config["http_auth"] = secret
+
         hosts = [{"host": self._host, "port": self._port}]
-        config = {"http_auth": (usr, pwd), "timeout": 300, "retry_on_timeout": True}
         super().__init__(hosts, **config)
+        self.es_index = es_index
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
@@ -61,13 +82,13 @@ class ESClient(Elasticsearch):
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
     def find(self,
-             query: Union[dict, List[dict], Iterator[dict]] = None,
+             query: Query = None,
              hits_only: bool = True,
              source_only: bool = False,
              first_only: bool = False,
              with_id: bool = False,
              *args, **kwargs
-             ) -> Union[List[dict], List[List[dict]], Dict[str, Dict[str, Any]]]:
+             ) -> Result:
         """Perform an ElasticSearch query, and return the hits.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
@@ -84,27 +105,24 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
-        if not self.index_exists:
-            if self.index_exists is None:
-                self.index_exists = self.indices.exists(self.es_index)
-            if self.index_exists is False:
-                raise NotFoundError(404, self.es_index)
+        self._check_index_exists()
         if "index" in kwargs:
             index = kwargs.pop("index")
         else:
             index = self.es_index
         if not query:
             size = kwargs.pop("size", 1)
-            return self.search(index=index, size=size, body={}, *args, **kwargs)
+            result = self.search(index=index, size=size, body={}, *args, **kwargs)
+            return result
         if isinstance(query, dict):
             query = (query,)
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
-            info("Returning hits only if any([source_only, first_only])")
+            debug("Returning hits only if any([source_only, first_only])")
             hits_only = True
         if with_id:
-            info("Returning hits only if with_id is True, with _source flattened")
+            debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
         size = kwargs.pop("size", self.size)
         results = []
@@ -117,12 +135,10 @@ class ESClient(Elasticsearch):
                     result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
                     break
                 except (OSError, HTTPWarning, TransportError) as e:
-                    if self.retry_on_timeout and "timeout" in f"{e}".lower():
-                        pass
-                    else:
+                    if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
                         raise
                 except ElasticsearchException as e:
-                    raise ElasticsearchException(q) from e
+                    raise ESClientError(q) from e
             if size != 0:
                 if hits_only:
                     result = result["hits"]["hits"]
@@ -140,11 +156,9 @@ class ESClient(Elasticsearch):
 
     def geo_distance(self, *,
                      address_id: str = None,
-                     location: Union[
-                         Sequence[Union[str, float]],
-                         Mapping[str, Union[str, float]]] = None,
+                     location: Location = None,
                      distance: str = None
-                     ) -> Sequence[dict]:
+                     ) -> Result:
         """Find all real estate objects within :param distance: of
         :param address_id: or :param location:.
 
@@ -164,30 +178,35 @@ class ESClient(Elasticsearch):
         """
 
         if not any((address_id, location)) or all((address_id, location)):
-            raise ValueError("Provide either an address_id or a location")
+            raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
             query = {"query": {"bool": {"must": [
                 {"match": {"avmData.locationData.address_id.keyword": address_id}}]}}}
-            result: Dict[str, Any] = self.find(query=query, first_only=True)
+            result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
             location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
 
         location = dict(zip(("latitude", "longitude"), location.values())) \
-            if isinstance(location, Mapping) else \
+            if isinstance(location, MutableMapping) else \
             dict(zip(("latitude", "longitude"), location))
 
-        query = {"query": {"bool": {"filter": {
+        query = {
+            "query": {
+                "bool": {
+                    "filter": {
                         "geo_distance": {
                             "distance": distance,
                             "geometry.geoPoint": {
                                 "lat": location["latitude"],
-                                "lon": location["longitude"]}}}}},
-                        "sort": [{
-                            "_geo_distance": {
-                                "geometry.geoPoint": {
-                                    "lat": location["latitude"],
-                                    "lon": location["longitude"]},
-                                "order": "asc"}}]}
+                                "lon": location["longitude"]
+                            }}}}},
+            "sort": [{
+                "_geo_distance": {
+                    "geometry.geoPoint": {
+                        "lat": location["latitude"],
+                        "lon": location["longitude"]},
+                    "order": "asc"
+                }}]}
 
         results = self.findall(query=query)
 
@@ -197,16 +216,16 @@ class ESClient(Elasticsearch):
         return results
 
     def findall(self,
-                query: Dict[str, Any],
+                query: Query,
                 index: str = None,
                 **kwargs,
-                ) -> List[Dict[str, Any]]:
+                ) -> Result:
         """Used for elastic search queries that are larger than the max
         window size of 10,000. Returns all results at once.
-        :param query: Dict[str, Any]
+        :param query: MutableMapping[str, Any]
         :param index: str
         :param kwargs: scroll: str
-        :return: List[Dict[Any, Any]]
+        :return: Sequence[MutableMapping[Any, Any]]
         """
 
         scroll = kwargs.pop("scroll", "10m")
@@ -230,10 +249,10 @@ class ESClient(Elasticsearch):
         return results
 
     def scrollall(self,
-                  query: Dict[str, Any],
+                  query: Query = None,
                   index: str = None,
                   **kwargs,
-                  ) -> Iterator[Union[Dict[str, Any], List[Dict[str, Any]]]]:
+                  ) -> Iterator[Result]:
         """Used for elastic search queries that are larger than the max
         window size of 10,000. Returns an iterator of documents.
 
@@ -247,33 +266,55 @@ class ESClient(Elasticsearch):
             for doc in data:
                 pass
         """
+        field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
         chunk_size = kwargs.pop("chunk_size", 10_000)
-        as_chunks = kwargs.pop("as_chunks", False)
         if chunk_size > 10_000:
             chunk_size = 10_000
+        as_chunks = kwargs.pop("as_chunks", False)
+        hits_only = kwargs.pop("hits_only", True)
+        source_only = kwargs.pop("source_only", False)
+        use_tqdm = kwargs.pop("use_tqdm", False)
         if not index:
             index = self.es_index
-        data = self.search(index=index, scroll=scroll, size=chunk_size, body=query)
-        sid = data["_scroll_id"]
-        scroll_size = len(data["hits"]["hits"])
+        total = self.count(body=query, index=index)
+        bar = tqdm(total=total, disable=not use_tqdm)
+
+        def _return(_data):
+            if hits_only:
+                _data = _data["hits"]["hits"]
+            if source_only:
+                _data = (d["_source"] for d in _data)
+            return _data
+
+        data = self.search(index=index,
+                           scroll=scroll,
+                           size=chunk_size,
+                           _source=field,
+                           body=query)
+        sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
         if as_chunks:
-            yield data["hits"]["hits"]
+            yield _return(data)
         else:
-            yield from data["hits"]["hits"]
+            yield from _return(data)
 
         # We scroll over the results until nothing is returned
         while scroll_size > 0:
+            bar.update(scroll_size)
             data = self.scroll(scroll_id=sid, scroll=scroll)
-            sid = data["_scroll_id"]
-            scroll_size = len(data["hits"]["hits"])
+            sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
             if as_chunks:
-                yield data["hits"]["hits"]
+                yield _return(data)
             else:
-                yield from data["hits"]["hits"]
+                yield from _return(data)
 
-    def query(self, field: str = None, value: Union[str, int] = None,
-              **kwargs) -> Union[List[dict], Dict[str, Union[Any, dict]]]:
+        bar.close()
+
+    def query(self,
+              field: str = None,
+              value: Any = None,
+              **kwargs
+              ) -> Result:
         """Perform a simple ElasticSearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
@@ -297,13 +338,14 @@ class ESClient(Elasticsearch):
             "hits_only": kwargs.pop("hits_only", True),
             "source_only": kwargs.pop("source_only", False),
             "first_only": kwargs.pop("first_only", False),
+            "with_id": kwargs.pop("with_id", False),
         }
 
         if field and value:
             q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
             return self.find(q, **find_kwargs)
         elif field or value:
-            raise ValueError("Provide both field and value.")
+            raise ESClientError("Provide both field and value.")
 
         args = {}
         for k in kwargs:
@@ -319,3 +361,75 @@ class ESClient(Elasticsearch):
             return self.find(q, **find_kwargs)
         else:
             return self.find(**find_kwargs)
+
+    def _check_index_exists(self):
+        if not self.index_exists:
+            if self.index_exists is None:
+                self.index_exists = self.indices.exists(self.es_index)
+            if self.index_exists is False:
+                raise NotFoundError(404, self.es_index)
+
+    @property
+    def total(self) -> int:
+        self._check_index_exists()
+        return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
+
+    def count(self,
+              body=None,
+              index=None,
+              doc_type=None,
+              find: MutableMapping[str, MutableMapping] = None,
+              **kwargs
+              ) -> int:
+        if index is None:
+            index = self.es_index
+        if find:
+            if body:
+                raise ESClientError("Provide either `body` or `find`.")
+            body = {"query": find}
+        count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
+        return count["count"]
+
+    def distinct_count(self,
+                       field: str,
+                       find: MutableMapping[str, MutableMapping] = None
+                       ) -> int:
+        """Provide a distinct count of values in a certain field.
+
+        See:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        """
+
+        if not find:
+            find = {"match_all": {}}
+
+        while True:
+            query = {
+                "query": find,
+                "aggs": {
+                    field: {
+                        "composite": {
+                            "sources": [
+                                {field: {"terms": {"field": field}}}
+                            ], "size": 1000
+                        }}}}
+            try:
+                result: MutableMapping[str, Any] = self.find(query, size=0)
+                break
+            except TransportError as e:
+                if "fielddata" in f"{e}" and field[-8:] != ".keyword":
+                    field = f"{field}.keyword"
+                else:
+                    raise ESClientError(query) from e
+
+        n_buckets = 0
+        while True:
+            agg = result["aggregations"][field]
+            buckets = agg["buckets"]
+            if not buckets:
+                break
+            n_buckets += len(buckets)
+            query["aggs"][field]["composite"]["after"] = agg["after_key"]
+            result = self.find(query, size=0)
+
+        return n_buckets

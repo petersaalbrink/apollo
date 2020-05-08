@@ -17,6 +17,7 @@ from typing import (Any,
                     Callable,
                     ClassVar,
                     Dict,
+                    Iterable,
                     List,
                     MutableMapping,
                     Optional,
@@ -25,15 +26,22 @@ from typing import (Any,
 from zipfile import ZipFile
 from tqdm import tqdm, trange
 from .connectors.mx_email import EmailClient
+from .exceptions import DataError, TimerError, ZipDataError
 
 tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
 trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
+
+
+def get_tqdm(iterable: Iterable = None, desc: str = None, name: str = None, **kwargs) -> tqdm:
+    return tqdm(iterable=iterable, desc=desc, disable=name != "__main__", **kwargs)
 
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
               **kwargs) -> None:
     """Simple function for writing a list of dictionaries to a csv file."""
+    if not data:
+        raise DataError("Nothing to do.")
     encoding: str = kwargs.pop("encoding", "utf-8")
     delimiter: str = kwargs.pop("delimiter", ",")
     mode: str = kwargs.pop("mode", "w")
@@ -65,16 +73,25 @@ def csv_read(filename: Union[Path, str],
     """Simple generator for reading from a csv file.
     Returns rows as OrderedDict, with None instead of empty string."""
     with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
+
+        # Try to sniff the dialect, if wanted
         if kwargs.pop("sniff", False):
             try:
-                dialect = Sniffer().sniff(f.read())
+                kwargs["dialect"] = Sniffer().sniff(f.read())
             except Error:
-                dialect = "excel"
+                kwargs["dialect"] = "excel"
             finally:
                 f.seek(0)
-        else:
-            dialect = "excel"
-        for row in DictReader(f, dialect=dialect, **kwargs):
+
+        # Try to find a commonly used delimiter
+        if "delimiter" not in kwargs:
+            row = next(DictReader(f, **kwargs))
+            if len(row) == 1 and ";" in list(row.keys())[0]:
+                kwargs["delimiter"] = ";"
+            f.seek(0)
+
+        # Yield the data
+        for row in DictReader(f, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
 
 
@@ -115,9 +132,22 @@ class Log:
         return self.__repr__()
 
 
+_logging_levels = {
+    "notset": logging.NOTSET,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "fatal": logging.FATAL,
+    "critical": logging.FATAL,
+}
+
+
 def get_logger(level: str = None,
                filename: str = None,
-               name: str = None
+               name: str = None,
+               **kwargs
                ) -> logging.Logger:
     """Create an advanced Logger that will output to both file and stream.
     The logger can be set with:
@@ -126,16 +156,14 @@ def get_logger(level: str = None,
         name (default: root)
     """
     # get level, name, and filename
-    level = {
-        "notset": logging.NOTSET,
-        "debug": logging.DEBUG,
-        "info": logging.INFO,
-        "warn": logging.WARNING,
-        "warning": logging.WARNING,
-        "error": logging.ERROR,
-        "fatal": logging.FATAL,
-        "critical": logging.FATAL,
-    }.get(level.lower() if level else level, logging.DEBUG)
+    stream_level = _logging_levels.get(
+        kwargs.get("stream_level"),
+        logging.WARNING
+    )
+    level = _logging_levels.get(
+        f"{level}".lower(),
+        logging.DEBUG
+    )
     if not name and __name__ not in {"__main__", "common.handlers"}:
         name = __name__
     if not filename:
@@ -151,23 +179,42 @@ def get_logger(level: str = None,
     # create file handler which logs even debug messages,
     # add formatter to handler and handler to logger
     fh = logging.FileHandler(filename=filename, encoding="utf-8")
-    fh.setLevel(level=level)
+    fh.setLevel(level)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     # create console handler with a higher log level,
     # add formatter to handler and handler to logger
     ch = logging.StreamHandler()
-    ch.setLevel(logging.WARNING)
+    ch.setLevel(stream_level)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     return logger
+
+
+def __make_message(m: str, f: Callable, args, kwargs):
+    if not m:
+        m = f"{f.__name__}("
+        if args:
+            if ismethod(f):
+                args = args[1:]
+            args = [arg for arg in
+                    [f"{arg}" for arg in args]
+                    if len(arg) <= 1_000]
+            m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
+        if kwargs:
+            kwargs = [kwarg for kwarg in
+                      [f'{k}={v}' for k, v in kwargs.items()]
+                      if len(kwarg) <= 1_000]
+            m = f"{m}{', '.join(kwargs)}"
+        m = f"{m})"
+    return m
 
 
 def send_email(function: Callable = None, *,
                to_address: Union[str, list] = None,
                message: str = None,
                on_error_only: bool = False,
-               ):
+               ) -> Callable:
     """Function decorator to send emails!
 
     Usage::
@@ -183,38 +230,26 @@ def send_email(function: Callable = None, *,
     if not to_address:
         to_address = "psaalbrink@matrixiangroup.com"
 
-    def make_message(m: str, f: Callable, args, kwargs):
-        if not m:
-            m = f"{f.__name__}("
-            if args:
-                if ismethod(f):
-                    args = args[1:]
-                args = [arg for arg in
-                        [f"{arg}" for arg in args]
-                        if len(arg) <= 1_000]
-                m = f"{m}{', '.join(args)}{', ' if kwargs else ''}"
-            if kwargs:
-                kwargs = [kwarg for kwarg in
-                          [f'{k}={v}' for k, v in kwargs.items()]
-                          if len(kwarg) <= 1_000]
-                m = f"{m}{', '.join(kwargs)}"
-            m = f"{m})"
-        return m
-
     def decorate(f: Callable = None):
         @wraps(f)
         def wrapped(*args, **kwargs):
+            nonlocal message
             ec = EmailClient()
+            message = __make_message(message, f, args, kwargs)
             try:
-                f(*args, **kwargs)
+                return_value = f(*args, **kwargs)
                 if not on_error_only:
-                    ec.send_email(to_address=to_address,
-                                  message=f"Program finished successfully:\n\n"
-                                          f"{make_message(message, f, args, kwargs)}")
+                    ec.send_email(
+                        to_address=to_address,
+                        message=f"Program finished successfully:\n\n{message}"
+                    )
+                return return_value
             except Exception:
-                ec.send_email(to_address=to_address,
-                              message=make_message(message, f, args, kwargs),
-                              error_message=True)
+                ec.send_email(
+                    to_address=to_address,
+                    message=message,
+                    error_message=True
+                )
                 raise
         return wrapped
 
@@ -242,7 +277,7 @@ class ZipData:
         if isinstance(file_path, str):
             file_path = Path(file_path)
         if file_path.suffix != ".zip":
-            raise TypeError(f"File '{file_path}' should be a .zip file.")
+            raise ZipDataError(f"File '{file_path}' should be a .zip file.")
         self.remove = False
         self.file_path = file_path
         self._dicts = data_as_dicts
@@ -261,21 +296,7 @@ class ZipData:
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
                         self.fieldnames = csv.fieldnames
-                        if self.assure_columns:
-                            if self._dicts:
-                                self.data[file] = [
-                                    {col: row[col] if col in row else None for col in self.columns}
-                                    for row in islice(csv, n_lines)]
-                            else:
-                                self.data[file] = [csv.fieldnames] + [
-                                    list({col: row[col] if col in row else None for col in self.columns}.values())
-                                    for row in islice(csv, n_lines)]
-                        else:
-                            if self._dicts:
-                                self.data[file] = [row for row in islice(csv, n_lines)]
-                            else:
-                                self.data[file] = [csv.fieldnames] + [
-                                    list(row.values()) for row in islice(csv, n_lines)]
+                        self._helper(file, csv, n_lines)
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
         if len(self.data) == 1:
@@ -289,22 +310,37 @@ class ZipData:
                     with TextIOWrapper(zipfile.open(file), encoding=self._encoding) as csv:
                         csv = DictReader(csv, delimiter=self._delimiter)
                         self.fieldnames = csv.fieldnames
-                        if self.assure_columns:
-                            if self._dicts:
-                                for row in islice(csv, n_lines):
-                                    yield {col: row[col] if col in row else None for col in self.columns}
-                            else:
-                                for row in islice(csv, n_lines):
-                                    yield list({col: row[col] if col in row else None for col in self.columns}.values())
-                        else:
-                            if self._dicts:
-                                for row in islice(csv, n_lines):
-                                    yield row
-                            else:
-                                for row in islice(csv, n_lines):
-                                    yield list(row.values())
+                        yield from self._gen_helper(csv, n_lines)
                     if self.remove:
                         run(["zip", "-d", zipfile.filename, file])
+
+    def _helper(self, file: str, csv: DictReader, n_lines: Optional[int]):
+        if self.assure_columns:
+            if self._dicts:
+                self.data[file] = [
+                    {col: row[col] if col in row else None for col in self.columns}
+                    for row in islice(csv, n_lines)]
+            else:
+                self.data[file] = [csv.fieldnames] + [
+                    list({col: row[col] if col in row else None for col in self.columns}.values())
+                    for row in islice(csv, n_lines)]
+        else:
+            if self._dicts:
+                self.data[file] = [row for row in islice(csv, n_lines)]
+            else:
+                self.data[file] = [csv.fieldnames] + [
+                    list(row.values()) for row in islice(csv, n_lines)]
+
+    def _gen_helper(self, csv: DictReader, n_lines: Optional[int]):
+        for row in islice(csv, n_lines):
+            if self.assure_columns and self._dicts:
+                yield {col: row[col] if col in row else None for col in self.columns}
+            elif self.assure_columns:
+                yield list({col: row[col] if col in row else None for col in self.columns}.values())
+            elif self._dicts:
+                yield row
+            else:
+                yield list(row.values())
 
     def open(self,
              remove: bool = False,
@@ -349,8 +385,10 @@ class ZipData:
 
         Optionally, (keyword) arguments are passed through. By default, skips the file header."""
         for file, data in self.data.items():
-            self.data[file] = function(data, *args, **kwargs) if self._dicts else \
-                function(data[1:] if skip_fieldnames else data, *args, **kwargs)
+            if self._dicts:
+                self.data[file] = function(data, *args, **kwargs)
+            else:
+                self.data[file] = function(data[1:] if skip_fieldnames else data, *args, **kwargs)
 
     def write(self, replace: Tuple[str, str] = ("", "")):
         """Archives and deflates all data files."""
@@ -379,10 +417,6 @@ class Timer:
 
     def __repr__(self):
         return f"Timer: {self.end()}".split(".")[0]
-
-
-class TimerError(Exception):
-    """Exception used to report errors in use of Timer class."""
 
 
 @dataclass
@@ -418,7 +452,7 @@ class TicToc(ContextDecorator):
 
         # Report elapsed time
         if self.logger:
-            self.logger(self.text.format(elapsed_time))
+            self.logger(self.text.format(elapsed_time))  # noqa
         if self.name:
             self.timers[self.name] += elapsed_time
 
@@ -432,6 +466,56 @@ class TicToc(ContextDecorator):
     def __exit__(self, *exc_info: Any) -> None:
         """Stop the context manager timer"""
         self.stop()
+
+
+class FunctionTimer:
+    """Code timing context manager."""
+
+    def __init__(self, name: str = None):
+        """Initialization: add timer to dict of timers"""
+        self.name = name
+        self._start_time: Optional[float] = None
+
+    def start(self) -> None:
+        """Start a new timer"""
+        if self._start_time is not None:
+            raise TimerError(f"Timer is running. Use .stop() to stop it")
+
+        self._start_time = perf_counter()
+
+    def stop(self) -> float:
+        """Stop the timer, and report the elapsed time"""
+        if self._start_time is None:
+            raise TimerError(f"Timer is not running. Use .start() to start it")
+
+        # Calculate elapsed time
+        elapsed_time = perf_counter() - self._start_time
+        self._start_time = None
+
+        # Report elapsed time
+        logging.info("%s:%.8f", self.name, elapsed_time)  # noqa
+
+        return elapsed_time
+
+    def __enter__(self) -> "FunctionTimer":
+        """Start a new timer as a context manager"""
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        """Stop the context manager timer"""
+        self.stop()
+
+
+def timer(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        start_time = perf_counter()
+        return_value = f(*args, **kwargs)
+        elapsed_time = perf_counter() - start_time
+        logging.info("%s:%.8f", f.__name__, elapsed_time)
+        return return_value
+    return wrapped
 
 
 def pip_upgrade():

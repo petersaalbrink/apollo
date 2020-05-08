@@ -4,16 +4,21 @@ from urllib.parse import quote_plus
 from pymongo.database import Collection, Database
 from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
-from pymongo.operations import (InsertOne,
-                                UpdateOne,
-                                UpdateMany)
+from pymongo.operations import InsertOne, UpdateOne, UpdateMany
+
+from ..exceptions import MongoDBError
 
 
 class MongoDB(MongoClient):
     """Client for MongoDB. Uses MongoClient as superclass."""
 
-    def __new__(cls, database: str = None, collection: str = None, host: str = None, client: bool = False) \
-            -> Union[MongoClient, Database, Collection]:
+    def __new__(cls,
+                database: str = None,
+                collection: str = None,
+                host: str = None,
+                client: bool = False,
+                **kwargs
+                ) -> Union[MongoClient, Database, Collection]:
         """Client for MongoDB
 
         Usage:
@@ -23,37 +28,41 @@ class MongoDB(MongoClient):
             coll = MongoDB("dev_peter.person_data_20190606")
             coll = MongoDB()["dev_peter"]["person_data_20190606"]
         """
-        if collection and not database:
-            raise ValueError("Please provide a database name as well.")
-        if not host:
-            host = "dev"
-            if database:
-                if "addressvalidation" in database:
-                    host = "address"
-                elif "production" in database:
-                    host = "prod"
-        elif host == "stg":
-            raise DeprecationWarning("Staging database is not used anymore.")
-        if not client and not database:
-            database, collection = "dev_peter", "person_data_20190716"
-        hosts = {
-            "address": "MX_MONGO_ADDR",
-            "dev": "MX_MONGO_DEV",
-            "prod": "MX_MONGO_PROD",
-        }
-        if host not in hosts:
-            raise ValueError(f"Host `{host}` not recognized")
-        host = hosts[host]
-        from ..env import getenv
-        from ..secrets import get_secret
-        usr, pwd = get_secret(host)
-        envv = f"{host}_IP"
-        host = getenv(envv)
-        if not host:
-            from ..env import envfile
-            raise RuntimeError(f"Make sure a host is configured for variable"
-                               f" name '{envv}' in file '{envfile}'")
-        uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
+        if kwargs.pop("local", False) or host == "localhost":
+            uri = "mongodb://localhost"
+        else:
+            if collection and not database:
+                raise MongoDBError("Please provide a database name as well.")
+            if not host:
+                host = "dev"
+                if database:
+                    if "addressvalidation" in database:
+                        host = "address"
+                    elif "production" in database:
+                        host = "prod"
+            elif host == "stg":
+                raise MongoDBError("Staging database is not used anymore.")
+            if not client and not database:
+                database, collection = "dev_peter", "person_data_20190716"
+            hosts = {
+                "address": "MX_MONGO_ADDR",
+                "dev": "MX_MONGO_DEV",
+                "prod": "MX_MONGO_PROD",
+            }
+            if host not in hosts:
+                raise MongoDBError(f"Host `{host}` not recognized")
+            host = hosts[host]
+            from ..env import getenv
+            from ..secrets import get_secret
+            usr, pwd = get_secret(host)
+            envv = f"{host}_IP"
+            host = getenv(envv)
+            if not host:
+                from ..env import envfile
+                raise MongoDBError(f"Make sure a host is configured for variable"
+                                   f" name '{envv}' in file '{envfile}'")
+            uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
+
         mongo_client = MongoClient(host=uri, connectTimeoutMS=None)
         if database:
             if "." in database:
@@ -70,7 +79,7 @@ class MongoDB(MongoClient):
         try:
             collection.find_one()
         except ServerSelectionTimeoutError as e:
-            raise ServerSelectionTimeoutError(
+            raise MongoDBError(
                 "Are you contected with a Matrixian network?") from e
 
     # noinspection PyPep8Naming
