@@ -50,3 +50,4 @@ class SQLClient:
 
 if __name__ == '__main__':
     sql = SQLClient(database="avix", table="region_mapping")
+
