@@ -319,7 +319,6 @@ class MySQLClient:
             self._execute_query(q)
             return True
         except (DatabaseError, MySQLClientError):
-            raise
             return False
 
     def truncate(self):
