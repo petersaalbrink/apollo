@@ -43,15 +43,18 @@ def change_secret(name: str) -> Credentials:
         re = compile(r"=.*\n")
         file = Path(Path.home() / ".common/.env")
         with open(file) as f:
-            data = [line for line in f]
-        data = [re.sub(f"={usr}\n", line)
-                if line.startswith(f"{name}_USR")
-                else line for line in data]
-        data = [re.sub(f"={pwd}\n", line)
-                if line.startswith(f"{name}_PWD")
-                else line for line in data]
+            curr_data = [line for line in f]
+        new_data = [re.sub(f"={usr}\n", line)
+                    if line.startswith(f"{name}_USR")
+                    else line for line in curr_data]
+        new_data = [re.sub(f"={pwd}\n", line)
+                    if line.startswith(f"{name}_PWD")
+                    else line for line in new_data]
+        if curr_data == new_data:
+            new_data.extend([f"{name}_USR={usr}\n",
+                             f"{name}_PWD={pwd}\n"])
         with open(file, "w") as f:
-            f.writelines(data)
+            f.writelines(new_data)
 
     # Decode secret and return
     pwd = b64decode(bytes(pwd.encode())).decode()
