@@ -319,6 +319,7 @@ class MySQLClient:
             self._execute_query(q)
             return True
         except (DatabaseError, MySQLClientError):
+            raise
             return False
 
     def truncate(self):
@@ -1031,6 +1032,7 @@ class MySQLClient:
         info("Executing query. If you meant to retrieve data, use"
              " .query() without the `query=` parameter instead.")
         errors = 0
+        buffered, self.buffered = self.buffered, True
         while True:
             try:
                 self.connect()
@@ -1046,6 +1048,7 @@ class MySQLClient:
                     self._increase_max_field_len(e.args[1])
                 else:
                     raise MySQLClientError(query) from e
+        self.buffered = buffered
 
     def query(self,
               # q: Union[Query, str] = None, /,
