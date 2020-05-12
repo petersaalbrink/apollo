@@ -2,6 +2,7 @@ from contextlib import suppress
 from logging import debug
 from typing import (Any,
                     Iterator,
+                    List,
                     MutableMapping,
                     Sequence,
                     Union)
@@ -394,7 +395,7 @@ class ESClient(Elasticsearch):
                        field: str,
                        find: MutableMapping[str, MutableMapping] = None
                        ) -> int:
-        """Provide a distinct count of values in a certain field.
+        """Provide a count of distinct values in a certain field.
 
         See:
 https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
@@ -411,7 +412,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                         "composite": {
                             "sources": [
                                 {field: {"terms": {"field": field}}}
-                            ], "size": 1000
+                            ], "size": 10_000
                         }}}}
             try:
                 result: MutableMapping[str, Any] = self.find(query, size=0)
@@ -433,3 +434,47 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
             result = self.find(query, size=0)
 
         return n_buckets
+
+    def distinct_values(self,
+                        field: str,
+                        find: MutableMapping[str, MutableMapping] = None
+                        ) -> List[Any]:
+        """Provide a count of distinct values in a certain field.
+
+        See:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        """
+
+        if not find:
+            find = {"match_all": {}}
+
+        while True:
+            query = {
+                "query": find,
+                "aggs": {
+                    "q": {
+                        "composite": {
+                            "sources": [
+                                {"q": {"terms": {"field": field}}}
+                            ], "size": 10_000
+                        }}}}
+            try:
+                response: MutableMapping[str, Any] = self.find(query, size=0)
+                break
+            except TransportError as e:
+                if "fielddata" in f"{e}" and field[-8:] != ".keyword":
+                    field = f"{field}.keyword"
+                else:
+                    raise ESClientError(query) from e
+
+        result = []
+        while True:
+            agg = response["aggregations"]["q"]
+            values = [key["key"]["q"] for key in agg["buckets"]]
+            if not values:
+                break
+            result += values
+            query["aggs"]["q"]["composite"]["after"] = agg["after_key"]
+            response = self.find(query, size=0)
+
+        return result
