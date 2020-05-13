@@ -114,7 +114,12 @@ class SQLtoMongo:
                     f"Total number of documents affected: {total}"
         )
 
-    def set_query(self, query_name: str = None, query: str = None):
+    def set_query(
+            self,
+            *,
+            query_name: str = None,
+            query: str = None,
+    ):
         """Set the query for the MySQL SELECT operation.
 
         If :param query_name: is None, this will default to all rows and all columns.
