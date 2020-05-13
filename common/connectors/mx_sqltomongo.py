@@ -1,13 +1,27 @@
-from typing import Callable, List, TypeVar
+from abc import ABC, abstractmethod
+from contextlib import suppress
+from typing import Callable, List, NewType
 
 from pandas import read_sql
 from pymongo import IndexModel
+from pymongo.errors import OperationFailure
 from sqlalchemy import create_engine
 
 from ..connectors import EmailClient, MongoDB, MySQLClient
 from ..exceptions import ConnectorError
 
-Mappings = TypeVar("Mappings")
+
+class MappingsBase(ABC):
+    @abstractmethod
+    def document(self, d: dict) -> dict:
+        pass
+
+    @abstractmethod
+    def delete(self, d: dict) -> str:
+        pass
+
+
+Mappings = NewType("Mappings", MappingsBase)
 
 
 class SQLtoMongo:
@@ -29,11 +43,14 @@ class SQLtoMongo:
             database=mongo_database,
             collection=mongo_collection,
         )
-        self.sql = MySQLClient(database=sql_database, table=sql_table)
+        self.sql = MySQLClient(
+            database=sql_database,
+            table=sql_table,
+        )
         config = self.sql.__dict__["_MySQLClient__config"]
         conn_args = {k: v for k, v in config.items() if k in ["ssl_ca", "ssl_cert", "ssl_key"]}
         self.engine = create_engine(
-            f"mysql+mysqlconnector://{config['user']}:{config['password']}@{config['host']}",
+            f"mysql+mysqlconnector://{config['user']}:{config['password']}@{config['host']}/{sql_database}",
             connect_args={**conn_args, "buffered": False})
         self.mappings = mappings
         self.query = None
@@ -49,7 +66,8 @@ class SQLtoMongo:
             for name in names
             if name.split(".")[-1] not in self.coll.index_information().keys()
         ]
-        self.coll.create_indexes(indexes=indexes)
+        with suppress(OperationFailure):
+            self.coll.create_indexes(indexes=indexes)
 
     def delete(
             self,
@@ -86,6 +104,7 @@ class SQLtoMongo:
 
     def insert(
             self,
+            *,
             preprocessing: Callable = None,
     ):
         """Insert new documents from MySQL into MongoDB.
@@ -99,10 +118,10 @@ class SQLtoMongo:
                 chunk = preprocessing(chunk)
             chunk = [self.mappings.document(d) for d in chunk.to_dict("records")]
             result = self.coll.insert_many(chunk)
-            self.number_of_insertions += result.inserted_count
+            self.number_of_insertions += len(result.inserted_ids)
 
     def notify(self, to_address: str, title: str = "Update succeeded"):
-        total = sum(n for n in dir(self) if n.startswith("number"))
+        total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
         EmailClient().send_email(
             to_address=to_address,
             subject=title,
@@ -143,6 +162,7 @@ class SQLtoMongo:
 
     def update(
             self,
+            *,
             filter: Callable,
             update: Callable,
             preprocessing: Callable = None,
