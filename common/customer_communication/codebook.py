@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -185,6 +186,11 @@ class GraphBuilder:
 
     def make_folder(self):
         os.makedirs(self.folder_name, exist_ok=True)
+
+    def del_folder(self):
+        for f in Path(self.folder_name).glob("*"):
+            f.unlink()
+        os.removedirs(self.folder_name)
 
     def bool_graph(self):
         for col_name in self.bool_cols:
@@ -384,3 +390,5 @@ def codebook_exe(data, folder, to_zip=True):
     cb_b.distribution_page()
     cb_b.desc_page()
     cb_b.save_xlsx()
+
+    gr_b.del_folder()
