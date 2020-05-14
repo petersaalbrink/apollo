@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import date
 
 
-def fields(self,data):
+def fields(data):
     cols = ''
     for col in data.columns:
         if 'unnamed' in col.lower():
