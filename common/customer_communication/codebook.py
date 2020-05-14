@@ -320,8 +320,8 @@ class CodebookBuilder:
         worksheet.insert_textbox("A1", text, options)
 
     def meta_page(self):
-        self.data_stat.to_excel(self.writer, sheet_name="Data_overzich", index=False)
-        worksheet = self.writer.sheets["Data_overzich"]
+        self.data_stat.to_excel(self.writer, sheet_name="Data_overzicht", index=False)
+        worksheet = self.writer.sheets["Data_overzicht"]
         worksheet.set_column("A:A", 20)
         worksheet.set_column("B:P", 13)
 
@@ -355,9 +355,9 @@ class CodebookBuilder:
 
     def desc_page(self):
         self.data_desc.to_excel(
-            self.writer, sheet_name="Data_omscrhijving", index=False
+            self.writer, sheet_name="Data_omschrijving", index=False
         )
-        worksheet = self.writer.sheets["Data_omscrhijving"]
+        worksheet = self.writer.sheets["Data_omschrijving"]
         worksheet.set_column("A:A", 25)
         worksheet.set_column("B:B", 150)
 
