@@ -3,8 +3,16 @@ from pathlib import Path
 from datetime import date
 
 
+def fields(data):
+    cols = ''
+    for col in data.columns:
+        if 'unnamed' not in col.lower():
+            cols = f"{cols}- col\n"
+    return cols
+
+
 class ReadmeBuilder:
-    def __init__(self, df, folder, fname, codebook, documentation, coded_input=False, to_zip=True):
+    def __init__(self, df, folder, fname, codebook, documentation, coded_input=None, to_zip=True):
 
         self.data = df
         self.file_name = fname
@@ -35,16 +43,7 @@ class ReadmeBuilder:
         self.bool_fields = (self.data.apply(lambda x: x.nunique()) == 2).sum()
         self.text_fields = len((self.data.select_dtypes(include='object')).columns)
         self.numeric_fields = len((self.data.select_dtypes(include='number')).columns)
-        self.cols = self.fields(self.data)
-
-    def fields(self, data):
-        cols = ''
-        for col in data.columns:
-            if 'unnamed' not in col.lower():
-                cols += '- '
-                cols += col
-                cols += '\n'
-        return cols
+        self.cols = fields(self.data)
 
     def write_file(self):
         with open(Path(__file__).parent / "readme.txt") as file:

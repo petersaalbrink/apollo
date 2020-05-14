@@ -6,15 +6,19 @@ import seaborn as sns
 from common import MySQLClient
 
 
-class DataProfile_builder:
+def clean_c(c):
+    for char in (" ", "-", "_", ".", ",", "!", "@", "#"):
+        c = c.replace(char, "")
+    return c
+
+
+class DataProfileBuilder:
     def __init__(self, data):
         self.data = data
         self.no_of_rows = len(self.data.columns)
         self.df_mem = self.data.memory_usage(deep=True).sum() / 1024 ** 2
-        self.data_qlt_df = None
-        self.mem_used_dtypes = None
+        self.data_qlt_df = self.desc = self.mem_used_dtypes = self.data_desc_df = None
         self.columns = list(self.data.columns)
-        self.data_desc_df = None
 
     def memory_calc(self):
         self.mem_used_dtypes = pd.DataFrame(
@@ -80,20 +84,23 @@ class DataProfile_builder:
         # Calculate percentage of null values over total number of values
         self.data_qlt_df["%_of_nulls"] = 100 - self.data_qlt_df["%_of_non_nulls"]
 
-        # Calculate percentage of each column memory usage compared to total memory used by raw data datframe
+        # Calculate percentage of each column memory usage compared
+        # to total memory used by raw data datframe
         self.data_qlt_df["%_of_total_memory"] = (
                 self.data_qlt_df["col_memory"] / self.data_qlt_df["col_memory"].sum() * 100
         )
 
         # Calculate the total memory used by a given group of data type
-        # See Notes section at the bottom of this notebook for advatages of using 'transform' function with group_by
+        # See Notes section at the bottom of this notebook for advatages
+        # of using 'transform' function with group_by
         self.data_qlt_df["dtype_total"] = self.data_qlt_df.groupby("col_data_type")[
             "col_memory"
         ].transform("sum")
 
-        # Calculate the percentage memory used by each column data type compared to the total memory used by the group of data type
-        # the above can be merged to one calculation if we do not need the total as separate column
-        # data_qlt_df["%_of_dtype_mem2"] = data_qlt_df["Dtype Memory"] / (data_qlt_df.groupby('Data Type')["Dtype Memory"].transform('sum')) * 100
+        # Calculate the percentage memory used by each column data type
+        # compared to the total memory used by the group of data type
+        # the above can be merged to one calculation if we do not need
+        # the total as separate column
         self.data_qlt_df["%_of_dtype_mem"] = (
                 self.data_qlt_df["col_memory"] / self.data_qlt_df["dtype_total"] * 100
         )
@@ -118,23 +125,17 @@ class DataProfile_builder:
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
-        #         self.desc = pd.read_csv("descriptions.csv")
-
-    def clean_c(self, c):
-        l = [" ", "-", "_", ".", ",", "!", "@", "#"]
-        for char in l:
-            c = c.replace(char, "")
-        return c
 
     def map_desc(self):
         descriptions = []
 
         for c in self.columns:
             if "Unnamed" not in c:
+                cc = clean_c(c)
                 mask = (
                     self.desc["mapping"]
                         .str.split(", ")
-                        .apply(lambda x: self.clean_c(c) in x)
+                        .apply(lambda x: cc in x)
                 )
                 response = self.desc[mask]["description_nl"]
                 if len(response) > 0:
@@ -183,21 +184,16 @@ class GraphBuilder:
         sns.set_context("talk")
 
     def make_folder(self):
-        try:
-            os.makedirs(self.folder_name)
-        except:
-            pass
+        os.makedirs(self.folder_name, exist_ok=True)
 
     def bool_graph(self):
-        iter_len = len(self.bool_cols)
-        for x, col_name in enumerate(self.bool_cols):
+        for col_name in self.bool_cols:
             data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
             fig, ax = plt.subplots(figsize=(10, 7))
-            #             fig = plt.figure(figsize=(10, 6))
             fig.subplots_adjust(top=0.8)
             plt.subplots_adjust(hspace=0.4, bottom=0.2)
-            fig.suptitle("Data profiel van " + col_name, fontsize=25)
+            fig.suptitle(f"Data profiel van {col_name}", fontsize=25)
 
             ax.set_title("Distribution plot", fontsize=15)
             g = sns.countplot(
@@ -210,7 +206,7 @@ class GraphBuilder:
 
             for p in g.patches:
                 g.annotate(
-                    format(p.get_height() / len(self.data) * 100, ".1f") + " %",
+                    f"{p.get_height() / len(self.data) * 100:.1f} %",
                     (p.get_x() + p.get_width() / 2.0, p.get_height()),
                     ha="center",
                     va="center",
@@ -226,10 +222,7 @@ class GraphBuilder:
             plt.close("all")
 
     def num_graph(self):
-        x = list(set(self.num_cols) - set(self.bool_cols))
-        iter_len = len(x)
-
-        for x, col_name in enumerate(x):
+        for col_name in set(self.num_cols) - set(self.bool_cols):
             data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
             fig, ax = plt.subplots(1, 3, figsize=(20, 7))
@@ -240,15 +233,15 @@ class GraphBuilder:
             ax[1].set_title("Boxplot zonder uitschieters", fontsize=20)
             ax[2].set_title("Boxplot alle waardes", fontsize=20)
 
-            g = sns.distplot(data_nonull[f"{col_name}"], ax=ax[0], color="#0E5C59")
-            g = sns.boxplot(
+            sns.distplot(data_nonull[f"{col_name}"], ax=ax[0], color="#0E5C59")
+            sns.boxplot(
                 y=data_nonull[f"{col_name}"],
                 ax=ax[1],
                 showfliers=False,
                 width=0.3,
                 color="#05AB89",
             )
-            g = sns.boxplot(
+            sns.boxplot(
                 y=data_nonull[f"{col_name}"], ax=ax[2], width=0.3, color="#9AD2B1"
             )
 
@@ -258,10 +251,7 @@ class GraphBuilder:
             plt.close("all")
 
     def obj_graph(self):
-        x = list(set(self.obj_cols) - set(self.bool_cols))
-
-        iter_len = len(x)
-        for x, col_name in enumerate(x):
+        for col_name in set(self.obj_cols) - set(self.bool_cols):
 
             fig, ax = plt.subplots(figsize=(20, 7))
             fig.subplots_adjust(top=0.8)
@@ -315,7 +305,7 @@ class CodebookBuilder:
 
     def info_page(self):
         worksheet = self.workbook.add_worksheet("Info")
-        options = options = {
+        options = {
             "width": 2560,
             "height": 1000,
             "fill": {"color": "#E6F6E6"},
@@ -372,9 +362,8 @@ class CodebookBuilder:
             os.remove(f'CodeBoek.xlsx')
 
 
-##### Main
 def codebook_exe(data, folder, to_zip=True):
-    dp_b = DataProfile_builder(data)
+    dp_b = DataProfileBuilder(data)
     dp_b.memory_calc()
     dp_b.construct_dq_df()
     dp_b.descriptive_stats()
