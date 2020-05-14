@@ -3,11 +3,15 @@ from pathlib import Path
 from datetime import date
 
 
-def fields(data):
+def fields(self,data):
     cols = ''
     for col in data.columns:
-        if 'unnamed' not in col.lower():
-            cols = f"{cols}- col\n"
+        if 'unnamed' in col.lower():
+            pass
+        else:
+            cols += '- '
+            cols += col
+            cols += '\n'
     return cols
 
 
