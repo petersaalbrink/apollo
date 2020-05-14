@@ -1,8 +1,8 @@
 import os
-from pathlib import Path
+from pathlib import Path 	
 from datetime import date
 
-
+# Added wright colum function
 def fields(data):
     cols = ''
     for col in data.columns:
