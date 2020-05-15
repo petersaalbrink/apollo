@@ -48,10 +48,10 @@ EENHEDEN
 Ruimtelijk: in metrische meters
 Datums: YYYY-MM-DD
 Boolean: 1 = True, 0 = False
+Valuta: in euro's (EUR/€)
 
 
-GEBRUIK
----------------
-Gebruik van de dataset
+DISCLAIMER
+--------------------
 Interpretatie van de waardes
 """
