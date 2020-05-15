@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -186,105 +187,112 @@ class GraphBuilder:
     def make_folder(self):
         os.makedirs(self.folder_name, exist_ok=True)
 
+    def del_folder(self):
+        for f in Path(self.folder_name).glob("*"):
+            f.unlink()
+        os.removedirs(self.folder_name)
+
     def bool_graph(self):
         for col_name in self.bool_cols:
-            data_nonull = self.data[self.data[f"{col_name}"].notna()]
+            if len(self.data[col_name].value_counts()) > 0:
+                data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
-            fig, ax = plt.subplots(figsize=(10, 7))
-            fig.subplots_adjust(top=0.8)
-            plt.subplots_adjust(hspace=0.4, bottom=0.2)
-            fig.suptitle(f"Data profiel van {col_name}", fontsize=25)
+                fig, ax = plt.subplots(figsize=(10, 7))
+                fig.subplots_adjust(top=0.8)
+                plt.subplots_adjust(hspace=0.4, bottom=0.2)
+                fig.suptitle(f"Data profiel van {col_name}", fontsize=25)
 
-            ax.set_title("Distribution plot", fontsize=15)
-            g = sns.countplot(
-                data=data_nonull,
-                x=col_name,
-                order=self.data[f"{col_name}"].value_counts().iloc[:15].index,
-                palette=self.kleur,
-            )
-            g.set_title("Frequentie")
-
-            for p in g.patches:
-                g.annotate(
-                    f"{p.get_height() / len(self.data) * 100:.1f} %",
-                    (p.get_x() + p.get_width() / 2.0, p.get_height()),
-                    ha="center",
-                    va="center",
-                    xytext=(0, 13),
-                    textcoords="offset points",
-                    fontsize=20,
-                    color="dimgrey",
+                ax.set_title("Distribution plot", fontsize=15)
+                g = sns.countplot(
+                    data=data_nonull,
+                    x=col_name,
+                    order=self.data[f"{col_name}"].value_counts().iloc[:15].index,
+                    palette=self.kleur,
                 )
+                g.set_title("Frequentie")
 
-            fig_name = "fig_" + col_name
-            fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
+                for p in g.patches:
+                    g.annotate(
+                        f"{p.get_height() / len(self.data) * 100:.1f} %",
+                        (p.get_x() + p.get_width() / 2.0, p.get_height()),
+                        ha="center",
+                        va="center",
+                        xytext=(0, 13),
+                        textcoords="offset points",
+                        fontsize=20,
+                        color="dimgrey",
+                    )
 
-            plt.close("all")
+                fig_name = "fig_" + col_name
+                fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
+
+                plt.close("all")
 
     def num_graph(self):
         for col_name in set(self.num_cols) - set(self.bool_cols):
-            data_nonull = self.data[self.data[f"{col_name}"].notna()]
+            if len(self.data[col_name].value_counts()) > 0:
+                data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
-            fig, ax = plt.subplots(1, 3, figsize=(20, 7))
-            fig.subplots_adjust(top=0.8)
-            plt.subplots_adjust(wspace=0.4, hspace=0.2, bottom=0.2)
-            fig.suptitle("Data profiel van " + col_name, fontsize=25)
-            ax[0].set_title("Distributie", fontsize=20)
-            ax[1].set_title("Boxplot zonder uitschieters", fontsize=20)
-            ax[2].set_title("Boxplot alle waardes", fontsize=20)
+                fig, ax = plt.subplots(1, 3, figsize=(20, 7))
+                fig.subplots_adjust(top=0.8)
+                plt.subplots_adjust(wspace=0.4, hspace=0.2, bottom=0.2)
+                fig.suptitle("Data profiel van " + col_name, fontsize=25)
+                ax[0].set_title("Distributie", fontsize=20)
+                ax[1].set_title("Boxplot zonder uitschieters", fontsize=20)
+                ax[2].set_title("Boxplot alle waardes", fontsize=20)
 
-            sns.distplot(data_nonull[f"{col_name}"], ax=ax[0], color="#0E5C59")
-            sns.boxplot(
-                y=data_nonull[f"{col_name}"],
-                ax=ax[1],
-                showfliers=False,
-                width=0.3,
-                color="#05AB89",
-            )
-            sns.boxplot(
-                y=data_nonull[f"{col_name}"], ax=ax[2], width=0.3, color="#9AD2B1"
-            )
+                sns.distplot(data_nonull[f"{col_name}"], ax=ax[0], color="#0E5C59")
+                sns.boxplot(
+                    y=data_nonull[f"{col_name}"],
+                    ax=ax[1],
+                    showfliers=False,
+                    width=0.3,
+                    color="#05AB89",
+                )
+                sns.boxplot(
+                    y=data_nonull[f"{col_name}"], ax=ax[2], width=0.3, color="#9AD2B1"
+                )
 
-            fig_name = "fig_" + col_name
-            fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
+                fig_name = "fig_" + col_name
+                fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
 
-            plt.close("all")
+                plt.close("all")
 
     def obj_graph(self):
         for col_name in set(self.obj_cols) - set(self.bool_cols):
+            if len(self.data[col_name].value_counts()) > 0:
+                fig, ax = plt.subplots(figsize=(20, 7))
+                fig.subplots_adjust(top=0.8)
+                fig.suptitle("Data profiel van " + col_name, fontsize=25)
 
-            fig, ax = plt.subplots(figsize=(20, 7))
-            fig.subplots_adjust(top=0.8)
-            fig.suptitle("Data profiel van " + col_name, fontsize=25)
-
-            ax.set_title("Distribution plot", fontsize=15)
-            g = sns.countplot(
-                data=self.data,
-                y=col_name,
-                order=self.data[f"{col_name}"].value_counts().iloc[:15].index,
-                palette=self.kleur,
-            )
-            g.set_title("Frequentie van meest voorkomende waardes")
-
-            for p in g.patches:
-                percentage = "{:.1f}%".format(100 * p.get_width() / len(self.data))
-                x = p.get_x() + p.get_width() + 0.02
-                y = p.get_y() + p.get_height() / 2
-                g.annotate(
-                    percentage,
-                    (x, y),
-                    ha="center",
-                    va="center",
-                    fontsize=20,
-                    color="dimgrey",
-                    xytext=(30, 0),
-                    textcoords="offset points",
+                ax.set_title("Distribution plot", fontsize=15)
+                g = sns.countplot(
+                    data=self.data,
+                    y=col_name,
+                    order=self.data[f"{col_name}"].value_counts().iloc[:15].index,
+                    palette=self.kleur,
                 )
+                g.set_title("Frequentie van meest voorkomende waardes")
 
-            fig_name = "fig_" + col_name
-            fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
+                for p in g.patches:
+                    percentage = "{:.1f}%".format(100 * p.get_width() / len(self.data))
+                    x = p.get_x() + p.get_width() + 0.02
+                    y = p.get_y() + p.get_height() / 2
+                    g.annotate(
+                        percentage,
+                        (x, y),
+                        ha="center",
+                        va="center",
+                        fontsize=20,
+                        color="dimgrey",
+                        xytext=(30, 0),
+                        textcoords="offset points",
+                    )
 
-            plt.close("all")
+                fig_name = "fig_" + col_name
+                fig.savefig(self.folder_name + "/" + fig_name, dpi=50)
+
+                plt.close("all")
 
 
 class CodebookBuilder:
@@ -302,6 +310,11 @@ class CodebookBuilder:
 
         self.folder = folder
         self.to_zip = to_zip
+        self.text_info = None
+
+    def get_text(self):
+        with open(Path(__file__).parent / "codebook_info.txt") as file:
+            self.text_info = file.read()
 
     def info_page(self):
         worksheet = self.workbook.add_worksheet("Info")
@@ -310,12 +323,11 @@ class CodebookBuilder:
             "height": 1000,
             "fill": {"color": "#E6F6E6"},
         }
-        text = "Codebook Data Delivery"
-        worksheet.insert_textbox("A1", text, options)
+        worksheet.insert_textbox("A1", self.text_info, options)
 
     def meta_page(self):
-        self.data_stat.to_excel(self.writer, sheet_name="Data_overzich", index=False)
-        worksheet = self.writer.sheets["Data_overzich"]
+        self.data_stat.to_excel(self.writer, sheet_name="Data_overzicht", index=False)
+        worksheet = self.writer.sheets["Data_overzicht"]
         worksheet.set_column("A:A", 20)
         worksheet.set_column("B:P", 13)
 
@@ -349,9 +361,9 @@ class CodebookBuilder:
 
     def desc_page(self):
         self.data_desc.to_excel(
-            self.writer, sheet_name="Data_omscrhijving", index=False
+            self.writer, sheet_name="Data_omschrijving", index=False
         )
-        worksheet = self.writer.sheets["Data_omscrhijving"]
+        worksheet = self.writer.sheets["Data_omschrijving"]
         worksheet.set_column("A:A", 25)
         worksheet.set_column("B:B", 150)
 
@@ -379,8 +391,11 @@ def codebook_exe(data, folder, to_zip=True):
     gr_b.obj_graph()
 
     cb_b = CodebookBuilder(dp_b.data_qlt_df, dp_b.data_desc_df, folder, to_zip)
+    cb_b.get_text()
     cb_b.info_page()
     cb_b.meta_page()
     cb_b.distribution_page()
     cb_b.desc_page()
     cb_b.save_xlsx()
+
+    gr_b.del_folder()

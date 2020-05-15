@@ -15,6 +15,7 @@ def customer_communication(
         documentation: bool = True,
         to_zip: bool = True,
         coded_input: dict = None,
+        encoding : str = None,
 ):
     """Create Customer Communication files.
 
@@ -30,7 +31,10 @@ def customer_communication(
         }
     """
     if filename[-3:] == 'csv':
-        df = pd.read_csv(filename)
+        if encoding:
+            df = pd.read_csv(filename, encoding = encoding)
+        else:
+            df = pd.read_csv(filename)
     else:
         df = pd.read_excel(filename)
 
