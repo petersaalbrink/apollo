@@ -308,11 +308,10 @@ class CodebookBuilder:
 
         self.folder = folder
         self.to_zip = to_zip
-		
-	    self.text_info = None
+        self.text_info = None
 
     def get_text(self):
-        with open("codebook_info.txt", "r") as file:
+        with open(Path(__file__).parent / "codebook_info.txt") as file:
             self.text_info = file.read()
 
     def info_page(self):
@@ -390,7 +389,7 @@ def codebook_exe(data, folder, to_zip=True):
     gr_b.obj_graph()
 
     cb_b = CodebookBuilder(dp_b.data_qlt_df, dp_b.data_desc_df, folder, to_zip)
-	cb_b.get_text()
+    cb_b.get_text()
     cb_b.info_page()
     cb_b.meta_page()
     cb_b.distribution_page()
