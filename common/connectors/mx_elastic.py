@@ -1,7 +1,9 @@
 from contextlib import suppress
 from logging import debug
 from typing import (Any,
+                    Dict,
                     Iterator,
+                    List,
                     MutableMapping,
                     Sequence,
                     Union)
@@ -18,15 +20,15 @@ from ..handlers import tqdm
 # Types
 Location = Union[
     Sequence[Union[str, float]],
-    MutableMapping[str, Union[str, float]]
+    Dict[str, Union[str, float]]
 ]
-NestedDict = MutableMapping[str, Any]
+NestedDict = Dict[str, Dict[str, Any]]
 Query = Union[
     NestedDict,
     Sequence[NestedDict]
 ]
 Result = Union[
-    Sequence[NestedDict],
+    List[NestedDict],
     NestedDict,
 ]
 
@@ -75,18 +77,14 @@ class ESClient(Elasticsearch):
         self.index_exists = None
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
     def find(self,
              query: Query = None,
-             hits_only: bool = True,
-             source_only: bool = False,
-             first_only: bool = False,
-             with_id: bool = False,
              *args, **kwargs
              ) -> Result:
         """Perform an ElasticSearch query, and return the hits.
@@ -105,6 +103,11 @@ class ESClient(Elasticsearch):
                 source_only -> List[List[dict]]
                 first_only -> List[dict]
         """
+        hits_only = kwargs.pop("hits_only", True)
+        source_only = kwargs.pop("source_only", False)
+        first_only = kwargs.pop("first_only", False)
+        with_id = kwargs.pop("with_id", False)
+
         self._check_index_exists()
         if "index" in kwargs:
             index = kwargs.pop("index")
@@ -394,7 +397,7 @@ class ESClient(Elasticsearch):
                        field: str,
                        find: MutableMapping[str, MutableMapping] = None
                        ) -> int:
-        """Provide a distinct count of values in a certain field.
+        """Provide a count of distinct values in a certain field.
 
         See:
 https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
@@ -411,7 +414,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                         "composite": {
                             "sources": [
                                 {field: {"terms": {"field": field}}}
-                            ], "size": 1000
+                            ], "size": 10_000
                         }}}}
             try:
                 result: MutableMapping[str, Any] = self.find(query, size=0)
@@ -433,3 +436,47 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
             result = self.find(query, size=0)
 
         return n_buckets
+
+    def distinct_values(self,
+                        field: str,
+                        find: MutableMapping[str, MutableMapping] = None
+                        ) -> List[Any]:
+        """Provide a count of distinct values in a certain field.
+
+        See:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        """
+
+        if not find:
+            find = {"match_all": {}}
+
+        while True:
+            query = {
+                "query": find,
+                "aggs": {
+                    "q": {
+                        "composite": {
+                            "sources": [
+                                {"q": {"terms": {"field": field}}}
+                            ], "size": 10_000
+                        }}}}
+            try:
+                response: MutableMapping[str, Any] = self.find(query, size=0)
+                break
+            except TransportError as e:
+                if "fielddata" in f"{e}" and field[-8:] != ".keyword":
+                    field = f"{field}.keyword"
+                else:
+                    raise ESClientError(query) from e
+
+        result = []
+        while True:
+            agg = response["aggregations"]["q"]
+            values = [key["key"]["q"] for key in agg["buckets"]]
+            if not values:
+                break
+            result += values
+            query["aggs"]["q"]["composite"]["after"] = agg["after_key"]
+            response = self.find(query, size=0)
+
+        return result

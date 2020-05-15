@@ -1,53 +1,84 @@
-from .address import parse, validate
-from .connectors.mx_elastic import ESClient
-from .connectors.mx_email import EmailClient
-from .connectors.mx_mongo import MongoDB
-from .connectors.mx_mysql import MySQLClient
-from .handlers import (Timer, TicToc,
-                       timer, FunctionTimer,
-                       ZipData, get_tqdm,
-                       csv_write, csv_read,
-                       Log, get_logger,
-                       send_email, pip_upgrade)
-from .parsers import Checks, flatten, levenshtein, dateformat
-from .persondata import NoMatch, NamesData, PersonData
-from .persondata_legacy import PersonMatch, PhoneNumberFinder
-from .platform import FileTransfer
-from .requests import get, thread, get_proxies, get_session
-from ._version import __version__
+from .address import (
+    parse,
+    validate,
+)
+from .connectors import (
+    ESClient,
+    EmailClient,
+    MongoDB,
+    MySQLClient,
+    PandasSQL,
+    SQLClient,
+    SQLtoMongo,
+)
+from .handlers import (
+    FunctionTimer,
+    Log,
+    Timer,
+    TicToc,
+    ZipData,
+    csv_write,
+    csv_read,
+    get_logger,
+    get_tqdm,
+    pip_upgrade,
+    send_email,
+    timer,
+)
+from .parsers import (
+    Checks,
+    dateformat,
+    flatten,
+    levenshtein,
+)
+from .persondata import (
+    NamesData,
+    NoMatch,
+    PersonData,
+)
+from .platform import (
+    FileTransfer,
+)
+from .requests import (
+    get,
+    thread,
+    get_proxies,
+    get_session,
+)
+from ._version import (
+    __version__,
+)
 
 __all__ = [
+    "Checks",
     "ESClient",
     "EmailClient",
+    "FileTransfer",
+    "FunctionTimer",
+    "Log",
     "MongoDB",
     "MySQLClient",
-    "Timer",
-    "TicToc",
-    "timer",
-    "FunctionTimer",
-    "ZipData",
-    "csv_write",
-    "csv_read",
-    "Log",
-    "get_logger",
-    "get_tqdm",
-    "send_email",
-    "parse",
-    "validate",
-    "Checks",
-    "flatten",
-    "levenshtein",
+    "NamesData",
     "NoMatch",
     "PersonData",
-    "PersonMatch",
-    "NamesData",
-    "PhoneNumberFinder",
+    "TicToc",
+    "Timer",
+    "ZipData",
+    "__version__",
+    "csv_read",
+    "csv_write",
+    "dateformat",
+    "flatten",
     "get",
-    "thread",
+    "get_logger",
     "get_proxies",
     "get_session",
-    "FileTransfer",
+    "get_tqdm",
+    "levenshtein",
+    "parse",
     "pip_upgrade",
-    "dateformat",
-    "__version__",
+    "send_email",
+    "thread",
+    "timer",
+    "validate",
 ]
