@@ -308,6 +308,12 @@ class CodebookBuilder:
 
         self.folder = folder
         self.to_zip = to_zip
+		
+	    self.text_info = None
+
+    def get_text(self):
+        with open("codebook_info.txt", "r") as file:
+            self.text_info = file.read()
 
     def info_page(self):
         worksheet = self.workbook.add_worksheet("Info")
@@ -316,8 +322,7 @@ class CodebookBuilder:
             "height": 1000,
             "fill": {"color": "#E6F6E6"},
         }
-        text = "Codebook Data Delivery"
-        worksheet.insert_textbox("A1", text, options)
+        worksheet.insert_textbox("A1", self.text_info, options)
 
     def meta_page(self):
         self.data_stat.to_excel(self.writer, sheet_name="Data_overzicht", index=False)
@@ -385,6 +390,7 @@ def codebook_exe(data, folder, to_zip=True):
     gr_b.obj_graph()
 
     cb_b = CodebookBuilder(dp_b.data_qlt_df, dp_b.data_desc_df, folder, to_zip)
+	cb_b.get_text()
     cb_b.info_page()
     cb_b.meta_page()
     cb_b.distribution_page()
