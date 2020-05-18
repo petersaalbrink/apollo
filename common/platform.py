@@ -1,5 +1,8 @@
 from datetime import datetime
-from functools import cached_property
+try:
+    from functools import cached_property
+except ImportError:
+    from cached_property import cached_property
 from pathlib import Path
 from secrets import token_hex
 from subprocess import run, CalledProcessError, DEVNULL, PIPE
