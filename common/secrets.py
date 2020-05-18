@@ -1,3 +1,17 @@
+"""Module that provides access to retrieving and storing secrets.
+
+The main method for accessing secrets is the `get_secret` function.
+Secrets are retrieved from the .env file in the ~/.common directory and
+decoded. If a secret is not present or is missing, the user will be
+asked to provide it (using stdin). The provided secret will then be
+encoded and stored for later use. A secret, consisting of a username
+and a password, will be returned as `Credentials`, a namedtuple with
+attributes `usr` and `pwd`.
+
+This module also contains a `get_token` function, which returns headers
+containing an access token for the Matrixian Platform.
+"""
+
 from base64 import b64encode, b64decode
 from collections import namedtuple
 from contextlib import suppress
@@ -16,6 +30,13 @@ Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
 
 def change_secret(name: str) -> Credentials:
+    """Change an existing secret in the ~/.common/.env file.
+
+    You will be asked to provide the secret using stdin. The secret
+    will be encoding before storing it for later use, and the secret
+    will be returned as `Credentials`, a namedtuple with attributes
+    `usr` and `pwd`.
+    """
     names = {
         "MX_ELASTIC": "Elasticsearch servers",
         "MX_FTP_BK": "BuurtKadoos FTP server",
@@ -64,6 +85,18 @@ def change_secret(name: str) -> Credentials:
 
 
 def get_secret(name: str) -> Credentials:
+    """Get an existing secret from the system's environment variables.
+
+    Environment variables will be first be loaded using the
+    ~/.common/.env file.
+
+    If a secret does not yet exist, you will be asked to provide the
+    secret (using stdin). The secret will be encoding before storing it
+    for later use.
+
+    The secret will be returned as `Credentials`, a namedtuple with
+    attributes `usr` and `pwd`.
+    """
     from .env import getenv
 
     # Read secret from environment variables
@@ -82,6 +115,7 @@ def get_secret(name: str) -> Credentials:
 
 
 def get_token() -> dict:
+    """Return headers with an access token for the Matrixian Platform."""
     usr, pwd = get_secret("MX_PLATFORM_DATA")
     while True:
         with suppress(KeyError):
