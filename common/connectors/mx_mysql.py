@@ -920,8 +920,10 @@ class MySQLClient:
                     v = v.lstrip("!IN ")
                     if "NULL" in v and '"NULL"' not in v:
                         v = v.replace("NULL", '"NULL"')
-                    v = literal_eval(v)
-                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
+                    if "SELECT" not in v:
+                        v = literal_eval(v)
+                if isinstance(v, (tuple, list)):
+                    v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
                 key = rf"{k} {_not} IN {v}"
                 key = key.replace('"NULL"', "NULL")
                 key = key.replace("'NULL'", "NULL")
