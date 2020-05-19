@@ -308,8 +308,7 @@ class CodebookBuilder:
 
         self.folder = folder
         self.to_zip = to_zip
-		
-	    self.text_info = None
+        self.text_info = None
 
     def get_text(self):
         with open("codebook_info.txt", "r") as file:
