@@ -46,6 +46,7 @@ class MongoDB(MongoClient):
                 database, collection = "dev_peter", "person_data_20190716"
             hosts = {
                 "address": "MX_MONGO_ADDR",
+                "cdqc": "MX_MONGO_CDQC",
                 "dev": "MX_MONGO_DEV",
                 "prod": "MX_MONGO_PROD",
             }

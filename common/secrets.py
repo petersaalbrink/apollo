@@ -26,6 +26,7 @@ def change_secret(name: str) -> Credentials:
         "MX_FTP_VPS": "VPS11 FTP server",
         "MX_MAIL": "EmailClient account",
         "MX_MONGO_ADDR": "MongoDB addressvalidation server",
+        "MX_MONGO_CDQC": "MongoDB CDQC server",
         "MX_MONGO_DEV": "MongoDB dev server",
         "MX_MONGO_PROD": "MongoDB prod server",
         "MX_MYSQL_DEV": "MySQL dev server",
