@@ -131,6 +131,7 @@ class MySQLClient:
                  table: str = None,
                  buffered: bool = False,
                  dictionary: bool = True,
+                 use_pure: bool = False,
                  **kwargs
                  ):
         """Create client for MySQL, and connect to a specific database.
@@ -151,6 +152,9 @@ class MySQLClient:
         :param dictionary: Whether or not to use :class:`CMySQLCursorDict`
         (default: False)
         :type dictionary: bool
+        :param use_pure: Whether or not to use pure Python or C extension
+        (default: False)
+        :type use_pure: bool
 
         Examples::
             sql = MySQLClient()
@@ -187,6 +191,7 @@ class MySQLClient:
             except Exception:
                 raise MySQLClientError(f"Please make sure all '.pem' SSL certificate "
                                        f"files are placed in directory '{commondir}'")
+        self.use_pure = use_pure
         self.__config = {
             "user": usr,
             "password": pwd,
@@ -197,6 +202,7 @@ class MySQLClient:
             "ssl_ca": f'{commondir / "server-ca.pem"}',
             "ssl_cert": f'{commondir / "client-cert.pem"}',
             "ssl_key": f'{commondir / "client-key.pem"}',
+            "use_pure": use_pure,
         }
         self.cnx = None
         self.cursor = None
@@ -469,6 +475,7 @@ class MySQLClient:
         elif size <= 0:
             raise MySQLClientError("Chunk size must be > 0")
 
+        self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
 
@@ -511,6 +518,7 @@ class MySQLClient:
         cursor.close()
         cnx.close()
         bar.close()
+        self.__config["use_pure"] = self.use_pure
 
     def iter(self,
              query: Union[Query, str] = None,
