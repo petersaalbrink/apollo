@@ -21,8 +21,10 @@ from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
 from .requests import get
 
-PD_INDEX = "dev_peter.person_data_20190716"
-VN_INDEX = "dev_peter.validated_numbers"
+ND_INDEX = "cdqc.names_data"
+PD_INDEX = "cdqc.person_data_20190716"
+VN_INDEX = "cdqc.validated_numbers"
+HOST = "cdqc"
 
 
 class BaseDataClass(MutableMapping):
@@ -500,8 +502,10 @@ class PersonData(MatchQueries,
         self._clean = Cleaner().clean
 
         # connectors
-        self._es = ESClient(PD_INDEX)
-        self._vn = ESClient(VN_INDEX)
+        self._es = ESClient(PD_INDEX, host=HOST)
+        self._vn = ESClient(VN_INDEX, host=HOST)
+        self._es.index_exists = True
+        self._vn.index_exists = True
         if gethostname() == "matrixian":
             self._phone_url = "http://localhost:5000/call/"
         else:
@@ -776,7 +780,8 @@ class PersonData(MatchQueries,
 
 class NamesData:
     def __init__(self):
-        self.es = ESClient("dev_peter.names_data")
+        self.es = ESClient(ND_INDEX, host=HOST)
+        self.es.index_exists = True
         self.uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
         self.initial_freq = {
             "A": 0.10395171481742668,
