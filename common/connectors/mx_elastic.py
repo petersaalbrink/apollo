@@ -14,8 +14,10 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
 
+from ..env import envfile, getenv
 from ..exceptions import ESClientError
 from ..handlers import tqdm
+from ..secrets import get_secret
 
 # Types
 Location = Union[
@@ -32,6 +34,20 @@ Result = Union[
     NestedDict,
 ]
 
+# Globals
+_config = {
+    "timeout": 300,
+    "retry_on_timeout": True,
+    "http_auth": get_secret("MX_ELASTIC"),
+}
+_hosts = {
+    "address": "MX_ELASTIC_ADDR_IP",
+    "cdqc": "MX_ELASTIC_CDQC_IP",
+    "dev": "MX_ELASTIC_DEV_IP",
+    "prod": "MX_ELASTIC_PROD_IP",
+}
+_port = int(getenv("MX_ELASTIC_PORT", 9200))
+
 
 class ESClient(Elasticsearch):
     """Client for ElasticSearch"""
@@ -41,37 +57,34 @@ class ESClient(Elasticsearch):
                  **kwargs
                  ):
         """Client for ElasticSearch"""
-        config = {"timeout": 300, "retry_on_timeout": True}
-        if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
+        local = kwargs.pop("local", False)
+        host = kwargs.pop("host", None)
+        dev = kwargs.pop("dev", True)
+        if local or host == "localhost":
             self._host, self._port = "localhost", "9200"
+            del _config["http_auth"]
         else:
-            from ..env import getenv
-            from ..secrets import get_secret
-            secret = get_secret("MX_ELASTIC")
-            if es_index:
+            if es_index and not host:
                 if "production_" in es_index:
-                    envv = "MX_ELASTIC_PROD_IP"
+                    envv = _hosts["prod"]
                 elif "addressvalidation" in es_index:
-                    envv = "MX_ELASTIC_ADDR_IP"
+                    envv = _hosts["address"]
                 else:
-                    envv = "MX_ELASTIC_DEV_IP"
+                    envv = _hosts["dev"]
+            elif host:
+                envv = _hosts.get(host)
             else:
-                if kwargs.pop("dev", True):
-                    envv = "MX_ELASTIC_DEV_IP"
-                    es_index = "dev_peter.person_data_20190716"
+                if dev:
+                    envv, es_index = _hosts["dev"], "dev_peter.person_data_20190716"
                 else:
-                    envv = "MX_ELASTIC_PROD_IP"
-                    es_index = "production_realestate.realestate"
-            self._host = getenv(envv)
+                    envv, es_index = _hosts["prod"], "production_realestate.realestate"
+            self._host, self._port = getenv(envv), _port
             if not self._host:
-                from ..env import envfile
                 raise ESClientError(f"Make sure a host is configured for variable"
                                     f" name '{envv}' in file '{envfile}'")
-            self._port = int(getenv("MX_ELASTIC_PORT", 9200))
-            config["http_auth"] = secret
 
         hosts = [{"host": self._host, "port": self._port}]
-        super().__init__(hosts, **config)
+        super().__init__(hosts, **_config)
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
