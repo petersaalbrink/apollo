@@ -1,3 +1,47 @@
+"""Module for data/object operations and calculations.
+
+This module contains the following objects:
+
+.. py:class:: common.parsers.Checks
+   Collection of several methods for data transformation.
+   .. py:method:: percentage()
+      Transform a part of a whole into a percentage (0-100).
+   .. py:method:: int_or_null()
+      Transform to an integer, if possible.
+   .. py:method:: bool_or_null()
+      Transform to a boolean, if possible.
+   .. py:method:: str_or_null()
+      Transform to a string, if possible.
+   .. py:method:: str_or_empty()
+      Always transform to a string.
+   .. py:method:: float_or_null()
+      Transform to a floating point, if possible.
+   .. py:method:: date_or_null()
+      Transform to a datetime, if possible.
+   .. py:method:: check_null()
+      Check if data resolves to True, otherwise return None.
+   .. py:method:: energy_label()
+      Convert an energy label to a corresponding number.
+   .. py:method:: remove_invalid_chars()
+      Replace special characters in a string.
+   .. py:method:: check_matching_percentage()
+      Return matching percentage (0-100) of two strings.
+
+.. py:function:: common.parsers.flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict
+   Flatten a nested dictionary.
+
+.. py:function:: common.parsers.levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]
+   Calculate the Levenshtein distance and score for two strings.
+
+   By default, returns the percentage score.
+   Set :param measure: to "distance" to return the Levenshtein distance.
+
+.. py:function:: common.parsers.date(date: str) -> str
+   Parse a date from a datestring and return the format.
+   Example::
+        dateformat("28/08/2014") == "%d/%m/%Y"
+"""
+
 from datetime import datetime
 from typing import Any, MutableMapping, Optional, Union
 from dateutil.parser import parse
@@ -36,48 +80,57 @@ def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
 
 
 class Checks:
-    """Collection of several methods for preparation of MySQL data for MongoDB insertion."""
+    """Collection of several methods for data transformation."""
 
     @staticmethod
-    def percentage(part, whole) -> float:
+    def percentage(part: Union[int, float, str], whole: Union[int, float, str]) -> float:
+        """Transform a part of a whole into a percentage (0-100)."""
         return round(100 * float(part) / float(whole), 2)
 
     @staticmethod
-    def int_or_null(var) -> Optional[int]:
+    def int_or_null(var: Any) -> Optional[int]:
+        """Transform to an integer, if possible."""
         try:
             return int(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def bool_or_null(var) -> Optional[bool]:
+    def bool_or_null(var: Any) -> Optional[bool]:
+        """Transform to a boolean, if possible."""
         return bool(Checks.int_or_null(var)) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_null(var) -> Optional[str]:
+    def str_or_null(var: Any) -> Optional[str]:
+        """Transform to a string, if possible."""
         return str(var) if var and not isna(var) else None
 
     @staticmethod
-    def str_or_empty(var) -> str:
+    def str_or_empty(var: Any) -> str:
+        """Always transform to a string."""
         return str(var) if var and not isna(var) else ""
 
     @staticmethod
-    def float_or_null(var) -> Optional[float]:
+    def float_or_null(var: Any) -> Optional[float]:
+        """Transform to a floating point, if possible."""
         try:
             return float(var) if var and not isna(var) else None
         except ValueError:
             return None
 
     @staticmethod
-    def date_or_null(var, f) -> Optional[datetime]:
+    def date_or_null(var: str, f: str) -> Optional[datetime]:
+        """Transform to a datetime, if possible."""
         return datetime.strptime(var, f) if var and not isna(var) else None
 
     @staticmethod
-    def check_null(var) -> Optional[Any]:
+    def check_null(var: Any) -> Optional[Any]:
+        """Check if data resolves to True, otherwise return None."""
         return var if var and not isna(var) else None
 
     @staticmethod
-    def energy_label(var) -> int:
+    def energy_label(var: str) -> int:
+        """Convert an energy label to a corresponding number."""
         return {
             "A": 7,
             "A+": 7,
@@ -94,15 +147,18 @@ class Checks:
         }.get(var, 0)
 
     @staticmethod
-    def remove_invalid_chars(text: str, replacechar: str) -> str:
+    def remove_invalid_chars(text: str, replacechar: str = "") -> str:
+        """Replace special characters in a string."""
         for c in r"\`*_{}[]()>#+.&!$,":
             text = text.replace(c, replacechar)
         return text
 
-    def check_matching_percentage(self, str1: str, str2: str) -> int:
-        str1 = self.remove_invalid_chars(
+    @staticmethod
+    def check_matching_percentage(str1: str, str2: str) -> int:
+        """Return matching percentage (0-100) of two strings."""
+        str1 = Checks.remove_invalid_chars(
             unidecode(str1), "").replace(" ", "").lower().strip()
-        str2 = self.remove_invalid_chars(
+        str2 = Checks.remove_invalid_chars(
             unidecode(str2), "").replace(" ", "").lower().strip()
         lev = levenshtein(str1, str2, measure="percentage")
         return int(lev * 100)

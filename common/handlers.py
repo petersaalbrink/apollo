@@ -1,3 +1,49 @@
+"""Module that contains handlers for files, logging, timing, and runtime.
+
+This module contains several functions and classes that are provided as
+utilities to help the flow in your programs. You can use them to speed
+up the coding process and make sure you never miss a thing (especially
+for long-running scripts).
+
+File handlers:
+
+.. py:function: common.handlers.csv_read
+   Generate data read from a csv file.
+.. py:function: common.handlers.csv_write
+   Write data to a csv file.
+.. py:class: common.handlers.ZipData
+   Class for processing zip archives containing csv data files.
+
+Logging handlers:
+
+.. py:function: common.handlers.get_logger
+   Return an advanced Logger, with output to both file and stream.
+.. py:class: common.handlers.Log
+   Logger class that by default logs with level debug to stderr.
+
+Timing handlers:
+
+.. py:function: common.handlers.tqdm
+   Customized tqdm function.
+.. py:function: common.handlers.trange
+   Customized trange function.
+.. py:function: common.handlers.timer
+   Decorator for timing a function and logging it (level: info).
+.. py:class: common.handlers.Timer
+   Timer class for simple timing tasks.
+.. py:class: common.handlers.TicToc
+   Time code using a class, context manager, or decorator.
+.. py:class: common.handlers.FunctionTimer
+   Code timing context manager with logging (level: info).
+
+Runtime handlers:
+
+.. py:function: common.handlers.send_email
+   Decorator for sending email notification on success/fail.
+.. py:function: common.handlers.pip_upgrade
+   Upgrade all installed Python packages using pip.
+"""
+
 from collections import OrderedDict
 from contextlib import ContextDecorator
 from csv import DictReader, DictWriter, Error, Sniffer
@@ -17,7 +63,6 @@ from typing import (Any,
                     Callable,
                     ClassVar,
                     Dict,
-                    Iterable,
                     List,
                     MutableMapping,
                     Optional,
@@ -28,18 +73,31 @@ from tqdm import tqdm, trange
 from .connectors.mx_email import EmailClient
 from .exceptions import DataError, TimerError, ZipDataError
 
-tqdm = partial(tqdm, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
-trange = partial(trange, smoothing=0, bar_format="{l_bar: >16}{bar:20}{r_bar}")
-
-
-def get_tqdm(iterable: Iterable = None, desc: str = None, name: str = None, **kwargs) -> tqdm:
-    return tqdm(iterable=iterable, desc=desc, disable=name != "__main__", **kwargs)
+_bar_format = "{l_bar: >16}{bar:20}{r_bar}"
+tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
+trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
               **kwargs) -> None:
-    """Simple function for writing a list of dictionaries to a csv file."""
+    """Write data to a csv file.
+
+    The file will be created if it doesn't exist.
+
+    Provide the following arguments:
+        :param data: list of dictionaries or single dictionary
+        :param filename: path or file name to write to
+
+    Optionally, provide the following keyword arguments:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+        mode: file write mode, default "w"
+        extrasaction: action to be taken for extra keys, default "raise"
+        quotechar: csv file quote character, default '"'
+    Additional keyword arguments will be passed through to
+    `csv.DictWriter`.
+    """
     if not data:
         raise DataError("Nothing to do.")
     encoding: str = kwargs.pop("encoding", "utf-8")
@@ -70,8 +128,24 @@ def csv_write(data: Union[List[dict], dict],
 def csv_read(filename: Union[Path, str],
              **kwargs,
              ) -> MutableMapping:
-    """Simple generator for reading from a csv file.
-    Returns rows as OrderedDict, with None instead of empty string."""
+    """Generate data read from a csv file.
+
+    Returns rows as dict, with None instead of empty string. If no
+    delimiter is specified, tries to find out if the delimiter is
+    either a comma or a semicolon.
+
+    Provide the following arguments:
+        :param filename: path or file name to read from
+
+    Optionally, provide the following keyword arguments:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+        sniff: if True, try to sniff the file dialect, default False
+    Additional keyword arguments will be passed through to
+    `csv.DictReader`.
+
+    :raises FileNotFoundError: if the file does not exist.
+    """
     with open(filename, encoding=kwargs.pop("encoding", "utf-8")) as f:
 
         # Try to sniff the dialect, if wanted
@@ -95,27 +169,38 @@ def csv_read(filename: Union[Path, str],
             yield {k: v if v else None for k, v in row.items()}
 
 
+_logging_levels = {
+    "notset": logging.NOTSET,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "fatal": logging.FATAL,
+    "critical": logging.FATAL,
+}
+_log_format = ("%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
+               "%(module)s:%(funcName)s:%(lineno)d:%(message)s")
+_date_format = "%Y-%m-%d %H:%M:%S"
+
+
 class Log:
-    """Simple logger class that, when initiated, by default logs debug
-    to stderr."""
+    """Logger class that by default logs with level debug to stderr.
+
+    Example::
+        from common.handlers import Log
+        Log(
+            level="info",
+            filename="my.log",
+        )
+    """
     def __init__(self, level: str = None, filename: str = None):
-        """Simple logger class that, when initiated, by default logs
-        debug to stderr."""
-        self.level = {
-            "notset": logging.NOTSET,
-            "debug": logging.DEBUG,
-            "info": logging.INFO,
-            "warn": logging.WARN,
-            "warning": logging.WARN,
-            "error": logging.ERROR,
-            "fatal": logging.FATAL,
-            "critical": logging.FATAL,
-        }.get(level.lower(), logging.DEBUG)
+        """Logger class that by default logs with level debug to stderr."""
+        self.level = _logging_levels.get(level.lower(), logging.DEBUG)
         self.kwargs = {
             "level": self.level,
-            "format": "%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
-                      "%(module)s:%(funcName)s:%(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S"
+            "format": _log_format,
+            "datefmt": _date_format,
         }
         if filename:
             self.kwargs["handlers"] = (logging.FileHandler(filename=filename,
@@ -132,29 +217,32 @@ class Log:
         return self.__repr__()
 
 
-_logging_levels = {
-    "notset": logging.NOTSET,
-    "debug": logging.DEBUG,
-    "info": logging.INFO,
-    "warn": logging.WARNING,
-    "warning": logging.WARNING,
-    "error": logging.ERROR,
-    "fatal": logging.FATAL,
-    "critical": logging.FATAL,
-}
-
-
 def get_logger(level: str = None,
                filename: str = None,
                name: str = None,
                **kwargs
                ) -> logging.Logger:
-    """Create an advanced Logger that will output to both file and stream.
+    """Return an advanced Logger, with output to both file and stream.
+
     The logger can be set with:
-        level (default: debug)
-        filename (default: sys.argv[0])
-        name (default: root)
+        :param level: the level for logging to file, default: debug
+        :param filename: the log file, default: sys.argv[0]
+        :param name: the name of the logger, default: root
+
+    Optionally, the level to log to stream can be set using:
+        stream_level: default: warning
+
+    Example::
+        from common.handlers import get_logger
+        logger = get_logger(
+            level="debug",
+            filename="my.log",
+            stream_level="info",
+        )
+        logger.info("This message is shown in both file and stream.")
+        logger.debug("This message is shown in the log file only.")
     """
+
     # get level, name, and filename
     stream_level = _logging_levels.get(
         kwargs.get("stream_level"),
@@ -168,30 +256,36 @@ def get_logger(level: str = None,
         name = __name__
     if not filename:
         filename = f"{name or Path(sys.argv[0]).stem}.log"
+
     # create logger
     logger = logging.getLogger(name=name)
     logger.setLevel(level=level)
+
     # create formatter
     formatter = logging.Formatter(
-        fmt="%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:"
-            "%(module)s:%(funcName)s:%(lineno)d:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S")
+        fmt=_log_format,
+        datefmt=_date_format,
+    )
+
     # create file handler which logs even debug messages,
     # add formatter to handler and handler to logger
     fh = logging.FileHandler(filename=filename, encoding="utf-8")
     fh.setLevel(level)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
+
     # create console handler with a higher log level,
     # add formatter to handler and handler to logger
     ch = logging.StreamHandler()
     ch.setLevel(stream_level)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
+
     return logger
 
 
 def __make_message(m: str, f: Callable, args, kwargs):
+    """Create a message from a function call."""
     if not m:
         m = f"{f.__name__}("
         if args:
@@ -215,20 +309,25 @@ def send_email(function: Callable = None, *,
                message: str = None,
                on_error_only: bool = False,
                ) -> Callable:
-    """Function decorator to send emails!
+    """Decorator for sending email notification on success/fail.
 
     Usage::
         @send_email
         def my_func():
             pass
 
-    or::
-        def my_func():
+        @send_email(
+            to_address=datateam@matrixiangroup.com,
+            on_error_only=True,
+            )
+        def another_func():
             pass
-        send_email(my_func)()
+
+        my_func()
+        another_func()
     """
     if not to_address:
-        to_address = "psaalbrink@matrixiangroup.com"
+        to_address = "datateam@matrixiangroup.com"
 
     def decorate(f: Callable = None):
         @wraps(f)
@@ -402,6 +501,14 @@ class ZipData:
 
 
 class Timer:
+    """Timer class for simple timing tasks.
+
+    Example::
+        from common.handlers import Timer
+        t = Timer()
+        [i**i for i in range(10000)]
+        print(t.end())
+    """
     def __init__(self):
         self.t = self.now()
 
@@ -421,7 +528,27 @@ class Timer:
 
 @dataclass
 class TicToc(ContextDecorator):
-    """Time code using a class, context manager, or decorator."""
+    """Time code using a class, context manager, or decorator.
+
+    Example::
+        from common.handlers import TicToc
+
+        # As class
+        t = TicToc()
+        t.start()
+        [i**i for i in range(10000)]
+        t.stop()
+
+        # As context manager
+        with TicToc():
+            [i**i for i in range(10000)]
+
+        # As decorator
+        @TicToc()
+        def my_func():
+            return [i**i for i in range(10000)]
+        my_func()
+    """
 
     timers: ClassVar[Dict[str, float]] = dict()
     name: Optional[str] = None
@@ -469,7 +596,13 @@ class TicToc(ContextDecorator):
 
 
 class FunctionTimer:
-    """Code timing context manager."""
+    """Code timing context manager with logging (level: info).
+
+    Example::
+        from common.handlers import FunctionTimer
+        with FunctionTimer():
+            [i**i for i in range(10000)]
+    """
 
     def __init__(self, name: str = None):
         """Initialization: add timer to dict of timers"""
@@ -508,6 +641,15 @@ class FunctionTimer:
 
 
 def timer(f):
+    """Decorator for timing a function and logging it (level: info).
+
+    Example::
+        from common.handlers import timer
+        @timer
+        def my_func()
+            return [i**i for i in range(10000)]
+        my_func()
+    """
     @wraps(f)
     def wrapped(*args, **kwargs):
         start_time = perf_counter()
@@ -519,5 +661,6 @@ def timer(f):
 
 
 def pip_upgrade():
+    """Upgrade all installed Python packages using pip."""
     packages = [dist.project_name for dist in pkg_resources.working_set]
     run(["pip", "install", "--upgrade", *packages])
