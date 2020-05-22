@@ -21,7 +21,8 @@ from typing import (Any,
                     Union)
 
 from mysql.connector.cursor import MySQLCursor
-from mysql.connector import (connect,
+from mysql.connector import (HAVE_CEXT,
+                             connect,
                              MySQLConnection,
                              ClientFlag,
                              DatabaseError,
@@ -191,7 +192,7 @@ class MySQLClient:
             except Exception:
                 raise MySQLClientError(f"Please make sure all '.pem' SSL certificate "
                                        f"files are placed in directory '{commondir}'")
-        self.use_pure = use_pure
+        self.use_pure = use_pure if HAVE_CEXT else True
         self.__config = {
             "user": usr,
             "password": pwd,
