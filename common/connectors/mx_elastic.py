@@ -65,7 +65,9 @@ class ESClient(Elasticsearch):
             del _config["http_auth"]
         else:
             if es_index and not host:
-                if "production_" in es_index:
+                if es_index.startswith("cdqc"):
+                    envv = _hosts["cdqc"]
+                elif "production_" in es_index:
                     envv = _hosts["prod"]
                 elif "addressvalidation" in es_index:
                     envv = _hosts["address"]
