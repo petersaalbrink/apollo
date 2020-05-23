@@ -26,6 +26,8 @@ PD_INDEX = "cdqc.person_data_20190716"
 VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
 
 class BaseDataClass(MutableMapping):
     def __setitem__(self, key, value):
@@ -762,7 +764,7 @@ class PersonData(MatchQueries,
         # Fix dates
         for key in ("date", "address_moved", "birth_date", "death_date"):
             if key in self.result and isinstance(self.result[key], str):
-                self.result[key] = dateparse(self.result[key], ignoretz=True)
+                self.result[key] = datetime.strptime(self.result[key], DATE_FORMAT)
 
         debug("Result = %s", self.result)
 
@@ -925,9 +927,12 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], "%Y-%m-%d")
             except ValueError:
-                self.data["date_of_birth"] = None
+                try:
+                    self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
+                except ValueError:
+                    self.data["date_of_birth"] = None
         if not self.data["date_of_birth"]:
             self.data.pop("date_of_birth")
 
