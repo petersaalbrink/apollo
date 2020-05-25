@@ -17,6 +17,12 @@ class SQLClient:
     1. Counting the total amount of rows in a table
     2. Getting the types and length of the columns as specified in SQL
 
+    Explanation additional arguments for configurations:
+        - ssl_ arguments make sure we can connect to the Matrixian MySQL database using SSL
+        - If you want warnings to be followed by exceptions, set raise_on_warnings=True
+        - buffered=False makes sure we use less memory. This is important for large tables
+        - use_pure=True makes sure we do not use C extension but use pure Python implementation
+
     Example:
         1. sql = SQLClient(database='avix', table='region_mapping')
            _dtypes = sql.get_dtypes()
@@ -31,19 +37,16 @@ class SQLClient:
         envv = "MX_MYSQL_DEV_IP"
         usr, pwd = get_secret("MX_MYSQL_DEV")
         host = getenv(envv)
-        self.__ssl = {
-            "ssl_ca": f'{commondir / "server-ca.pem"}',
-            "ssl_cert": f'{commondir / "client-cert.pem"}',
-            "ssl_key": f'{commondir / "client-key.pem"}',
-        }
 
         # Create connection string
         connection_string = f"mysql+mysqlconnector://{usr}:{pwd}@{host}/{self.database}"
 
         # Set additional arguments
-        # If you want warnings to be followed by exceptions, set raise_on_warnings=True
-        # buffered=False makes sure we use less memory. This is important for large tables
-        # use_pure=True makes sure we do not use C extension but use pure Python implementation
+        self.__ssl = {
+            "ssl_ca": f'{commondir / "server-ca.pem"}',
+            "ssl_cert": f'{commondir / "client-cert.pem"}',
+            "ssl_key": f'{commondir / "client-key.pem"}',
+        }
         connect_args = {
             **self.__ssl,
             **dict(
