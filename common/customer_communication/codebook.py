@@ -9,7 +9,7 @@ from common import MySQLClient
 
 def clean_c(c):
     for char in (" ", "-", "_", ".", ",", "!", "@", "#"):
-        c = c.replace(char, "")
+        c = c.replace(char, "").lower()
     return c
 
 
@@ -131,7 +131,9 @@ class DataProfileBuilder:
         descriptions = []
 
         for c in self.columns:
-            if "Unnamed" not in c:
+            if "std_" in c or "out_" in c or "res_" in c:
+                descriptions.append("Consult document")
+            elif "Unnamed" not in c:
                 cc = clean_c(c)
                 mask = (
                     self.desc["mapping"]
