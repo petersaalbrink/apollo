@@ -14,15 +14,23 @@ from tqdm import tqdm
 
 
 class PandasSQL(SQLClient):
+    """This class inherits SQLClient, such that it forms a connection between Pandas and Matrixian's MySQL database.
+    It includes three functions:
+        1. Getting the data from SQL into a DataFrame (`get_df`)
+        2. Preparing the types of a DataFrame and SQL table before inserting. Note that this function (`set_dtypes`)
+           also modifies the SQL table if the maximum column length of the DataFrame is larger than the length of the
+           column in SQL.
+        3. Inserting the DataFrame into SQL (`to_sql`)
+    """
     def __init__(self, database: str = None, table: str = None, **kwargs):
         super().__init__(database=database, table=table, **kwargs)
-        self.psql_query = None
         self.psql_count = None
         self.psql_chunk_total = None
         self.df = None
         self.dtypes = {}
 
     def set_dtypes(self, df, database, table) -> dict:
+        """This function sets the types for the DataFrame columns before uploading to SQL"""
         # Create types from DataFrame
         for col in df.select_dtypes(include=['float64', 'Float64']):
             _int, _frac = df[col].fillna(0.0).astype(str).str.split('.', expand=True).applymap(len).max().to_list()
@@ -119,7 +127,7 @@ class PandasSQL(SQLClient):
         if use_tqdm and chunk_size:
             if query:
                 if 'LIMIT' in query.upper():
-                    self.psql_count = int(search(r'(?<=LIMIT\s)(\d+)', self.psql_query.upper(), IGNORECASE).group(1))
+                    self.psql_count = int(search(r'(?<=LIMIT\s)(\d+)', query.upper(), IGNORECASE).group(1))
                 self.psql_count = self.count() if not self.psql_count else self.psql_count
             self.psql_chunk_total = int(ceil(self.psql_count / chunk_size))
 
