@@ -21,6 +21,9 @@ from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
 from .requests import get
 
+PD_INDEX = "dev_peter.person_data_20190716"
+VN_INDEX = "dev_peter.validated_numbers"
+
 
 class BaseDataClass(MutableMapping):
     def __setitem__(self, key, value):
@@ -497,8 +500,8 @@ class PersonData(MatchQueries,
         self._clean = Cleaner().clean
 
         # connectors
-        self._es = ESClient("dev_peter.person_data_20190716")
-        self._vn = ESClient("dev_peter.validated_numbers")
+        self._es = ESClient(PD_INDEX)
+        self._vn = ESClient(VN_INDEX)
         if gethostname() == "matrixian":
             self._phone_url = "http://localhost:5000/call/"
         else:
