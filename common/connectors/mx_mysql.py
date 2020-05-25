@@ -203,7 +203,7 @@ class MySQLClient:
             "ssl_ca": f'{commondir / "server-ca.pem"}',
             "ssl_cert": f'{commondir / "client-cert.pem"}',
             "ssl_key": f'{commondir / "client-key.pem"}',
-            "use_pure": use_pure,
+            "use_pure": self.use_pure,
         }
         self.cnx = None
         self.cursor = None

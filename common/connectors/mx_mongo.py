@@ -8,6 +8,13 @@ from pymongo.operations import InsertOne, UpdateOne, UpdateMany
 
 from ..exceptions import MongoDBError
 
+_hosts = {
+    "address": "MX_MONGO_ADDR",
+    "cdqc": "MX_MONGO_CDQC",
+    "dev": "MX_MONGO_DEV",
+    "prod": "MX_MONGO_PROD",
+}
+
 
 class MongoDB(MongoClient):
     """Client for MongoDB. Uses MongoClient as superclass."""
@@ -40,19 +47,15 @@ class MongoDB(MongoClient):
                         host = "address"
                     elif "production" in database:
                         host = "prod"
+                    elif database.startswith("cdqc"):
+                        host = "cdqc"
             elif host == "stg":
                 raise MongoDBError("Staging database is not used anymore.")
             if not client and not database:
                 database, collection = "dev_peter", "person_data_20190716"
-            hosts = {
-                "address": "MX_MONGO_ADDR",
-                "cdqc": "MX_MONGO_CDQC",
-                "dev": "MX_MONGO_DEV",
-                "prod": "MX_MONGO_PROD",
-            }
-            if host not in hosts:
+            if host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
-            host = hosts[host]
+            host = _hosts[host]
             from ..env import getenv
             from ..secrets import get_secret
             usr, pwd = get_secret(host)
