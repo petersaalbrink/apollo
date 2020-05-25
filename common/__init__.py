@@ -41,8 +41,12 @@ from .platform import (
     FileTransfer,
 )
 from .requests import (
+    ThreadSafeIterator,
     get,
+    post,
+    request,
     thread,
+    threadsafe,
     get_proxies,
     get_session,
 )
@@ -62,6 +66,7 @@ __all__ = [
     "NamesData",
     "NoMatch",
     "PersonData",
+    "ThreadSafeIterator",
     "TicToc",
     "Timer",
     "ZipData",
@@ -76,9 +81,12 @@ __all__ = [
     "get_session",
     "levenshtein",
     "parse",
+    "post",
     "pip_upgrade",
+    "request",
     "send_email",
     "thread",
+    "threadsafe",
     "timer",
     "validate",
 ]

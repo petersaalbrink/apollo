@@ -64,8 +64,8 @@ def _flatten(input_dict: MutableMapping[str, Any], sep: str):
 
 def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
-
-    return_dict = _flatten(nested_dict, sep)
+    __flatten = _flatten
+    return_dict = __flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
@@ -74,7 +74,7 @@ def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
         if count == len(return_dict):
             break
         else:
-            return_dict = _flatten(return_dict, sep)
+            return_dict = __flatten(return_dict, sep)
 
     return return_dict
 
