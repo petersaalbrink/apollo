@@ -2,11 +2,11 @@
 from common.connectors.mx_sqlalchemy import SQLClient
 
 # SQL Alchemy
-from sqlalchemy.dialects.mysql import CHAR, DECIMAL, INTEGER
+from sqlalchemy.dialects.mysql import CHAR, DECIMAL, INTEGER, DATE
 
 # Data handlers
 from pandas import DataFrame, read_sql
-from numpy import ceil
+from numpy import ceil, datetime64
 from typing import Sequence, List, Union
 from functools import partial
 from re import IGNORECASE, search
@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 class PandasSQL(SQLClient):
     def __init__(self, database: str = None, table: str = None, **kwargs):
-        super().__init__(database=database, table=table, kwargs=kwargs)
+        super().__init__(database=database, table=table, **kwargs)
         self.psql_query = None
         self.psql_count = None
         self.psql_chunk_total = None
@@ -24,20 +24,19 @@ class PandasSQL(SQLClient):
 
     def set_dtypes(self, df, database, table) -> dict:
         # Create types from DataFrame
-        for col in df.select_dtypes(include='float64'):
-            lengths = df[col].where(lambda x: x.isna(), df[col].astype(str)).fillna('.') \
-                .str.split('.', expand=True).applymap(lambda x: len(x)).max().to_list()
-            _int = lengths[0]
-            _frac = lengths[1]
-            self.dtypes[col] = DECIMAL(precision=sum(lengths), scale=_frac)
+        for col in df.select_dtypes(include=['float64', 'Float64']):
+            _int, _frac = df[col].fillna(0.0).astype(str).str.split('.', expand=True).applymap(len).max().to_list()
+            self.dtypes[col] = DECIMAL(precision=sum([_int, _frac]), scale=_frac)
 
         for col in df.select_dtypes(include=['int64', 'Int64']):
-            display_width = df[col].where(lambda x: x.isna(), df[col].astype(str)) \
-                .fillna('').astype(str).map(len).max()
+            display_width = df[col].fillna(0).astype(str).str.len().max()
             self.dtypes[col] = INTEGER(display_width=display_width)
 
-        for col in df.select_dtypes(include='object'):
+        for col in df.select_dtypes(include=['object', 'string']):
             self.dtypes[col] = CHAR(length=df[col].fillna('').str.len().max())
+
+        for col in df.select_dtypes(include=datetime64):
+            self.dtypes[col] = DATE()
 
         # Check for column width of DataFrame and existing SQL table
         old_dtypes = self.get_dtypes()
@@ -69,7 +68,7 @@ class PandasSQL(SQLClient):
 
     def get_df(self, query: str = None, chunk_size: int = None, columns: List[str] = None,
                index_columns: List[str] = None, use_tqdm: bool = False, limit: int = None,
-               parse_dates: bool = None):
+               parse_dates: Union[bool, list] = None):
         """
         Description
         -----------
@@ -111,19 +110,21 @@ class PandasSQL(SQLClient):
                     print(chunk)
 
         """
-        self.psql_query = query if query else f"SELECT * FROM {self.database}.{self.table}"
-        if limit:
-            self.psql_query += f" LIMIT {limit}"
+
+        if query and limit:
+            query += f" LIMIT {limit}"
 
         _tqdm = partial(tqdm, desc="iterating", disable=not use_tqdm)
 
         if use_tqdm and chunk_size:
-            self.psql_count = int(search(r'(?<=LIMIT\s)(\d+)', self.psql_query.upper(), IGNORECASE).group(1)) \
-                if 'LIMIT' in self.psql_query.upper() else self.count()
+            if query:
+                if 'LIMIT' in query.upper():
+                    self.psql_count = int(search(r'(?<=LIMIT\s)(\d+)', self.psql_query.upper(), IGNORECASE).group(1))
+                self.psql_count = self.count() if not self.psql_count else self.psql_count
             self.psql_chunk_total = int(ceil(self.psql_count / chunk_size))
 
         self.df = read_sql(
-            sql=self.psql_query,
+            sql=query if query else self.table,
             con=self.engine,
             chunksize=chunk_size,
             columns=columns,
@@ -169,6 +170,8 @@ class PandasSQL(SQLClient):
 
         """
         df = self.df if not isinstance(df, DataFrame) else df
+
+        # Set dtypes
         dtypes = self.set_dtypes(df=df, database=database, table=table)
 
         # Replace NaN with None
@@ -177,12 +180,3 @@ class PandasSQL(SQLClient):
         df.to_sql(name=table, schema=database, con=self.engine, if_exists=method,
                   dtype=dtypes, method='multi', chunksize=chunk_size, index=with_index, index_label=index_label)
         return self
-
-
-if __name__ == '__main__':
-    p_sql = PandasSQL(database='real_estate', table='real_estate')
-    for chunk in p_sql.get_df(chunk_size=10_000, use_tqdm=True):
-        pass
-    exit()
-    p_sql.to_sql(table='test', database='avix', method='append')
-

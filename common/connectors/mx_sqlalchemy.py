@@ -18,22 +18,21 @@ class SQLClient:
         envv = "MX_MYSQL_DEV_IP"
         usr, pwd = get_secret("MX_MYSQL_DEV")
         host = getenv(envv)
-        self.__config = {
-            "user": usr,
-            "password": pwd,
-            "host": host,
-            "database": database,
-            "raise_on_warnings": kwargs.get("raise_on_warnings", False),
-            "client_flags": [ClientFlag.SSL]
-        }
         self.__ssl = {
             "ssl_ca": f'{commondir / "server-ca.pem"}',
             "ssl_cert": f'{commondir / "client-cert.pem"}',
             "ssl_key": f'{commondir / "client-key.pem"}',
         }
-        connection_string = f"mysql+mysqlconnector://{self.__config['user']}:{self.__config['password']}@" \
-                            f"{self.__config['host']}/{self.__config['database']}"
-        connect_args = {**self.__ssl, **dict(buffered=False)}
+        connection_string = f"mysql+mysqlconnector://{usr}:{pwd}@{host}/{self.database}"
+
+        connect_args = {
+            **self.__ssl,
+            **dict(
+                buffered=kwargs.get("buffered", False),
+                raise_on_warnings=kwargs.get("raise_on_warnings", False),
+                use_pure=kwargs.get("use_pure", True)
+            )
+        }
         self.engine = create_engine(connection_string, connect_args=connect_args)
         self.session = sessionmaker(bind=self.engine)()
 
