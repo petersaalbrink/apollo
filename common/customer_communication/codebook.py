@@ -28,8 +28,9 @@ class DataProfileBuilder:
         self.mem_used_dtypes.rename(columns={0: "memory"}, inplace=True)
         self.mem_used_dtypes.drop("Index", axis=0, inplace=True)
 
+        #Used for calculating the memorie usages of a single collumn, currently not shown in output.
+        
     def construct_dq_df(self):
-
         self.data_qlt_df = pd.DataFrame(
             index=np.arange(0, self.no_of_rows),
             columns=(
@@ -41,6 +42,9 @@ class DataProfileBuilder:
                 "column_dtype",
             ),
         )
+        
+        #Create empty DF for metadata
+        
 
         # Add rows to the data_qlt_df dataframe
         for ind, cols in enumerate(self.data.columns):
@@ -333,7 +337,7 @@ class CodebookBuilder:
 
     def distribution_page(self):
         cell_format1 = self.workbook.add_format(
-            {"bold": True, "font_color": "green", "font_size": 15, "shrink": True}
+            {"bold": True, "font_color": "037960", "font_size": 15, "shrink": True}
         )
         cell_format2 = self.workbook.add_format({"bottom": True})
 

@@ -6,7 +6,7 @@ Deze informatie bevind zich in de onderstaande tabbladen van dit Excel bestand.
 
 -Data_overzicht-
 
-In dit tabblad staat een tabel met daarin de metadata van het aangelverde bestand. 
+In dit tabblad staat een tabel met daarin de metadata van het aangeleverde bestand. 
 Uitleg van de verschillende velden: 
 
 column_name: Kolom naam
@@ -29,7 +29,7 @@ max: Grootste waarde (Continue variabele)
 In dit tabblad staat voor elke kolom een tabel met de metadata zoals omschreven in tabblad Data_overzicht. 
 Naast deze informatie staat ook een ondersteunende grafiek.
 
-*Catagorische Waarde:
+*Categorische Waarde:
 Horizontale staafdiagram met daarin de 15 meest voorkomende waardes. Wanneer er minder dan 15 verschillende waardes voorkomen in deze kolom, worden alleen deze weergegeven.
 Voor het maken van deze diagram worden ontbrekende waardes niet meegenomen.
 
@@ -41,10 +41,10 @@ Voor het maken van deze diagram worden ontbrekende waardes niet meegenomen.
 1) Distributiegrafiek: hierin is de verdeling te zien van de continue waardes. 
 2) Boxplot zonder uitschieters: een grafische weergave van de vijf-getallensamenvatting. Deze vijf-getallensamenvatting bestaat uit het minimum, het eerste kwartiel, de mediaan (of tweede kwartiel),
    het derde kwartiel en het maximum van de waargenomen data. 
-3) Boxplot met uitschieters: Deze plot is hetzelefde als de voorgaande boxplot maar hier worden de uitschieters weergegeven door middel van een diamand symbool.
+3) Boxplot met uitschieters: Deze plot is hetzelfde als de voorgaande boxplot maar hier worden de uitschieters weergegeven door een diamand symbool.
    Uitschieter: Een waarde die 1,5 keer groter is dan de afstand tussen het eerste kwartiel en het derde kwartiel (1,5xIKA).
    
 
 -Data_omschrijving-
 
-In dit tabblad bevind zich een omschrijving van elke kolom
+In dit tabblad bevind zich een omschrijving van elke kolom.

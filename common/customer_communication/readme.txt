@@ -11,20 +11,19 @@ MATRIXIAN GROUP
 www.matrixiangroup.com
 info@matrixiangroup.com
 +31 (0)20 244 0145
-Contactpersoon: {self.contact_person}
 Klantnaam: {self.client_name}
 
 
-INHOUD
+BESTANDEN
 --------
 {self.file_name}
 {self.readme}.txt
 {self.codebook}.xlsx
 
 
-KLANTVRAAG
+OMSCHRIJVING
 ---------
-Beschrijving: {self.objective}
+{self.objective}
 Product: {self.product_doc}
 
 DATA OVERZICHT
@@ -51,7 +50,16 @@ Boolean: 1 = True, 0 = False
 Valuta: in euro's (EUR/€)
 
 
-DISCLAIMER
+GETTING STARTED
 --------------------
-Interpretatie van de waardes
+Naast de data, ontvangt u van ons ook een readme bestand en een codeboek. Deze twee automatisch gegenereerde bestanden dienen als ondersteuning van het databestand.
+In het readme-bestand staat een beknopte omschrijving van de dataset, de meegeleverde bestanden en onze contact informatie.
+Voor een uitgebreide verklaring van de dataset leveren wij ook een codeboek mee. 
+In het codeboek kunt u het data profiel en de verbose omschrijving van elke kolom inzien. 
+
+Voor verdere vragen en onduidelijkheden, kunt u natuurlijk altijd met ons contact opnemen.
+
+Matrixian Group
+
+
 """
