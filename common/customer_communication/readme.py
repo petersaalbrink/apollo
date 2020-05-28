@@ -9,8 +9,8 @@ from docx.shared import Inches
 from docx.shared import Cm
 from docx.enum.table import WD_ALIGN_VERTICAL
 import pandas as pd
-
-
+from pathlib import Path
+import pathlib
 # Added wright colum function
 
 
@@ -47,6 +47,10 @@ class ReadmeBuilder:
         self.numeric_fields = len((self.data.select_dtypes(include='number')).columns)
         self.file_size = (self.data.memory_usage(deep=True).sum() / 1024**2).round(2)
         self.cols = self.data.columns.to_list()
+        
+        self.logo = os.path.join(Path(__file__).parent / "Matrixian_logo.png")
+
+
 
     
 
@@ -88,7 +92,7 @@ class ReadmeBuilder:
         p = header.add_paragraph('')
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         r = p.add_run()
-        r.add_picture('Matrixian_logo.PNG', width=Inches(1.5))
+        r.add_picture(fr'{self.logo}', width=Inches(1.5))
         
 #Title               
         h = document.add_heading('Readme', 1).style = document.styles['Header1']
