@@ -26,7 +26,9 @@ PD_INDEX = "cdqc.person_data_20190716"
 VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
-DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+DATE = "%Y-%m-%d"
+DATE_FORMAT = "%Y-%m-%dT00:00:00.000Z"
+DEFAULT_DATE = "1900-01-01T00:00:00.000Z"
 
 
 class BaseDataClass(MutableMapping):
@@ -138,9 +140,9 @@ class SourceMatch:
                 ) or False
 
     def _dob_match(self, response):
-        return (response.get("birth_date") != "1900-01-01T00:00:00Z"
+        return (response.get("birth_date") != DEFAULT_DATE
                 and self.data.date_of_birth
-                and response.get("birth_date") == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z")
+                and response.get("birth_date") == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
 
     def _set_match(self, response: dict):
@@ -927,7 +929,7 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], "%Y-%m-%d")
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE)
             except ValueError:
                 try:
                     self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
