@@ -21,16 +21,15 @@ class ReadmeBuilder:
         self.file_name = fname
         self.folder = folder
         self.to_zip = to_zip
-
+        self.readme = 'Readme.docx'
         if not coded_input:
             self.client_name = input("Client Name: ")
-            self.readme = input("name of readme file: ")
             self.objective = input(
                 'give a short description of the objective of the data request and list the requirements')
             self.version = input('Version:')
         else:
             self.client_name = coded_input['client_name']
-            self.readme = coded_input['readme']
+            
             self.objective = coded_input['objective']
             self.version = coded_input['version']
 
@@ -131,8 +130,12 @@ Klantnaam: {self.client_name}
         p.style = document.styles['Text']
         p = document.add_paragraph(f'- {self.readme} ', style='List Bullet')
         p.style = document.styles['Text']
-        p = document.add_paragraph(f'- {self.codebook} ', style='List Bullet')
-        p.style = document.styles['Text']
+        if self.codebook:
+            p = document.add_paragraph(f'- {self.codebook} ', style='List Bullet')
+            p.style = document.styles['Text']
+        if self.product_doc:
+            p = document.add_paragraph(f'- {self.product_doc} ', style='List Bullet')
+            p.style = document.styles['Text']
         
 
 

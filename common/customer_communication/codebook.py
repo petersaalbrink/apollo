@@ -405,3 +405,5 @@ def codebook_exe(data, folder, to_zip=True):
     cb_b.save_xlsx()
 
     gr_b.del_folder()
+    
+    return 'Codebook.xlsx'
