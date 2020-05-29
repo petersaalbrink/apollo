@@ -113,14 +113,10 @@ def request(method: str,
     if kwargs.pop("use_proxies", False):
         kwargs.update(next(get_kwargs))
     text_only = kwargs.pop("text_only", False)
-    while True:
-        try:
-            response = common_session.request(method, url, **kwargs)
-            if text_only:
-                return response.json()
-            return response
-        except (IOError, OSError, HTTPError):
-            pass
+    response = common_session.request(method, url, **kwargs)
+    if text_only:
+        return response.json()
+    return response
 
 
 def get(url: str,
