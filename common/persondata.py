@@ -1,3 +1,36 @@
+"""Module for querying Matrixian's person database.
+
+This module contains classes that accept some input and then return any
+matching records from Matrixian's person database. The main entry point
+for this is the `match()` method of the `PersonData()` class. This is
+also the main method used by the `PersonChecker` of the CDQC product
+(see the `data_team_validators` repository).
+
+Additionally, there is a `NamesData` class which provides some methods
+for easy access to data on several names statistics, such as last name
+occurrence in the Netherlands.
+
+Other useful objects include the `Data` class, which can serve as a
+container for person data, and the `Cleaner` class, which cleans said
+data.
+
+.. py:class:: common.persondata.Cleaner
+
+
+.. py:class:: common.persondata.Data
+   Dataclass for person input.
+
+.. py:class:: common.persondata.NamesData
+
+
+.. py:class:: common.persondata.PersonData
+
+
+.. py:class:: common.persondata.Score
+   Dataclass for score calculation.
+
+"""
+
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -26,6 +59,9 @@ VN_INDEX = "dev_peter.validated_numbers"
 
 
 class BaseDataClass(MutableMapping):
+    """Base class for extending dataclasses
+    with dictionary-like functionality.
+    """
     def __setitem__(self, key, value):
         self.__dict__[key] = value
 
@@ -33,7 +69,7 @@ class BaseDataClass(MutableMapping):
         return self.__dict__[key]
 
     def __delitem__(self, key):
-        del self.__dict__[key]
+        self.__dict__[key] = None
 
     def __iter__(self):
         return iter(self.__dict__)
@@ -44,6 +80,7 @@ class BaseDataClass(MutableMapping):
 
 @dataclass
 class Data(BaseDataClass):
+    """Dataclass for person input."""
     postalCode: str = None
     houseNumber: int = None
     houseNumberExt: str = None
@@ -54,42 +91,52 @@ class Data(BaseDataClass):
     number: int = None
     gender: str = None
     date_of_birth: datetime = None
+# TODO: convert to pydantic.BaseModel
 
 
 @dataclass
 class Score:
+    """Dataclass for score calculation."""
     __slots__ = [
         "source",
-        "yearOfRecord",
+        "year_of_record",
         "deceased",
-        "lastNameNumber",
+        "lastname_number",
         "gender",
-        "dateOfBirth",
-        "phoneNumberNumber",
+        "date_of_birth",
+        "phonenumber_number",
         "occurring",
         "moved",
         "mobile",
-        "matchedNames",
-        "foundPersons",
+        "matched_names",
+        "found_persons",
     ]
     source: str
-    yearOfRecord: str
+    year_of_record: str
     deceased: Optional[int]
-    lastNameNumber: int
+    lastname_number: int
     gender: str
-    dateOfBirth: int
-    phoneNumberNumber: int
+    date_of_birth: int
+    phonenumber_number: int
     occurring: bool
     moved: bool
     mobile: bool
-    matchedNames: Tuple[str, str]
-    foundPersons: int
+    matched_names: Tuple[str, str]
+    found_persons: int
 # TODO: incorporate into SourceScore:
 #  total number of search results
 #  frequency of lastname
 
 
 class SourceMatch:
+    """Calculates the "certainty" part of the output score.
+
+    This score will be a letter ranging from A (best) to D (worst).
+    It is calculated by comparing several keys of the output to the
+    input.
+    The main entry point is the `_get_source()` method.
+    """
+
     def __init__(self):
         super().__init__()
         self.data = self._matched = None
@@ -174,6 +221,14 @@ class SourceMatch:
 
 
 class SourceScore:
+    """Calculates the "quality" part of the output score.
+
+    This score will be a numberer ranging from 1 (best) to 4 (worst).
+    It is calculated trough an algorithm using several key aspects of
+    the output.
+    The main entry point is the `_convert_score()` method.
+    """
+
     def __init__(self):
         super().__init__()
         self._year = datetime.now().year
@@ -204,7 +259,7 @@ class SourceScore:
         x = 100
 
         def date_score(result: Score, score: float) -> float:
-            return (1 - ((self._year - int(result.yearOfRecord)) / (x / 2))) * score
+            return (1 - ((self._year - int(result.year_of_record)) / (x / 2))) * score
 
         def source_score(result: Score, score: float) -> float:
             source = {
@@ -227,18 +282,18 @@ class SourceScore:
             return (1 - ((source[result.source] - 1) / (x * 2))) * score
 
         def death_score(result: Score, score: float) -> float:
-            _x = max((self._year - result.dateOfBirth) / 100, .5) if result.dateOfBirth else .5
+            _x = max((self._year - result.date_of_birth) / 100, .5) if result.date_of_birth else .5
             return score if result.deceased is None else _x * score
 
         def n_score(result: Score, score: float) -> float:
-            for var in [result.phoneNumberNumber, result.lastNameNumber]:
+            for var in [result.phonenumber_number, result.lastname_number]:
                 score *= (1 - ((var - 1) / x))
             return score
 
         def fuzzy_score(result: Score, score: float) -> float:
             """Uses name_input and name_output,
             taking into account the number of changes in name."""
-            n1, n2 = result.matchedNames
+            n1, n2 = result.matched_names
             if n1 and n2:
                 lev = levenshtein(n1, n2)
                 if lev < .4 and (n1 not in n2 or n2 not in n1):
@@ -247,7 +302,7 @@ class SourceScore:
             return score
 
         def missing_score(result: Score, score: float) -> float:
-            if result.dateOfBirth is None:
+            if result.date_of_birth is None:
                 score *= .9
             if result.gender is None:
                 score *= .9
@@ -264,10 +319,10 @@ class SourceScore:
             return score
 
         def data_score(result: Score, score: float) -> float:
-            return 0 if not result.matchedNames[0] else score
+            return 0 if not result.matched_names[0] else score
 
         def persons_score(result: Score, score: float) -> float:
-            return (1 - ((result.foundPersons - 1) / (x / 4))) * score
+            return (1 - ((result.found_persons - 1) / (x / 4))) * score
 
         def full_score(result: Score, score: int = 1) -> Union[float, None]:
             if result is None:
@@ -662,20 +717,15 @@ class PersonData(MatchQueries,
                 response = flatten(response)
                 for key in self._requested_fields:
                     if key not in self.result and response.get(key):
-                        # t = Timer()
                         if (key in ("phoneNumber_number", "phoneNumber_mobile")
                                 and not self._phone_valid(response[key])):
-                            # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key in ("address_moved", "birth_date", "death_date")
-                                and response[key] == "1900-01-01T00:00:00Z"):
-                            # debug("Validating key %s took %s", key, t.end())
+                                and response[key] == DEFAULT_DATE):
                             continue
                         if (key == "contact_email" and
                                 not self._email_valid(response[key])):
-                            # debug("Validating key %s took %s", key, t.end())
                             continue
-                        # debug("Validating key %s took %s", key, t.end())
                         self.result[key] = response[key]
                         if key in self._main_fields:
                             self._responses[key] = response
@@ -735,18 +785,18 @@ class PersonData(MatchQueries,
                 self.result["match_keys"].update(self._match_keys)
                 score = self._convert_score(Score(
                     source=response["source"],
-                    yearOfRecord=response["dateOfRecord"][:4],
+                    year_of_record=response["dateOfRecord"][:4],
                     deceased=response["death_year"],
-                    lastNameNumber=len(set(d["lastname"] for d in self._responses.values())),
+                    lastname_number=len(set(d["lastname"] for d in self._responses.values())),
                     gender=response["gender"],
-                    dateOfBirth=response["birth_year"],
-                    phoneNumberNumber=len(set(d[key] for d in self._responses.values()))
+                    date_of_birth=response["birth_year"],
+                    phonenumber_number=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
-                    moved=response["address_moved"] != "1900-01-01T00:00:00Z",
+                    moved=response["address_moved"] != DEFAULT_DATE,
                     mobile="mobile" in key or "lastname" in key,
-                    matchedNames=(self.data.lastname, response["lastname"]),
-                    foundPersons=len({response["id"] for response in self._responses.values()}),
+                    matched_names=(self.data.lastname, response["lastname"]),
+                    found_persons=len({response["id"] for response in self._responses.values()}),
                 ))
                 self.result[self._score_mapping.get(key, f"{key}_score")] = f"{source}{score}"
 
@@ -777,7 +827,18 @@ class PersonData(MatchQueries,
 class NamesData:
     def __init__(self):
         self.es = ESClient("dev_peter.names_data")
-        self.uncommon_initials = {"I", "K", "N", "O", "Q", "U", "V", "X", "Y", "Z"}
+        self.uncommon_initials = {
+            "I",
+            "K",
+            "N",
+            "O",
+            "Q",
+            "U",
+            "V",
+            "X",
+            "Y",
+            "Z",
+        }
         self.initial_freq = {
             "A": 0.10395171481742668,
             "B": 0.02646425590465198,
