@@ -696,10 +696,13 @@ class PersonData(MatchQueries,
     def _phone_valid(self, number: int):
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
-        phone = f"+31{number}"
-        valid = is_valid_number(phoneparse(phone, "NL"))
         if f"{number}".startswith(("8", "9")):
-            valid = False
+            return False
+        phone = f"+31{number}"
+        try:
+            valid = is_valid_number(phoneparse(phone, "NL"))
+        except NumberParseException:
+            return False
         if valid:
             with suppress(ElasticsearchException):
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
