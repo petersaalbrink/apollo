@@ -26,7 +26,9 @@ PD_INDEX = "cdqc.person_data_20190716"
 VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
-DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+DATE = "%Y-%m-%d"
+DATE_FORMAT = "%Y-%m-%dT00:00:00.000Z"
+DEFAULT_DATE = "1900-01-01T00:00:00.000Z"
 
 
 class BaseDataClass(MutableMapping):
@@ -138,9 +140,9 @@ class SourceMatch:
                 ) or False
 
     def _dob_match(self, response):
-        return (response.get("birth_date") != "1900-01-01T00:00:00Z"
+        return (response.get("birth_date") != DEFAULT_DATE
                 and self.data.date_of_birth
-                and response.get("birth_date") == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z")
+                and response.get("birth_date") == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
 
     def _set_match(self, response: dict):
@@ -694,10 +696,13 @@ class PersonData(MatchQueries,
     def _phone_valid(self, number: int):
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
-        phone = f"+31{number}"
-        valid = is_valid_number(phoneparse(phone, "NL"))
         if f"{number}".startswith(("8", "9")):
-            valid = False
+            return False
+        phone = f"+31{number}"
+        try:
+            valid = is_valid_number(phoneparse(phone, "NL"))
+        except NumberParseException:
+            return False
         if valid:
             with suppress(ElasticsearchException):
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
@@ -927,7 +932,7 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], "%Y-%m-%d")
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE)
             except ValueError:
                 try:
                     self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
