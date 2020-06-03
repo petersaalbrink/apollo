@@ -33,9 +33,9 @@ class ThreadSafeIterator:
 
 def threadsafe(f):
     """A decorator that takes a generator function and makes it thread-safe."""
-    def g(*args, **kwargs):
+    def tsf(*args, **kwargs):
         return ThreadSafeIterator(f(*args, **kwargs))
-    return g
+    return tsf
 
 
 @threadsafe
@@ -71,8 +71,7 @@ def get_session(
     status_forcelist=(500, 502, 504),
     session=None,
 ) -> Session:
-    # noinspection PyUnusedLocal
-    def hook(response, *args, **kwargs):
+    def hook(response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
     session = session or Session()
@@ -93,8 +92,7 @@ def get_session(
     return session
 
 
-common_session = get_session()
-get_kwargs = get_proxies()
+_module_data = {}
 
 
 def request(method: str,
@@ -108,9 +106,17 @@ def request(method: str,
     :param kwargs: Optional arguments that ``request`` takes.
     """
     if kwargs.pop("use_proxies", False):
-        kwargs.update(next(get_kwargs))
+        try:
+            kwargs.update(next(_module_data["get_kwargs"]))
+        except KeyError:
+            _module_data["get_kwargs"] = get_proxies()
+            kwargs.update(next(_module_data["get_kwargs"]))
     text_only = kwargs.pop("text_only", False)
-    response = common_session.request(method, url, **kwargs)
+    try:
+        response = _module_data["common_session"].request(method, url, **kwargs)
+    except KeyError:
+        _module_data["common_session"] = get_session()
+        response = _module_data["common_session"].request(method, url, **kwargs)
     if text_only:
         return response.json()
     return response
