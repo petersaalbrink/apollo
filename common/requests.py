@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
+from json import loads
 from pathlib import Path
 from threading import Lock
 from typing import (Any,
@@ -11,7 +12,6 @@ from typing import (Any,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
-from urllib3.exceptions import HTTPError
 from urllib3.util.retry import Retry
 
 
@@ -42,13 +42,10 @@ def threadsafe(f):
 def get_proxies() -> Iterator[dict]:
 
     # Get proxies
-    proxies = []
     file = Path(__file__).parent / "etc/proxies.txt"
     with open(file) as f:
-        for line in f:
-            proxy = line.strip().split(":")
-            proxy = f"http://{proxy[2]}:{proxy[3]}@{proxy[0]}:{proxy[1]}"
-            proxies.append({"https": proxy, "http": proxy})
+        proxies = [loads(line.strip().replace("'", '"'))
+                   for line in f]
 
     # Get user agents
     file = Path(__file__).parent / "etc/agents.txt"
