@@ -703,7 +703,7 @@ class PersonData(MatchQueries,
             valid = is_valid_number(phoneparse(phone, "NL"))
         except NumberParseException:
             return False
-        if valid:
+        if valid and not f"{number}".startswith("6"):
             with suppress(ElasticsearchException):
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
                 result = self._vn.find(query=query, first_only=True)
