@@ -676,7 +676,7 @@ class PersonData(MatchQueries,
                             # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key in ("address_moved", "birth_date", "death_date")
-                                and response[key] == "1900-01-01T00:00:00Z"):
+                                and response[key] == DEFAULT_DATE):
                             # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key == "contact_email" and
@@ -703,7 +703,7 @@ class PersonData(MatchQueries,
             valid = is_valid_number(phoneparse(phone, "NL"))
         except NumberParseException:
             return False
-        if valid:
+        if valid and not f"{number}".startswith("6"):
             with suppress(ElasticsearchException):
                 query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
                 result = self._vn.find(query=query, first_only=True)
@@ -754,7 +754,7 @@ class PersonData(MatchQueries,
                     phoneNumberNumber=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
-                    moved=response["address_moved"] != "1900-01-01T00:00:00Z",
+                    moved=response["address_moved"] != DEFAULT_DATE,
                     mobile="mobile" in key or "lastname" in key,
                     matchedNames=(self.data.lastname, response["lastname"]),
                     foundPersons=len({response["id"] for response in self._responses.values()}),
