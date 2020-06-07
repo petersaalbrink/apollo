@@ -718,7 +718,10 @@ class MySQLClient:
             raise
         field_type, field_len = field_type.strip(")").split("(")
 
-        if chunk is not None:
+        if field_type.upper() == "INT" and int(field_len) >= 10:
+            field_type = f"BIGINT({field_len})"
+
+        elif chunk is not None:
             position -= 1  # MySQL starts counting at 1, Python at 0
             if "," in field_len:
                 field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
@@ -731,6 +734,7 @@ class MySQLClient:
             else:
                 new_len = max(len(f"{row[position]}") for row in chunk)
                 field_type = f"{field_type}({new_len})"
+
         else:
             if "," in field_len:
                 field_len, decimal_part = field_len.split(",")
