@@ -9,9 +9,6 @@ from docx.shared import Inches
 from docx.shared import Cm
 from docx.enum.table import WD_ALIGN_VERTICAL
 import pandas as pd
-from pathlib import Path
-import pathlib
-# Added wright colum function
 
 
 class ReadmeBuilder:
