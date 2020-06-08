@@ -169,7 +169,7 @@ def dateformat(date: str) -> str:
     return fmt
 
 
-def expand(data: List[dict]) -> List[dict]:
+def expand(data: List[dict], sort: bool = True) -> List[dict]:
     """Standardize irregular data, e.g. for writing to CSV or SQL.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -184,12 +184,13 @@ def expand(data: List[dict]) -> List[dict]:
         for field in fieldnames:
             if field not in doc:
                 doc[field] = None
-    data = [dict(sorted(d.items())) for d in data]
+    if sort:
+        data = [dict(sorted(d.items())) for d in data]
     return data
 
 
 def drop_empty_columns(data: List[dict]) -> List[dict]:
-    """Remove keys that have no True-y value for all entries.
+    """Remove keys that have no value for all entries.
 
     This function accepts a list of dictionaries, and transforms it so
     that keys that have a value that evaluates to False for all dicts
@@ -202,7 +203,7 @@ def drop_empty_columns(data: List[dict]) -> List[dict]:
     fieldnames = set(data[0].keys())
     for doc in data:
         for field in tuple(fieldnames):
-            if doc[field]:
+            if not isna(doc[field]):
                 fieldnames.remove(field)
         if not fieldnames:
             break
