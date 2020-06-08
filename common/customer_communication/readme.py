@@ -96,7 +96,7 @@ class ReadmeBuilder:
 #Title               
         h = document.add_heading('Readme', 1).style = document.styles['Header1']
 
-        p = document.add_paragraph(f'Bestandslevering van {len(self.data)} records voor "{self.client_name}"')
+        p = document.add_paragraph(f'Bestandslevering van {len(self.data)} rijen voor "{self.client_name}"')
         p.style = document.styles['Text']
         p.paragraph_format.space_before = Pt(10)
         p.paragraph_format.space_after = Pt(20)
@@ -105,6 +105,31 @@ class ReadmeBuilder:
 
 
         
+
+        p.style = document.styles['Text']
+
+        h = document.add_heading('Algemene Informatie')
+        h.style = document.styles['Header3']
+        h.paragraph_format.space_after = Pt(10)
+                
+
+
+#GETTING STARTED        
+        h = document.add_heading('INTRODUCTIE')
+        h.style = document.styles['Header2']
+        h.paragraph_format.space_before = Pt(10)
+        h.paragraph_format.space_after = Pt(4)
+        p = document.add_paragraph(
+'''Als begeleiding bij de voor u geprepareerde dataset ontvangt u een automatisch gegenereerd readme bestand en codeboek.
+
+Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
+
+Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
+
+Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
+        p.style = document.styles['Text']
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
+        
 #MATRIXIAN              
         h = document.add_heading('MATRIXIAN GROUP').style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(4)
@@ -112,14 +137,9 @@ class ReadmeBuilder:
 f'''www.matrixiangroup.com
 info@matrixiangroup.com
 +31 (0)20 244 0145
-Klantnaam: {self.client_name}
-
-''')
-        p.style = document.styles['Text']
-
-        h = document.add_heading('Algemene Informatie')
-        h.style = document.styles['Header3']
-        h.paragraph_format.space_after = Pt(10)
+Klantnaam: {self.client_name}''') 
+        
+        
         
 #BESTANDEN
         h = document.add_heading('BESTANDEN')
@@ -136,38 +156,21 @@ Klantnaam: {self.client_name}
         if self.product_doc:
             p = document.add_paragraph(f'- {self.product_doc} ', style='List Bullet')
             p.style = document.styles['Text']
-        
-
-
-#GETTING STARTED        
-        h = document.add_heading('GETTING STARTED')
-        h.style = document.styles['Header2']
-        h.paragraph_format.space_before = Pt(10)
-        h.paragraph_format.space_after = Pt(4)
-        p = document.add_paragraph(
-'''Naast de data, ontvangt u van ons ook een readme bestand en een codeboek. Deze twee automatisch gegenereerde bestanden dienen als ondersteuning van het databestand. In het readme-bestand staat een beknopte omschrijving van de dataset, de meegeleverde bestanden en onze contact informatie. Voor een uitgebreide verklaring van de dataset leveren wij ook een codeboek mee.In het codeboek kunt u het data profiel en de verbose omschrijving van elke kolom inzien. 
-Voor verdere vragen en onduidelijkheden, kunt u natuurlijk altijd met ons contact opnemen.
-
-Matrixian Group''')
-        p.style = document.styles['Text']
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
-        
-        
 
 #EENHEDEN        
         h = document.add_heading('EENHEDEN')
         h.style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(6)
         p = document.add_paragraph(
-'''Ruimtelijk: in metrische meters
-Datums: YYYY-MM-DD
+'''Ruimtelijk: metrisch, meters
+Datums: JJJJ-MM-DD
 Boolean: 1 = True, 0 = False
 Valuta: in euro's (EUR/€)''')
         p.style = document.styles['Text']
         
         
         document.add_page_break()
-        h = document.add_heading('Data Overzicht', 1)
+        h = document.add_heading('Dataoverzicht', 1)
         h.style = document.styles['Header3']
         h.paragraph_format.space_after = Pt(10)
         
@@ -179,7 +182,7 @@ Valuta: in euro's (EUR/€)''')
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
 f'''{self.objective}
-Product: ''')
+ ''')
         p.style = document.styles['Text']
         
 
