@@ -763,7 +763,6 @@ class PersonData(MatchQueries,
 
     def _finalize(self):
         # Get match keys
-        self._set_match(self.result)
         self.result["match_keys"].update(self._match_keys)
 
         # Fix dates
