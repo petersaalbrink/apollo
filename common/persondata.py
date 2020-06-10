@@ -341,7 +341,7 @@ class MatchQueries:
         if (self.data.postalCode
                 and self.data.lastname and self.data.initials):
             yield "initial", self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                 {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
@@ -352,10 +352,10 @@ class MatchQueries:
                                            month=self.data.date_of_birth.day,
                                            day=self.data.date_of_birth.month)
                     dob = {"bool": {"minimum_should_match": 1, "should": [
-                        {"match": {"birth.date": self.data.date_of_birth}},
-                        {"match": {"birth.date": swapped_dob}}]}}
+                        {"term": {"birth.date": self.data.date_of_birth}},
+                        {"term": {"birth.date": swapped_dob}}]}}
                 else:
-                    dob = {"match": {"birth.date": self.data.date_of_birth}}
+                    dob = {"term": {"birth.date": self.data.date_of_birth}}
                 yield "dob", self._base_query(must=[
                     dob,
                     {"match": {"lastname": {
@@ -363,20 +363,20 @@ class MatchQueries:
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.number:
                 yield "number", self._base_query(must=[
-                    {"match": {"phoneNumber.number": self.data.number}},
+                    {"term": {"phoneNumber.number": self.data.number}},
                     {"match": {"lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.mobile:
                 yield "mobile", self._base_query(must=[
-                    {"match": {"phoneNumber.mobile": self.data.mobile}},
+                    {"term": {"phoneNumber.mobile": self.data.mobile}},
                     {"match": {"lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.lastname):
             query = self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}}])
             if self.data.initials:
@@ -384,7 +384,7 @@ class MatchQueries:
                     "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
             yield "name", query
             query = self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"wildcard": {
                     "lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
             if self.data.initials:
@@ -393,8 +393,8 @@ class MatchQueries:
             yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber):
-            must = [{"match": {"address.current.postalCode": self.data.postalCode}},
-                    {"match": {"address.current.houseNumber": self.data.houseNumber}}]
+            must = [{"term": {"address.current.postalCode.keyword": self.data.postalCode}},
+                    {"term": {"address.current.houseNumber": self.data.houseNumber}}]
             if self.data.houseNumberExt:
                 must.append({"wildcard": {
                     "address.current.houseNumberExt":
@@ -429,7 +429,7 @@ class MatchQueries:
             "query": {
                 "bool": {
                     "should": [
-                        {"match": {"id": _id}}
+                        {"term": {"id": _id}}
                         for _id in ordered_set(responses)],
                     "minimum_should_match": 1
                 }
@@ -640,8 +640,8 @@ class PersonData(MatchQueries,
             response = self._es.find({
                 "query": {
                     "bool": {
-                        "must": [
-                            {"match": {key.replace("_", "."): self.result[key]}}]
+                        "must":
+                            {"match": {key.replace("_", "."): self.result[key]}}
                     }},
                 "sort": {"dateOfRecord": "desc"}
             }, size=1)
@@ -702,7 +702,7 @@ class PersonData(MatchQueries,
             return False
         if valid and not f"{number}".startswith("6"):
             with suppress(ElasticsearchException):
-                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
+                query = {"query": {"bool": {"must": {"term": {"phoneNumber": number}}}}}
                 result = self._vn.find(query=query, first_only=True)
                 if result:
                     return result["valid"]
@@ -817,7 +817,7 @@ class NamesData:
 
     def affixes(self) -> set:
         return {doc["_source"]["affix"] for doc in self.es.findall(
-            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
+            {"query": {"bool": {"must": {"term": {"data": "affixes"}}}}}
         )}
 
     def first_names(self) -> dict:
@@ -829,13 +829,13 @@ class NamesData:
         The output can be used to fill missing gender data."""
         return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
                 self.es.findall(
-                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
+                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
 
     def titles(self) -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
         return set(doc["_source"]["title"] for doc in  # noqa
                    self.es.findall(
-                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
+                       {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
 
     def surnames(self) -> dict:
         """Imports a database with surnames frequencies and returns common surnames as a list.
@@ -845,7 +845,7 @@ class NamesData:
 
         The output can be used for data and matching quality calculations."""
 
-        names_data = self.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
+        names_data = self.es.findall({"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})
         # Return only names that occur commonly
         names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
                       for doc in names_data}
