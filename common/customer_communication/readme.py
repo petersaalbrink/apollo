@@ -1,5 +1,5 @@
 import os
-from pathlib import Path 
+from pathlib import Path
 from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt
 from docx.shared import RGBColor
@@ -26,7 +26,7 @@ class ReadmeBuilder:
             self.version = input('Version:')
         else:
             self.client_name = coded_input['client_name']
-            
+
             self.objective = coded_input['objective']
             self.version = coded_input['version']
 
@@ -36,61 +36,52 @@ class ReadmeBuilder:
         self.num_records = self.data.shape[0]
         self.num_var = self.data.shape[1]
         self.empty_cells = self.data.isnull().sum().sum()
-        self.perc_empty_cells =  (self.empty_cells/(self.num_records * self.num_var) * 100).round(2)      
+        self.perc_empty_cells = (self.empty_cells / (self.num_records * self.num_var) * 100).round(2)
         self.date_fields = len((self.data.select_dtypes(include='datetime')).columns)
         self.bool_fields = (self.data.apply(lambda x: x.nunique()) == 2).sum()
-        self.text_fields = len((self.data.select_dtypes(include='object')).columns)        
+        self.text_fields = len((self.data.select_dtypes(include='object')).columns)
         self.numeric_fields = len((self.data.select_dtypes(include='number')).columns)
-        self.file_size = (self.data.memory_usage(deep=True).sum() / 1024**2).round(2)
+        self.file_size = (self.data.memory_usage(deep=True).sum() / 1024 ** 2).round(2)
         self.cols = self.data.columns.to_list()
-        
+
         self.logo = os.path.join(Path(__file__).parent / "Matrixian_logo.png")
 
-
-
-    
-
-        
         document = Document()
-    
-    
-#STYLES
+
+        # STYLES
         styles = document.styles
-        style = styles.add_style('Text', WD_STYLE_TYPE.PARAGRAPH) #Tahoma is the name I set because that's the font I'm gonna use
+        style = styles.add_style('Text', WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(10)
-        
+
         styles = document.styles
-        style = styles.add_style('Header2', WD_STYLE_TYPE.PARAGRAPH) #Tahoma is the name I set because that's the font I'm gonna use
+        style = styles.add_style('Header2', WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(14)
         style.font.color.rgb = RGBColor(3, 121, 96)
-#         style.font.color.rgb = RGBColor(14, 92, 89)
+        # style.font.color.rgb = RGBColor(14, 92, 89)
         style.font.bold = True
-        
-        style = styles.add_style('Header1', WD_STYLE_TYPE.PARAGRAPH) #Tahoma is the name I set because that's the font I'm gonna use
+
+        style = styles.add_style('Header1', WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(40)
         style.font.color.rgb = RGBColor(3, 121, 96)
         style.font.bold = True
-        
-        
-        style = styles.add_style('Header3', WD_STYLE_TYPE.PARAGRAPH) #Tahoma is the name I set because that's the font I'm gonna use
+
+        style = styles.add_style('Header3', WD_STYLE_TYPE.PARAGRAPH)
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(22)
         style.font.color.rgb = RGBColor(3, 121, 96)
         style.font.bold = True
-        
 
-#HEADER
-
+        # HEADER
         header = document.sections[0].header
         p = header.add_paragraph('')
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         r = p.add_run()
         r.add_picture(fr'{self.logo}', width=Inches(1.5))
-        
-#Title               
+
+        # Title
         h = document.add_heading('Readme', 1).style = document.styles['Header1']
 
         p = document.add_paragraph(f'Bestandslevering van {len(self.data)} rijen voor "{self.client_name}"')
@@ -98,47 +89,38 @@ class ReadmeBuilder:
         p.paragraph_format.space_before = Pt(10)
         p.paragraph_format.space_after = Pt(20)
 
-        
-
-
-        
-
         p.style = document.styles['Text']
 
         h = document.add_heading('Algemene Informatie')
         h.style = document.styles['Header3']
         h.paragraph_format.space_after = Pt(10)
-                
 
-
-#GETTING STARTED        
+        # GETTING STARTED
         h = document.add_heading('INTRODUCTIE')
         h.style = document.styles['Header2']
         h.paragraph_format.space_before = Pt(10)
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
-'''Als begeleiding bij de voor u geprepareerde dataset ontvangt u een automatisch gegenereerd readme bestand en codeboek.
-
-Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
-
-Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
-
-Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
+            '''Als begeleiding bij de voor u geprepareerde dataset ontvangt u een automatisch gegenereerd readme bestand en codeboek.
+            
+            Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
+            
+            Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
+            
+            Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
         p.style = document.styles['Text']
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
-        
-#MATRIXIAN              
+
+        # MATRIXIAN
         h = document.add_heading('MATRIXIAN GROUP').style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
-f'''www.matrixiangroup.com
+            f'''www.matrixiangroup.com
 info@matrixiangroup.com
 +31 (0)20 244 0145
-Klantnaam: {self.client_name}''') 
-        
-        
-        
-#BESTANDEN
+Klantnaam: {self.client_name}''')
+
+        # BESTANDEN
         h = document.add_heading('BESTANDEN')
         h.style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(4)
@@ -154,58 +136,54 @@ Klantnaam: {self.client_name}''')
             p = document.add_paragraph(f'- {self.product_doc} ', style='List Bullet')
             p.style = document.styles['Text']
 
-#EENHEDEN        
+        # EENHEDEN
         h = document.add_heading('EENHEDEN')
         h.style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(6)
         p = document.add_paragraph(
-'''Ruimtelijk: metrisch, meters
-Datums: JJJJ-MM-DD
-Boolean: 1 = True, 0 = False
-Valuta: in euro's (EUR/€)''')
+            '''Ruimtelijk: metrisch, meters
+            Datums: JJJJ-MM-DD
+            Boolean: 1 = True, 0 = False
+            Valuta: in euro's (EUR/€)''')
         p.style = document.styles['Text']
-        
-        
+
         document.add_page_break()
         h = document.add_heading('Dataoverzicht', 1)
         h.style = document.styles['Header3']
         h.paragraph_format.space_after = Pt(10)
-        
-        
-        
-#OMSCRHIJVING
+
+        # OMSCRHIJVING
         h = document.add_heading('OMSCHRIJVING')
         h.style = document.styles['Header2']
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
-f'''{self.objective}
+            f'''{self.objective}
  ''')
         p.style = document.styles['Text']
-        
 
-        
-#DATA OVERZICHT
-    
+        # DATA OVERZICHT
+
         h = document.add_heading('DATA TYPE')
         h.paragraph_format.space_before = Pt(20)
         h.paragraph_format.space_after = Pt(4)
         h.style = document.styles['Header2']
-        data = {'Omschrijving':  ['Aantal kolommen', 'Aantal rijen','Lege velden','Numerieke kolommen','Tekstuele kolommen','Datum kolommen','Boolean kolommen'],
-        'Waarde': [self.num_var, self.num_records, f'{self.empty_cells} ({self.perc_empty_cells})%' ,self.numeric_fields, self.text_fields, self.date_fields,self.bool_fields]}
+        data = {'Omschrijving': ['Aantal kolommen', 'Aantal rijen', 'Lege velden', 'Numerieke kolommen',
+                                 'Tekstuele kolommen', 'Datum kolommen', 'Boolean kolommen'],
+                'Waarde': [self.num_var, self.num_records, f'{self.empty_cells} ({self.perc_empty_cells})%',
+                           self.numeric_fields, self.text_fields, self.date_fields, self.bool_fields]}
 
-        table1 = pd.DataFrame (data, columns = ['Omschrijving','Waarde'])
-        table = document.add_table(table1.shape[0]+1, table1.shape[1])
+        table1 = pd.DataFrame(data, columns=['Omschrijving', 'Waarde'])
+        table = document.add_table(table1.shape[0] + 1, table1.shape[1])
         table.style = 'TableGrid'
         # add the header rows.
         for j in range(table1.shape[-1]):
-            table.cell(0,j).text = table1.columns[j]
+            table.cell(0, j).text = table1.columns[j]
 
         # add the rest of the data frame
         for i in range(table1.shape[0]):
             for j in range(table1.shape[-1]):
-                table.cell(i+1,j).text = str(table1.values[i,j])
-       
-                
+                table.cell(i + 1, j).text = str(table1.values[i, j])
+
         for row in table.rows:
             for cell in row.cells:
                 paragraphs = cell.paragraphs
@@ -216,25 +194,22 @@ f'''{self.objective}
                 row.height = Cm(0.6)
                 cell.width = Cm(1)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-    
-        
-#DATA VELDEN        
+
+        # DATA VELDEN
         h = document.add_heading('DATA VELDEN')
         h.style = document.styles['Header2']
         h.paragraph_format.space_before = Pt(20)
         h.paragraph_format.space_after = Pt(4)
 
-        table = document.add_table(rows=0,cols=1)
+        table = document.add_table(rows=0, cols=1)
         table.style = 'Table Grid'
         table.allow_autofit = False
 
-        for col in (self.cols):
+        for col in self.cols:
             cells = table.add_row().cells
             cells[0].text = col
             cell.width = Inches(0.5)
 
-
-            
         for row in table.rows:
             for cell in row.cells:
                 paragraphs = cell.paragraphs
@@ -247,19 +222,15 @@ f'''{self.objective}
                 cell.width = Cm(5)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-
         document.save(f'{self.readme}.docx')
-        
-        
-        
+
     def write_file(self):
-                
+
         self.folder.write(f'{self.readme}.docx')
         if self.to_zip:
             os.remove(f'{self.readme}.docx')
 
 
-           
 def readme_exe(df, folder, fname, codebook, documentation, coded_input=False, to_zip=True):
     rm_m = ReadmeBuilder(df, folder, fname, codebook, documentation, coded_input, to_zip)
     rm_m.write_file()
