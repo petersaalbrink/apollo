@@ -313,10 +313,10 @@ class ESClient(Elasticsearch):
 
         field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
-        chunk_size = kwargs.pop("chunk_size", 10_000)
+        as_chunks = kwargs.pop("as_chunks", False)
+        chunk_size = kwargs.pop("chunk_size", 10_000 if as_chunks else 1)
         if chunk_size > 10_000:
             chunk_size = 10_000
-        as_chunks = kwargs.pop("as_chunks", False)
         use_tqdm = kwargs.pop("use_tqdm", False)
         if not index:
             index = self.es_index
