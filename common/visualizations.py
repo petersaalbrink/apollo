@@ -94,7 +94,7 @@ class PlotMx:
         plt.plot(x, y, color=color)
         return self
 
-    def bar(self, x=None, y=None, names=[], horizontal=False, width=0.25, color=None):
+    def bar(self, x=None, y=None, names=None, horizontal=False, width=0.25, color=None):
         """Make a barplot.
 
         x           ->  Insert your x-axis data
@@ -106,15 +106,17 @@ class PlotMx:
                         By default these are matrixian purple and matrixian green
         """
 
-        # To-do: add annotation
+        # TODO: add annotation
 
         if not color:
             color = [mx_colors['purple'], mx_colors['green']]
-        if type(color) != list:
+        if not isinstance(color, list):
             color = [color]
         if len(color) == 1:
             color = [color] * 2
 
+        if not names:
+            names = []
         x_pos = [i for i, _ in enumerate(names)]
         if y:
             if horizontal:
