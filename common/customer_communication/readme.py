@@ -221,13 +221,13 @@ Klantnaam: {self.client_name}''')
                 cell.width = Cm(5)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-        document.save(f'{self.readme}.docx')
+        document.save(self.readme)
 
     def write_file(self):
 
-        self.folder.write(f'{self.readme}.docx')
+        self.folder.write(self.readme)
         if self.to_zip:
-            os.remove(f'{self.readme}.docx')
+            os.remove(self.readme)
 
 
 def readme_exe(df, folder, fname, codebook, documentation, coded_input=False, to_zip=True):
