@@ -6,6 +6,8 @@ from .connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
+PARSER = f"http://{LIVE}:5000/parser"
+VALIDATION = f"http://{LIVE}:5000/validation"
 
 
 def parse(address: str, country: str = "NL"):
@@ -21,7 +23,7 @@ def parse(address: str, country: str = "NL"):
     }
     try:
         response = get(
-            f"http://{LIVE}:5000/parser",
+            PARSER,
             params=params,
             text_only=True,
         )
@@ -62,7 +64,7 @@ def validate(params: Union[dict, str]) -> dict:
 
     try:
         response = get(
-            f"http://{LIVE}:5000/validation",
+            VALIDATION,
             params=params,
             text_only=True
         )["objects"][0]
