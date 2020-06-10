@@ -1,3 +1,35 @@
+"""Module for making Matrixian style visualizations.
+
+Example 1::
+    y = np.random.randn(100)
+    x = np.linspace(1,100,len(y))
+
+    mx_plot = Plot_mx()
+    mx_plot.makefig(figsize = (8,8), grid = True, xlabel = 'ex-axis', ylabel = 'why-axis', title = 'title')
+    mx_plot.spaghetti(np.linspace(1,100,len(y)) , y)
+    mx_plot.spaghetti(np.linspace(1,10,len(y)) , y, color = 'green')
+    plt.show()
+
+Example 2::
+    n = 100000
+    x = np.random.randn(n)
+    y = x + np.random.randn(n)
+
+    mx_plot = Plot_mx()
+    mx_plot.makefig(figsize = (8,8), grid = True, xlabel = 'ex-axis', ylabel = 'why-axis', title = 'title')
+    mx_plot.histogram(TwoD = True,
+                      x = x,
+                      y = y)
+
+Example 3::
+    mx_plot = Plot_mx()
+    mx_plot.makefig()
+    mx_plot.bar(names = ['Nuclear', 'Hydro', 'Gas', 'Oil', 'Coal', 'Biofuel'],
+                x = [5, 6, 15, 22, 24, 8],
+                y = [1,2,3,4,5,6],
+                horizontal=True)
+"""
+
 from typing import List
 import numpy as np
 from matplotlib import rc
@@ -12,15 +44,14 @@ mx_colors = {'dark_green': "#0E5C59", 'green': "#05AB89", 'light_green': "#9AD2B
 mx_cmap = ListedColormap(sns.color_palette(mx_colors.values()).as_hex())
 plt.style.use('seaborn')
 
-class Plot_mx:
 
+class PlotMx:
+    """Make plots, Matrixian style!"""
     def __init__(self):
-        pass
+        self.size = None
 
     def makefig(self, xlabel='No label', ylabel='No label', dpi=50, figsize=(8, 8), grid=True, size=16, title=''):
-        """
-        With the makefig function you can pre-set the figure with its figure size, labels, grid, sizes, and title name.
-        """
+        """Pre-set the figure with its figure size, labels, grid, sizes, and title name."""
 
         self.size = size
         plt.figure(figsize=figsize, dpi=dpi)
@@ -34,8 +65,10 @@ class Plot_mx:
         return self
 
     def histogram(self, x=None, y=None, TwoD=None, bins=20, color=mx_colors['dark_green']):
-        """
-        With the histogram function you can call a histogram after calling the makefig function.
+        """Make a histogram.
+
+        Make sure to call the makefig method first.
+
         x       ->  Insert your x-axis data
         y       ->  Insert your y-axis data
         TwoD    ->  You can choose for a TwoD plot where you can make a histogram density.
@@ -52,8 +85,8 @@ class Plot_mx:
         return self
 
     def spaghetti(self, x=None, y=None, color=mx_colors['dark_green']):
-        """
-        With this spaghetti function you can call a line plot
+        """Make a line plot.
+
         x       ->  Insert your x-axis data
         y       ->  Insert your y-axis data
         color   ->  color can be changed but is by default matrixian dark green
@@ -61,20 +94,22 @@ class Plot_mx:
         plt.plot(x, y, color=color)
         return self
 
-    def bar(self, x=None, y=None, names=[], horizontal=False, width=0.25,
-            color=[mx_colors['purple'], mx_colors['green']]):
-        """
-        With the bar function you can call a barplot
+    def bar(self, x=None, y=None, names=[], horizontal=False, width=0.25, color=None):
+        """Make a barplot.
+
         x           ->  Insert your x-axis data
         y           ->  Insert your y-axis data
         names       ->  Names of the bars
         horizontal  ->  True or False gives you the option to do a horizontal or vertical bar plot
         width       ->  You can change the width of the bars. This is by default 0.25
-        color       ->  You can choose the colors in list (one or two colors) or as string (one color). By default these are matrixian purple and matrixian green
+        color       ->  You can choose the colors in list (one or two colors) or as string (one color).
+                        By default these are matrixian purple and matrixian green
         """
 
         # To-do: add annotation
 
+        if not color:
+            color = [mx_colors['purple'], mx_colors['green']]
         if type(color) != list:
             color = [color]
         if len(color) == 1:
@@ -104,45 +139,6 @@ class Plot_mx:
                 plt.xticks(x_pos, names, size=self.size)
                 plt.yticks(size=self.size)
         return self
-
-    def timeseries(self):
-        pass
-
-
-""""
-Example 1:
-y = np.random.randn(100)
-x = np.linspace(1,100,len(y))
-
-mx_plot = Plot_mx()
-mx_plot.makefig(figsize = (8,8), grid = True, xlabel = 'ex-axis', ylabel = 'why-axis', title = 'title')
-mx_plot.spaghetti(np.linspace(1,100,len(y)) , y)
-mx_plot.spaghetti(np.linspace(1,10,len(y)) , y, color = 'green')
-plt.show()
-"""
-
-"""
-Example 2:
-n = 100000
-x = np.random.randn(n)
-y = x + np.random.randn(n)
-
-mx_plot = Plot_mx()
-mx_plot.makefig(figsize = (8,8), grid = True, xlabel = 'ex-axis', ylabel = 'why-axis', title = 'title')
-mx_plot.histogram(TwoD = True, 
-                  x = x, 
-                  y = y)
-"""
-
-"""
-Example 3:
-mx_plot = Plot_mx()
-mx_plot.makefig()
-mx_plot.bar(names = ['Nuclear', 'Hydro', 'Gas', 'Oil', 'Coal', 'Biofuel'], 
-            x = [5, 6, 15, 22, 24, 8],
-            y = [1,2,3,4,5,6], 
-            horizontal=True)
-"""
 
 
 class DistributionPlot:
