@@ -408,7 +408,7 @@ class MatchQueries:
     def _base_query(self, **kwargs):
         return self._extend_query({
             "query": {"bool": kwargs},
-            "sort": [{"dateOfRecord": "desc"}]})
+            "sort": {"dateOfRecord": "desc"}})
 
     def _extend_query(self, query):
         if self._use_sources:
@@ -434,9 +434,7 @@ class MatchQueries:
                     "minimum_should_match": 1
                 }
             },
-            "sort": [
-                {"dateOfRecord": "desc"}
-            ]
+            "sort": {"dateOfRecord": "desc"},
         }
 
 
@@ -645,9 +643,8 @@ class PersonData(MatchQueries,
                         "must": [
                             {"match": {key.replace("_", "."): self.result[key]}}]
                     }},
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]}, size=1)
+                "sort": {"dateOfRecord": "desc"}
+            }, size=1)
             if response:
                 if self._responses[key]["_id"] != response["_id"]:
                     occurring = True
