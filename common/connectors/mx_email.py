@@ -1,3 +1,4 @@
+"""Send emails using Matrixian dev account."""
 from email.encoders import encode_base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -12,13 +13,20 @@ from zipfile import ZipFile, ZIP_LZMA
 
 
 class EmailClient:
-    """Client for sending plain text emails and attachments."""
+    """Client for sending plain text emails and attachments.
+
+    The main method for sending emails is EmailClient.send_email().
+    """
 
     def __init__(self,
                  smtp_server: str = "smtp.gmail.com:587",
                  login: str = None,
                  password: str = None):
-        """Client for sending plain text emails and attachments."""
+        """Client for sending plain text emails and attachments.
+
+        If you don't provide a login or a password, these are read from
+        environment variables MX_MAIL_USR and MX_MAIL_PWD.
+        """
         self._server = None
         self._smtp_server = smtp_server
         if not login or not password:
@@ -28,17 +36,19 @@ class EmailClient:
             self._login, self._password = login, password
 
     def _connect(self):
+        """Connect to the SMTP server."""
         self._server = SMTP(self._smtp_server)
         self._server.starttls()
         self._server.login(self._login, self._password)
 
     def connection(self):
+        """Test the connection to the SMTP server."""
         self._connect()
         self._server.quit()
         return True
 
     def send_email(self,
-                   to_address: Union[str, list] = "psaalbrink@matrixiangroup.com",
+                   to_address: Union[str, List[str]] = "psaalbrink@matrixiangroup.com",
                    subject: str = None,
                    message: Union[str, Exception] = None,
                    from_address: str = None,
@@ -46,8 +56,12 @@ class EmailClient:
                    error_message: bool = False,
                    ):
         """Send an email to an email address (str) or a list of addresses.
+
         To attach a file, include the Path to the file
-        or just the filename (str) if it's in the current working directory."""
+        or just the filename (str) if it's in the current working directory.
+
+        To send a Python traceback (in an except-clause), set error_message to True.
+        """
 
         if not from_address:
             from_address = self._login
