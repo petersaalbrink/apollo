@@ -186,11 +186,7 @@ Valuta: in euro's (EUR/€)''')
 
         for row in table.rows:
             for cell in row.cells:
-                paragraphs = cell.paragraphs
-                paragraph = paragraphs[0]
-                run_obj = paragraph.runs
-                run = run_obj[0]
-                paragraph.style = document.styles['Normal Text']
+                cell.paragraphs[0].style = document.styles['Normal Text']
                 row.height = Cm(0.6)
                 cell.width = Cm(1)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -208,17 +204,13 @@ Valuta: in euro's (EUR/€)''')
         for col in self.cols:
             cells = table.add_row().cells
             cells[0].text = col
-            cell.width = Inches(0.5)
+            cells[0].width = Inches(0.5)
 
         for row in table.rows:
+            row.height = Cm(0.6)
+            row.width = Cm(5)
             for cell in row.cells:
-                paragraphs = cell.paragraphs
-                paragraph = paragraphs[0]
-                run_obj = paragraph.runs
-                run = run_obj[0]
-                paragraph.style = document.styles['Normal Text']
-                row.height = Cm(0.6)
-                row.width = Cm(5)
+                cell.paragraphs[0].style = document.styles['Normal Text']
                 cell.width = Cm(5)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
