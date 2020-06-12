@@ -246,6 +246,14 @@ class ESClient(Elasticsearch):
         :return: Sequence[MutableMapping[Any, Any]]
         """
 
+        hits_only = kwargs.pop("hits_only", True)
+        source_only = kwargs.pop("source_only", False)
+        with_id = kwargs.pop("with_id", False)
+        if source_only:
+            hits_only = True
+        if with_id:
+            hits_only, source_only = True, False
+
         scroll = kwargs.pop("scroll", "10m")
 
         if not index:
@@ -264,7 +272,16 @@ class ESClient(Elasticsearch):
             sid = data["_scroll_id"]
             scroll_size = len(data["hits"]["hits"])
 
-        return results
+        if hits_only:
+            data = results
+        else:
+            data["hits"]["hits"] = results
+        if with_id:
+            data = [{**doc, **doc.pop("_source")} for doc in data]
+        if source_only:
+            data = [doc["_source"] for doc in data]
+
+        return data
 
     def scrollall(self,
                   query: Query = None,
@@ -284,14 +301,22 @@ class ESClient(Elasticsearch):
             for doc in data:
                 pass
         """
+        hits_only = kwargs.pop("hits_only", True)
+        if not hits_only:
+            raise ESClientError("Use `.findall()` instead.")
+        source_only = kwargs.pop("source_only", False)
+        with_id = kwargs.pop("with_id", False)
+        if source_only:
+            hits_only = True
+        if with_id:
+            hits_only, source_only = True, False
+
         field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
-        chunk_size = kwargs.pop("chunk_size", 10_000)
+        as_chunks = kwargs.pop("as_chunks", False)
+        chunk_size = kwargs.pop("chunk_size", 10_000 if as_chunks else 1)
         if chunk_size > 10_000:
             chunk_size = 10_000
-        as_chunks = kwargs.pop("as_chunks", False)
-        hits_only = kwargs.pop("hits_only", True)
-        source_only = kwargs.pop("source_only", False)
         use_tqdm = kwargs.pop("use_tqdm", False)
         if not index:
             index = self.es_index
@@ -301,6 +326,8 @@ class ESClient(Elasticsearch):
         def _return(_data):
             if hits_only:
                 _data = _data["hits"]["hits"]
+            if with_id:
+                _data = ({**d, **d.pop("_source")} for d in _data)
             if source_only:
                 _data = (d["_source"] for d in _data)
             return _data

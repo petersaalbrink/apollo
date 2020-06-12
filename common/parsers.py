@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, MutableMapping, Optional, Union
+from typing import Any, List, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import isna
@@ -167,3 +167,48 @@ def dateformat(date: str) -> str:
     else:
         fmt = f"%d{div}%m{div}%Y"
     return fmt
+
+
+def expand(data: List[dict], sort: bool = True) -> List[dict]:
+    """Standardize irregular data, e.g. for writing to CSV or SQL.
+
+    This function accepts a list of dictionaries, and transforms it so
+    that all dictionaries have the same keys and in the same order.
+
+    Example::
+        from common.parsers import expand
+        data = expand(data)
+    """
+    fieldnames = {field for doc in data for field in doc}
+    for doc in data:
+        for field in fieldnames:
+            if field not in doc:
+                doc[field] = None
+    if sort:
+        data = [dict(sorted(d.items())) for d in data]
+    return data
+
+
+def drop_empty_columns(data: List[dict]) -> List[dict]:
+    """Remove keys that have no value for all entries.
+
+    This function accepts a list of dictionaries, and transforms it so
+    that keys that have a value that evaluates to False for all dicts
+    will be removed from the list.
+
+    Example::
+        from common.parsers import drop_empty_columns
+        data = drop_empty_columns(data)
+    """
+    fieldnames = set(data[0].keys())
+    for doc in data:
+        for field in tuple(fieldnames):
+            if not isna(doc[field]):
+                fieldnames.remove(field)
+        if not fieldnames:
+            break
+    else:
+        for doc in data:
+            for field in fieldnames:
+                del doc[field]
+    return data

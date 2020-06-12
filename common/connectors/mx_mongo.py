@@ -105,8 +105,8 @@ class MongoDB(MongoClient):
         """Return the last document in a collection.
 
         Usage:
-            from common.classes import MongoDB
-            db = MongoDB("dev_peter.person_data_20190716")
+            from common import MongoDB
+            db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
         """

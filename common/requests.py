@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
+from json import loads
 from pathlib import Path
 from threading import Lock
 from typing import (Any,
@@ -11,7 +12,6 @@ from typing import (Any,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
-from urllib3.exceptions import HTTPError
 from urllib3.util.retry import Retry
 
 
@@ -33,22 +33,19 @@ class ThreadSafeIterator:
 
 def threadsafe(f):
     """A decorator that takes a generator function and makes it thread-safe."""
-    def g(*args, **kwargs):
+    def tsf(*args, **kwargs):
         return ThreadSafeIterator(f(*args, **kwargs))
-    return g
+    return tsf
 
 
 @threadsafe
 def get_proxies() -> Iterator[dict]:
 
     # Get proxies
-    proxies = []
     file = Path(__file__).parent / "etc/proxies.txt"
     with open(file) as f:
-        for line in f:
-            proxy = line.strip().split(":")
-            proxy = f"http://{proxy[2]}:{proxy[3]}@{proxy[0]}:{proxy[1]}"
-            proxies.append({"https": proxy, "http": proxy})
+        proxies = [loads(line.strip().replace("'", '"'))
+                   for line in f]
 
     # Get user agents
     file = Path(__file__).parent / "etc/agents.txt"
@@ -74,8 +71,7 @@ def get_session(
     status_forcelist=(500, 502, 504),
     session=None,
 ) -> Session:
-    # noinspection PyUnusedLocal
-    def hook(response, *args, **kwargs):
+    def hook(response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
     session = session or Session()
@@ -96,8 +92,7 @@ def get_session(
     return session
 
 
-common_session = get_session()
-get_kwargs = get_proxies()
+_module_data = {}
 
 
 def request(method: str,
@@ -111,16 +106,20 @@ def request(method: str,
     :param kwargs: Optional arguments that ``request`` takes.
     """
     if kwargs.pop("use_proxies", False):
-        kwargs.update(next(get_kwargs))
-    text_only = kwargs.pop("text_only", False)
-    while True:
         try:
-            response = common_session.request(method, url, **kwargs)
-            if text_only:
-                return response.json()
-            return response
-        except (IOError, OSError, HTTPError):
-            pass
+            kwargs.update(next(_module_data["get_kwargs"]))
+        except KeyError:
+            _module_data["get_kwargs"] = get_proxies()
+            kwargs.update(next(_module_data["get_kwargs"]))
+    text_only = kwargs.pop("text_only", False)
+    try:
+        response = _module_data["common_session"].request(method, url, **kwargs)
+    except KeyError:
+        _module_data["common_session"] = get_session()
+        response = _module_data["common_session"].request(method, url, **kwargs)
+    if text_only:
+        return response.json()
+    return response
 
 
 def get(url: str,

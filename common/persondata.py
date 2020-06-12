@@ -26,7 +26,9 @@ PD_INDEX = "cdqc.person_data_20190716"
 VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
-DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+DATE = "%Y-%m-%d"
+DATE_FORMAT = "%Y-%m-%dT00:00:00.000Z"
+DEFAULT_DATE = "1900-01-01T00:00:00.000Z"
 
 
 class BaseDataClass(MutableMapping):
@@ -138,9 +140,9 @@ class SourceMatch:
                 ) or False
 
     def _dob_match(self, response):
-        return (response.get("birth_date") != "1900-01-01T00:00:00Z"
+        return (response.get("birth_date") != DEFAULT_DATE
                 and self.data.date_of_birth
-                and response.get("birth_date") == self.data.date_of_birth.strftime("%Y-%m-%dT00:00:00Z")
+                and response.get("birth_date") == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
 
     def _set_match(self, response: dict):
@@ -339,7 +341,7 @@ class MatchQueries:
         if (self.data.postalCode
                 and self.data.lastname and self.data.initials):
             yield "initial", self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                 {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
@@ -350,10 +352,10 @@ class MatchQueries:
                                            month=self.data.date_of_birth.day,
                                            day=self.data.date_of_birth.month)
                     dob = {"bool": {"minimum_should_match": 1, "should": [
-                        {"match": {"birth.date": self.data.date_of_birth}},
-                        {"match": {"birth.date": swapped_dob}}]}}
+                        {"term": {"birth.date": self.data.date_of_birth}},
+                        {"term": {"birth.date": swapped_dob}}]}}
                 else:
-                    dob = {"match": {"birth.date": self.data.date_of_birth}}
+                    dob = {"term": {"birth.date": self.data.date_of_birth}}
                 yield "dob", self._base_query(must=[
                     dob,
                     {"match": {"lastname": {
@@ -361,20 +363,20 @@ class MatchQueries:
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.number:
                 yield "number", self._base_query(must=[
-                    {"match": {"phoneNumber.number": self.data.number}},
+                    {"term": {"phoneNumber.number": self.data.number}},
                     {"match": {"lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.mobile:
                 yield "mobile", self._base_query(must=[
-                    {"match": {"phoneNumber.mobile": self.data.mobile}},
+                    {"term": {"phoneNumber.mobile": self.data.mobile}},
                     {"match": {"lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.lastname):
             query = self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"match": {"lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}}])
             if self.data.initials:
@@ -382,7 +384,7 @@ class MatchQueries:
                     "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
             yield "name", query
             query = self._base_query(must=[
-                {"match": {"address.current.postalCode": self.data.postalCode}},
+                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
                 {"wildcard": {
                     "lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
             if self.data.initials:
@@ -391,8 +393,8 @@ class MatchQueries:
             yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber):
-            must = [{"match": {"address.current.postalCode": self.data.postalCode}},
-                    {"match": {"address.current.houseNumber": self.data.houseNumber}}]
+            must = [{"term": {"address.current.postalCode.keyword": self.data.postalCode}},
+                    {"term": {"address.current.houseNumber": self.data.houseNumber}}]
             if self.data.houseNumberExt:
                 must.append({"wildcard": {
                     "address.current.houseNumberExt":
@@ -406,7 +408,7 @@ class MatchQueries:
     def _base_query(self, **kwargs):
         return self._extend_query({
             "query": {"bool": kwargs},
-            "sort": [{"dateOfRecord": "desc"}]})
+            "sort": {"dateOfRecord": "desc"}})
 
     def _extend_query(self, query):
         if self._use_sources:
@@ -427,14 +429,12 @@ class MatchQueries:
             "query": {
                 "bool": {
                     "should": [
-                        {"match": {"id": _id}}
+                        {"term": {"id": _id}}
                         for _id in ordered_set(responses)],
                     "minimum_should_match": 1
                 }
             },
-            "sort": [
-                {"dateOfRecord": "desc"}
-            ]
+            "sort": {"dateOfRecord": "desc"},
         }
 
 
@@ -640,12 +640,11 @@ class PersonData(MatchQueries,
             response = self._es.find({
                 "query": {
                     "bool": {
-                        "must": [
-                            {"match": {key.replace("_", "."): self.result[key]}}]
+                        "must":
+                            {"match": {key.replace("_", "."): self.result[key]}}
                     }},
-                "sort": [
-                    {"dateOfRecord": "desc"}
-                ]}, size=1)
+                "sort": {"dateOfRecord": "desc"}
+            }, size=1)
             if response:
                 if self._responses[key]["_id"] != response["_id"]:
                     occurring = True
@@ -674,7 +673,7 @@ class PersonData(MatchQueries,
                             # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key in ("address_moved", "birth_date", "death_date")
-                                and response[key] == "1900-01-01T00:00:00Z"):
+                                and response[key] == DEFAULT_DATE):
                             # debug("Validating key %s took %s", key, t.end())
                             continue
                         if (key == "contact_email" and
@@ -694,13 +693,16 @@ class PersonData(MatchQueries,
     def _phone_valid(self, number: int):
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
-        phone = f"+31{number}"
-        valid = is_valid_number(phoneparse(phone, "NL"))
         if f"{number}".startswith(("8", "9")):
-            valid = False
-        if valid:
+            return False
+        phone = f"+31{number}"
+        try:
+            valid = is_valid_number(phoneparse(phone, "NL"))
+        except NumberParseException:
+            return False
+        if valid and not f"{number}".startswith("6"):
             with suppress(ElasticsearchException):
-                query = {"query": {"bool": {"must": [{"match": {"phoneNumber": number}}]}}}
+                query = {"query": {"bool": {"must": {"term": {"phoneNumber": number}}}}}
                 result = self._vn.find(query=query, first_only=True)
                 if result:
                     return result["valid"]
@@ -749,7 +751,7 @@ class PersonData(MatchQueries,
                     phoneNumberNumber=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
-                    moved=response["address_moved"] != "1900-01-01T00:00:00Z",
+                    moved=response["address_moved"] != DEFAULT_DATE,
                     mobile="mobile" in key or "lastname" in key,
                     matchedNames=(self.data.lastname, response["lastname"]),
                     foundPersons=len({response["id"] for response in self._responses.values()}),
@@ -758,7 +760,6 @@ class PersonData(MatchQueries,
 
     def _finalize(self):
         # Get match keys
-        self._set_match(self.result)
         self.result["match_keys"].update(self._match_keys)
 
         # Fix dates
@@ -816,7 +817,7 @@ class NamesData:
 
     def affixes(self) -> set:
         return {doc["_source"]["affix"] for doc in self.es.findall(
-            {"query": {"bool": {"must": {"match": {"data": "affixes"}}}}}
+            {"query": {"bool": {"must": {"term": {"data": "affixes"}}}}}
         )}
 
     def first_names(self) -> dict:
@@ -828,13 +829,13 @@ class NamesData:
         The output can be used to fill missing gender data."""
         return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
                 self.es.findall(
-                    {"query": {"bool": {"must": {"match": {"data": "firstnames"}}}}})}
+                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
 
     def titles(self) -> set:
         """Imports a file with titles and returns them as a set. The output can be used to clean last name data."""
         return set(doc["_source"]["title"] for doc in  # noqa
                    self.es.findall(
-                       {"query": {"bool": {"must": {"match": {"data": "titles"}}}}}))
+                       {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
 
     def surnames(self) -> dict:
         """Imports a database with surnames frequencies and returns common surnames as a list.
@@ -844,7 +845,7 @@ class NamesData:
 
         The output can be used for data and matching quality calculations."""
 
-        names_data = self.es.findall({"query": {"bool": {"must": {"match": {"data": "surnames"}}}}})
+        names_data = self.es.findall({"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})
         # Return only names that occur commonly
         names_data = {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
                       for doc in names_data}
@@ -927,7 +928,7 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], "%Y-%m-%d")
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE)
             except ValueError:
                 try:
                     self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
