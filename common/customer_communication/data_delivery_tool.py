@@ -19,7 +19,9 @@ def data_delivery_tool(
 ):
     """Create Customer Communication files.
 
-    example coded_input::
+    example::
+        from common.customer_communication import data_delivery_tool as ddt
+
         coded_input = {
             'client_name':'Your Client',
             'objective':'This is the goal of the project',
@@ -27,6 +29,8 @@ def data_delivery_tool(
             'product':'CDQC',
             'folder_name':'Test'
         }
+
+        ddt("some_file.csv", coded_input=coded_input, documentation=True)
     """
     if filename[-3:] == 'csv':
         df = pd.read_csv(filename, encoding=encoding, low_memory=False)

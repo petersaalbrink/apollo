@@ -59,7 +59,6 @@ class ReadmeBuilder:
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(14)
         style.font.color.rgb = RGBColor(3, 121, 96)
-        # style.font.color.rgb = RGBColor(14, 92, 89)
         style.font.bold = True
 
         style = styles.add_style('Header 1', WD_STYLE_TYPE.PARAGRAPH)
@@ -82,7 +81,8 @@ class ReadmeBuilder:
         r.add_picture(fr'{self.logo}', width=Inches(1.5))
 
         # Title
-        h = document.add_heading('Readme', 1).style = document.styles['Header 1']
+        h = document.add_heading('Readme', 1)
+        h.style = document.styles['Header 1']
 
         p = document.add_paragraph(f'Bestandslevering van {len(self.data)} rijen voor "{self.client_name}"')
         p.style = document.styles['Normal Text']

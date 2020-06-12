@@ -21,18 +21,16 @@ class DataProfileBuilder:
         self.data_qlt_df = self.desc = self.mem_used_dtypes = self.data_desc_df = None
         self.columns = list(self.data.columns)
 
-        
-
     def memory_calc(self):
+        """Used for calculating the memory usages of a single column, currently not shown in output."""
         self.mem_used_dtypes = pd.DataFrame(
             self.data.memory_usage(deep=True) / 1024 ** 2
         )
         self.mem_used_dtypes.rename(columns={0: "memory"}, inplace=True)
         self.mem_used_dtypes.drop("Index", axis=0, inplace=True)
 
-        #Used for calculating the memorie usages of a single collumn, currently not shown in output.
-        
     def construct_dq_df(self):
+        # Create empty DF for metadata
         self.data_qlt_df = pd.DataFrame(
             index=np.arange(0, self.no_of_rows),
             columns=(
@@ -44,9 +42,6 @@ class DataProfileBuilder:
                 "column_dtype",
             ),
         )
-        
-        #Create empty DF for metadata
-        
 
         # Add rows to the data_qlt_df dataframe
         for ind, cols in enumerate(self.data.columns):
@@ -132,11 +127,6 @@ class DataProfileBuilder:
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
-        
-
-        
-        
-        
 
     def map_desc(self):
         descriptions = []
@@ -162,8 +152,7 @@ class DataProfileBuilder:
         self.data_qlt_df["description"] = descriptions
 
     def reorder_df(self):
-
-        # Reorder the Data Profile Dataframe columns
+        """Reorder the Data Profile Dataframe columns"""
         self.data_desc_df = self.data_qlt_df[["column_name", "description"]]
         self.data_qlt_df = self.data_qlt_df[
             [
@@ -206,26 +195,22 @@ class GraphBuilder:
         for f in Path(self.folder_name).glob("*"):
             f.unlink()
         os.removedirs(self.folder_name)
-        
-        
+
     def exclude_cols(self):
         sql = MySQLClient("client_work_google.field_descriptions")
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
-        
+
         self.exclude = (
-        self.desc[self.desc["field"] == "huisnummer"]["mapping"].to_list()[0].split(", ")
-        + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"].to_list()[0].split(", ")
-        + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"].to_list()[0].split(", ")
-        + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"].to_list()[0].split(", ")
-        + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
-        + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
+                self.desc[self.desc["field"] == "huisnummer"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
         )
         print(self.exclude)
-
-
-        
 
     def bool_graph(self):
         for col_name in self.bool_cols:
@@ -297,7 +282,7 @@ class GraphBuilder:
     def obj_graph(self):
         for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
             print(col_name)
-            
+
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
                 fig.subplots_adjust(top=0.8)
@@ -438,5 +423,5 @@ def codebook_exe(data, folder, to_zip=True):
     cb_b.save_xlsx()
 
     gr_b.del_folder()
-    
+
     return 'Codebook.xlsx'

@@ -7,19 +7,18 @@ from pathlib import Path
 class Document:
 
     def __init__(self, folder, coded_input=False, to_zip=True):
-        # self.ref = {'CDQC': {'id': 1287422041, 'title': 'Documentatie_CDQC.pdf'}}
+        self.ref = {}
         if not coded_input:
             self.input = input(f'Select product {list(self.ref.keys())}')
         else:
             self.input = coded_input['product']
-        
+
         self.headers = {'Content-Type': 'application/json', }
         self.auth = ('llaagwater@matrixiangroup.com', 'dIsF8eXhVMUfa1ceeybp1BD2')
-        self.link = None
-        self.file = None
+        self.link = self.file = self.product = None
         self.folder = folder
         self.to_zip = to_zip
-    
+
     def get_ref(self):
         with open(Path(__file__).parent / "product_documentation.txt") as file:
             self.ref = json.loads(file.read())
