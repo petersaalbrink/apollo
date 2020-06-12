@@ -9,7 +9,7 @@ from common import MySQLClient
 
 def clean_c(c):
     for char in (" ", "-", "_", ".", ",", "!", "@", "#"):
-        c = c.replace(char, "")
+        c = c.replace(char, "").lower()
     return c
 
 
@@ -28,8 +28,9 @@ class DataProfileBuilder:
         self.mem_used_dtypes.rename(columns={0: "memory"}, inplace=True)
         self.mem_used_dtypes.drop("Index", axis=0, inplace=True)
 
+        #Used for calculating the memorie usages of a single collumn, currently not shown in output.
+        
     def construct_dq_df(self):
-
         self.data_qlt_df = pd.DataFrame(
             index=np.arange(0, self.no_of_rows),
             columns=(
@@ -41,6 +42,9 @@ class DataProfileBuilder:
                 "column_dtype",
             ),
         )
+        
+        #Create empty DF for metadata
+        
 
         # Add rows to the data_qlt_df dataframe
         for ind, cols in enumerate(self.data.columns):
@@ -131,7 +135,9 @@ class DataProfileBuilder:
         descriptions = []
 
         for c in self.columns:
-            if "Unnamed" not in c:
+            if "std_" in c or "out_" in c or "res_" in c:
+                descriptions.append("Consult document")
+            elif "Unnamed" not in c:
                 cc = clean_c(c)
                 mask = (
                     self.desc["mapping"]
@@ -333,7 +339,7 @@ class CodebookBuilder:
 
     def distribution_page(self):
         cell_format1 = self.workbook.add_format(
-            {"bold": True, "font_color": "green", "font_size": 15, "shrink": True}
+            {"bold": True, "font_color": "037960", "font_size": 15, "shrink": True}
         )
         cell_format2 = self.workbook.add_format({"bottom": True})
 
@@ -399,3 +405,5 @@ def codebook_exe(data, folder, to_zip=True):
     cb_b.save_xlsx()
 
     gr_b.del_folder()
+    
+    return 'Codebook.xlsx'
