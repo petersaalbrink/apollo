@@ -1,3 +1,4 @@
+"""Connect to Matrixian's Elasticsearch databases."""
 from contextlib import suppress
 from logging import debug
 from typing import (Any,
@@ -34,13 +35,54 @@ Result = Union[
 
 
 class ESClient(Elasticsearch):
-    """Client for ElasticSearch"""
+    """Client for Matrixian's Elasticsearch databases.
+
+    ESClient inherits from the officiel Elasticsearch client. This means
+    that all its methods can be used. In addition, some added methods
+    will help you in writing better scripts. These include:
+
+    `find`: Perform an ElasticSearch query, and return the hits.
+    Like `search`, but better.
+
+    `geo_distance`: Find all real estate objects for a specific location.
+
+    `findall`: Used for Elasticsearch queries that return more than
+    10k documents. Returns all results at once.
+
+    `scrollall`: Used for Elasticsearch queries that return more than
+    10k documents. Returns an iterator of documents.
+
+    `query`: Perform a simple ElasticSearch query, and return the hits.
+
+    `total`: The total number of documents within the index.
+
+    `count`: Count the number of documents a query will return.
+
+    `distinct_count`: Provide a count of distinct values in a certain field.
+
+    `distinct_values`: Return distinct values in a certain field.
+    """
 
     def __init__(self,
                  es_index: str = None,
                  **kwargs
                  ):
-        """Client for ElasticSearch"""
+        """Client for Matrixian's Elasticsearch databases.
+
+        Provide an index (database.collection), and based on the name
+        the correct server is selected. Hosts are configured using
+        environment variables in the format "MX_ELASTIC_*_IP".
+
+        Authentication happens with the "MX_ELASTIC_USR" and
+        "MX_ELASTIC_PWD" credentials.
+
+        Possible keyword arguments include:
+        `local`: boolean, if True selects localhost (default False)
+        `host`: str, only possible value currently "localhost"
+        `dev`: boolean, only if no :param es_index: is provided (default True)
+        `size`: int, default results size (default 20, max 10000)
+        `retry_on_timeout`: boolean (default True)
+        """
         config = {"timeout": 300, "retry_on_timeout": True}
         if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
             self._host, self._port = "localhost", "9200"
@@ -87,7 +129,7 @@ class ESClient(Elasticsearch):
              query: Query = None,
              *args, **kwargs
              ) -> Result:
-        """Perform an ElasticSearch query, and return the hits.
+        """Perform an ElasticSearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
         Accepts a single query (dict) or multiple (List[dict]).
@@ -223,8 +265,9 @@ class ESClient(Elasticsearch):
                 index: str = None,
                 **kwargs,
                 ) -> Result:
-        """Used for elastic search queries that are larger than the max
-        window size of 10,000. Returns all results at once.
+        """Used for Elasticsearch queries that return more than 10k documents.
+        Returns all results at once.
+
         :param query: MutableMapping[str, Any]
         :param index: str
         :param kwargs: scroll: str
@@ -256,8 +299,8 @@ class ESClient(Elasticsearch):
                   index: str = None,
                   **kwargs,
                   ) -> Iterator[Result]:
-        """Used for elastic search queries that are larger than the max
-        window size of 10,000. Returns an iterator of documents.
+        """Used for Elasticsearch queries that return more than 10k documents.
+        Returns an iterator of documents.
 
         The default behavior of iterating through documents can be changed
         into iterating through chunks of documents by setting `as_chunks=True`.
@@ -374,6 +417,7 @@ class ESClient(Elasticsearch):
 
     @property
     def total(self) -> int:
+        """The total number of documents within the index."""
         self._check_index_exists()
         return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
 
@@ -384,6 +428,7 @@ class ESClient(Elasticsearch):
               find: MutableMapping[str, MutableMapping] = None,
               **kwargs
               ) -> int:
+        """Count the number of documents a query will return."""
         if index is None:
             index = self.es_index
         if find:
@@ -441,7 +486,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                         field: str,
                         find: MutableMapping[str, MutableMapping] = None
                         ) -> List[Any]:
-        """Provide a count of distinct values in a certain field.
+        """Return distinct values in a certain field.
 
         See:
 https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
