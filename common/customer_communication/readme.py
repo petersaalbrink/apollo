@@ -59,7 +59,6 @@ class ReadmeBuilder:
         style.font.name = 'Iconic Medium'
         style.font.size = Pt(14)
         style.font.color.rgb = RGBColor(3, 121, 96)
-        # style.font.color.rgb = RGBColor(14, 92, 89)
         style.font.bold = True
 
         style = styles.add_style('Header 1', WD_STYLE_TYPE.PARAGRAPH)
@@ -82,7 +81,8 @@ class ReadmeBuilder:
         r.add_picture(fr'{self.logo}', width=Inches(1.5))
 
         # Title
-        h = document.add_heading('Readme', 1).style = document.styles['Header 1']
+        h = document.add_heading('Readme', 1)
+        h.style = document.styles['Header 1']
 
         p = document.add_paragraph(f'Bestandslevering van {len(self.data)} rijen voor "{self.client_name}"')
         p.style = document.styles['Normal Text']
@@ -102,12 +102,12 @@ class ReadmeBuilder:
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
             '''Als begeleiding bij de voor u geprepareerde dataset ontvangt u een automatisch gegenereerd readme bestand en codeboek.
-            
-            Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
-            
-            Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
-            
-            Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
+
+Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
+
+Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
+
+Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
         p.style = document.styles['Normal Text']
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
 
@@ -119,6 +119,7 @@ class ReadmeBuilder:
 info@matrixiangroup.com
 +31 (0)20 244 0145
 Klantnaam: {self.client_name}''')
+        p.style = document.styles['Normal Text']
 
         # BESTANDEN
         h = document.add_heading('BESTANDEN')
@@ -142,9 +143,9 @@ Klantnaam: {self.client_name}''')
         h.paragraph_format.space_after = Pt(6)
         p = document.add_paragraph(
             '''Ruimtelijk: metrisch, meters
-            Datums: JJJJ-MM-DD
-            Boolean: 1 = True, 0 = False
-            Valuta: in euro's (EUR/€)''')
+Datums: JJJJ-MM-DD
+Boolean: 1 = True, 0 = False
+Valuta: in euro's (EUR/€)''')
         p.style = document.styles['Normal Text']
 
         document.add_page_break()
@@ -158,7 +159,7 @@ Klantnaam: {self.client_name}''')
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
             f'''{self.objective}
- ''')
+''')
         p.style = document.styles['Normal Text']
 
         # DATA OVERZICHT
@@ -185,11 +186,7 @@ Klantnaam: {self.client_name}''')
 
         for row in table.rows:
             for cell in row.cells:
-                paragraphs = cell.paragraphs
-                paragraph = paragraphs[0]
-                run_obj = paragraph.runs
-                run = run_obj[0]
-                paragraph.style = document.styles['Normal Text']
+                cell.paragraphs[0].style = document.styles['Normal Text']
                 row.height = Cm(0.6)
                 cell.width = Cm(1)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -207,17 +204,13 @@ Klantnaam: {self.client_name}''')
         for col in self.cols:
             cells = table.add_row().cells
             cells[0].text = col
-            cell.width = Inches(0.5)
+            cells[0].width = Inches(0.5)
 
         for row in table.rows:
+            row.height = Cm(0.6)
+            row.width = Cm(5)
             for cell in row.cells:
-                paragraphs = cell.paragraphs
-                paragraph = paragraphs[0]
-                run_obj = paragraph.runs
-                run = run_obj[0]
-                paragraph.style = document.styles['Normal Text']
-                row.height = Cm(0.6)
-                row.width = Cm(5)
+                cell.paragraphs[0].style = document.styles['Normal Text']
                 cell.width = Cm(5)
                 cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
