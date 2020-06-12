@@ -1,5 +1,5 @@
 import os
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_LZMA
 import pandas as pd
 
 # modules
@@ -15,11 +15,13 @@ def data_delivery_tool(
         documentation: bool = False,
         to_zip: bool = True,
         coded_input: dict = None,
-        encoding : str = None,
+        encoding: str = None,
 ):
     """Create Customer Communication files.
 
-    example coded_input::
+    example::
+        from common.customer_communication import data_delivery_tool as ddt
+
         coded_input = {
             'client_name':'Your Client',
             'objective':'This is the goal of the project',
@@ -27,14 +29,13 @@ def data_delivery_tool(
             'product':'CDQC',
             'folder_name':'Test'
         }
+
+        ddt("some_file.csv", coded_input=coded_input, documentation=True)
     """
     if filename[-3:] == 'csv':
-        if encoding:
-            df = pd.read_csv(filename, encoding = encoding)
-        else:
-            df = pd.read_csv(filename)
+        df = pd.read_csv(filename, encoding=encoding, low_memory=False)
     else:
-        df = pd.read_excel(filename)
+        df = pd.read_excel(filename, low_memory=False)
 
     # folder
     if not coded_input:
@@ -42,7 +43,7 @@ def data_delivery_tool(
     else:
         folder_name = coded_input['folder_name']
 
-    with ZipFile(f'{folder_name}.zip', 'w') as folder:
+    with ZipFile(f'{folder_name}.zip', 'w', compression=ZIP_LZMA) as folder:
 
         # run
         if codebook:
