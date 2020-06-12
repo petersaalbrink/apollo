@@ -210,13 +210,6 @@ class GraphBuilder:
                 + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
                 + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
         )
-<<<<<<< HEAD
-
-
-
-        
-=======
->>>>>>> 6c70d91fb4fed7b25f592df7b31ac4558f8d5a23
 
     def bool_graph(self):
         for col_name in self.bool_cols:
@@ -286,10 +279,6 @@ class GraphBuilder:
 
     def obj_graph(self):
         for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
-<<<<<<< HEAD
-            
-=======
->>>>>>> 6c70d91fb4fed7b25f592df7b31ac4558f8d5a23
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
                 fig.subplots_adjust(top=0.8)
