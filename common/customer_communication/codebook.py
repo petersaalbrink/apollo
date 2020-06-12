@@ -21,6 +21,8 @@ class DataProfileBuilder:
         self.data_qlt_df = self.desc = self.mem_used_dtypes = self.data_desc_df = None
         self.columns = list(self.data.columns)
 
+        
+
     def memory_calc(self):
         self.mem_used_dtypes = pd.DataFrame(
             self.data.memory_usage(deep=True) / 1024 ** 2
@@ -130,6 +132,11 @@ class DataProfileBuilder:
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
+        
+
+        
+        
+        
 
     def map_desc(self):
         descriptions = []
@@ -187,6 +194,8 @@ class GraphBuilder:
         self.colors = ["#037960", "#05AB89", "#01DEB1", "#7FAE92", "#9AD2B1", "#B4FFD2"]
         self.kleur = sns.color_palette(self.colors)
         self.folder_name = "plots_temp"
+        self.exclude = None
+        self.desc = None
         sns.set_style("whitegrid")
         sns.set_context("talk")
 
@@ -197,6 +206,26 @@ class GraphBuilder:
         for f in Path(self.folder_name).glob("*"):
             f.unlink()
         os.removedirs(self.folder_name)
+        
+        
+    def exclude_cols(self):
+        sql = MySQLClient("client_work_google.field_descriptions")
+        q = """SELECT *
+        FROM client_work_google.field_descriptions"""
+        self.desc = pd.read_sql(q, sql.connect(conn=True))
+        
+        self.exclude = (
+        self.desc[self.desc["field"] == "huisnummer"]["mapping"].to_list()[0].split(", ")
+        + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"].to_list()[0].split(", ")
+        + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"].to_list()[0].split(", ")
+        + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"].to_list()[0].split(", ")
+        + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
+        + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
+        )
+        print(self.exclude)
+
+
+        
 
     def bool_graph(self):
         for col_name in self.bool_cols:
@@ -235,7 +264,8 @@ class GraphBuilder:
                 plt.close("all")
 
     def num_graph(self):
-        for col_name in set(self.num_cols) - set(self.bool_cols):
+        for col_name in (set(self.num_cols) - set(self.bool_cols) - set(self.exclude)):
+            print(col_name)
             if len(self.data[col_name].value_counts()) > 0:
                 data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
@@ -265,7 +295,9 @@ class GraphBuilder:
                 plt.close("all")
 
     def obj_graph(self):
-        for col_name in set(self.obj_cols) - set(self.bool_cols):
+        for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
+            print(col_name)
+            
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
                 fig.subplots_adjust(top=0.8)
@@ -392,6 +424,7 @@ def codebook_exe(data, folder, to_zip=True):
 
     gr_b = GraphBuilder(data)
     gr_b.make_folder()
+    gr_b.exclude_cols()
     gr_b.bool_graph()
     gr_b.num_graph()
     gr_b.obj_graph()

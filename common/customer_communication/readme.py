@@ -102,12 +102,12 @@ class ReadmeBuilder:
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
             '''Als begeleiding bij de voor u geprepareerde dataset ontvangt u een automatisch gegenereerd readme bestand en codeboek.
-            
-            Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
-            
-            Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
-            
-            Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
+
+Dit readme document bevat een opsomming van de uitgeleverde bestanden, een beknopte omschrijving van de dataset en onze contact informatie
+
+Het codeboek bevat een meer gedetailleerde beschrijving van de dataset. Hierin is het data profiel en de verbose omschrijving van elke kolom in te zien.
+
+Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
         p.style = document.styles['Normal Text']
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
 
@@ -118,7 +118,8 @@ class ReadmeBuilder:
             f'''www.matrixiangroup.com
 info@matrixiangroup.com
 +31 (0)20 244 0145
-Klantnaam: {self.client_name}''')
+Klantnaam: {self.client_name}''') 
+        p.style = document.styles['Text']
 
         # BESTANDEN
         h = document.add_heading('BESTANDEN')
@@ -142,9 +143,9 @@ Klantnaam: {self.client_name}''')
         h.paragraph_format.space_after = Pt(6)
         p = document.add_paragraph(
             '''Ruimtelijk: metrisch, meters
-            Datums: JJJJ-MM-DD
-            Boolean: 1 = True, 0 = False
-            Valuta: in euro's (EUR/€)''')
+Datums: JJJJ-MM-DD
+Boolean: 1 = True, 0 = False
+Valuta: in euro's (EUR/€)''')
         p.style = document.styles['Normal Text']
 
         document.add_page_break()
@@ -158,7 +159,7 @@ Klantnaam: {self.client_name}''')
         h.paragraph_format.space_after = Pt(4)
         p = document.add_paragraph(
             f'''{self.objective}
- ''')
+''')
         p.style = document.styles['Normal Text']
 
         # DATA OVERZICHT
