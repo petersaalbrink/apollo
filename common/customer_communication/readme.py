@@ -118,8 +118,8 @@ Voor vragen kunt u natuurlijk altijd contact met ons opnemen.''')
             f'''www.matrixiangroup.com
 info@matrixiangroup.com
 +31 (0)20 244 0145
-Klantnaam: {self.client_name}''') 
-        p.style = document.styles['Text']
+Klantnaam: {self.client_name}''')
+        p.style = document.styles['Normal Text']
 
         # BESTANDEN
         h = document.add_heading('BESTANDEN')
