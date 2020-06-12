@@ -92,7 +92,7 @@ class EmailClient:
 
         if attachment_path:
             if not isinstance(attachment_path, list):
-                filename = f"{Path(attachment_path).stem}.zip"
+                filename = f"{Path(attachment_path).resolve().stem}.zip"
                 attachment_path = [attachment_path]
             elif subject:
                 filename = f"{subject}.zip"
