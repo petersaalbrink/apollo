@@ -222,7 +222,7 @@ class GraphBuilder:
         + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
         + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
         )
-        print(self.exclude)
+
 
 
         
@@ -265,7 +265,6 @@ class GraphBuilder:
 
     def num_graph(self):
         for col_name in (set(self.num_cols) - set(self.bool_cols) - set(self.exclude)):
-            print(col_name)
             if len(self.data[col_name].value_counts()) > 0:
                 data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
@@ -296,7 +295,6 @@ class GraphBuilder:
 
     def obj_graph(self):
         for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
-            print(col_name)
             
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
