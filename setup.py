@@ -1,6 +1,6 @@
 from setuptools import setup
 
-exec(open("common/_version.py").read())
+exec(open("common/etc/_version.py").read())
 
 with open("README.md") as f:
     long_description = f.read()
