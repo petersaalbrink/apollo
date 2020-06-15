@@ -1,3 +1,4 @@
+"""Connect to Matrixian's MySQL database."""
 from ast import literal_eval
 from contextlib import suppress
 from datetime import datetime, timedelta, date
@@ -164,11 +165,8 @@ class MySQLClient:
         from ..env import getenv, commondir
         from ..secrets import get_secret
         usr, pwd = get_secret("MX_MYSQL_DEV")
-        if database:
-            if "." in database:
-                database, table = database.split(".")
-        else:
-            database = "mx_traineeship_peter"
+        if database and "." in database:
+            database, table = database.split(".")
         if table and "." in table:
             database, table = database.split(".")
         self.database = database

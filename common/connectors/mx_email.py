@@ -11,6 +11,8 @@ from traceback import format_exc
 from typing import List, Union
 from zipfile import ZipFile, ZIP_LZMA
 
+DEFAULT_EMAIL = "datateam@matrixiangroup.com"
+
 
 class EmailClient:
     """Client for sending plain text emails and attachments.
@@ -48,7 +50,7 @@ class EmailClient:
         return True
 
     def send_email(self,
-                   to_address: Union[str, List[str]] = "psaalbrink@matrixiangroup.com",
+                   to_address: Union[str, List[str]] = DEFAULT_EMAIL,
                    subject: str = None,
                    message: Union[str, Exception] = None,
                    from_address: str = None,

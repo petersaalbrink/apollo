@@ -77,6 +77,8 @@ _bar_format = "{l_bar: >16}{bar:20}{r_bar}"
 tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
 trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
+DEFAULT_EMAIL = "datateam@matrixiangroup.com"
+
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
@@ -327,7 +329,7 @@ def send_email(function: Callable = None, *,
         another_func()
     """
     if not to_address:
-        to_address = "datateam@matrixiangroup.com"
+        to_address = DEFAULT_EMAIL
 
     def decorate(f: Callable = None):
         @wraps(f)

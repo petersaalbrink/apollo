@@ -33,9 +33,13 @@ Result = Union[
     NestedDict,
 ]
 
+
+# Constants
+RE_OLD = "dev_realestate.realestate"
+RE_NEW = "dev_realestate.real_estate"
 REAL_ESTATES = {
-    "dev_realestate.realestate",
-    "dev_realestate.real_estate",
+    RE_OLD,
+    RE_NEW,
 }
 
 
@@ -105,10 +109,8 @@ class ESClient(Elasticsearch):
             else:
                 if kwargs.pop("dev", True):
                     envv = "MX_ELASTIC_DEV_IP"
-                    es_index = "dev_peter.person_data_20190716"
                 else:
                     envv = "MX_ELASTIC_PROD_IP"
-                    es_index = "production_realestate.realestate"
             self._host = getenv(envv)
             if not self._host:
                 from ..env import envfile
@@ -237,7 +239,7 @@ class ESClient(Elasticsearch):
             raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
-            if self.es_index == "dev_realestate.realestate":
+            if self.es_index == RE_OLD:
                 query = {"query": {"bool": {"must": {
                     "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
                 result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
@@ -253,7 +255,7 @@ class ESClient(Elasticsearch):
         except AttributeError:
             location = dict(zip(("latitude", "longitude"), location))
 
-        if self.es_index == "dev_realestate.realestate":
+        if self.es_index == RE_OLD:
             query = {
                 "query": {
                     "bool": {
