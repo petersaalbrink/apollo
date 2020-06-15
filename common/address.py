@@ -1,12 +1,13 @@
-from logging import debug
 from typing import Union
-from urllib3.exceptions import HTTPError
 from pycountry import countries
+from requests.exceptions import HTTPError
 from .requests import get
 from .connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
+PARSER = f"http://{LIVE}:5000/parser"
+VALIDATION = f"http://{LIVE}:5000/validation"
 
 
 def parse(address: str, country: str = "NL"):
@@ -33,16 +34,14 @@ def parse(address: str, country: str = "NL"):
             "United Kingdom": "UK"
         }.get(country, countries.lookup(country).name)
     }
-    while True:
-        try:
-            response = get(
-                f"http://{LIVE}:5000/parser",
-                params=params,
-                text_only=True
-            )
-            break
-        except (IOError, OSError, HTTPError) as e:
-            debug("Exception: %s: %s", params, e)
+    try:
+        response = get(
+            PARSER,
+            params=params,
+            text_only=True,
+        )
+    except HTTPError as e:
+        response = {"status": f"{e}"}
     if "status" in response:
         EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
                                              "psaalbrink@matrixiangroup.com"],
@@ -96,14 +95,12 @@ def validate(params: Union[dict, str]) -> dict:
         if key not in params:
             params[key] = ""
 
-    while True:
-        try:
-            response = get(
-                f"http://{LIVE}:5000/validation",
-                params=params,
-                text_only=True
-            )["objects"][0]
-            break
-        except (IOError, OSError, HTTPError) as e:
-            debug("Exception: %s: %s", params, e)
-    return response
+    try:
+        response = get(
+            VALIDATION,
+            params=params,
+            text_only=True
+        )["objects"][0]
+        return response
+    except HTTPError:
+        return {}

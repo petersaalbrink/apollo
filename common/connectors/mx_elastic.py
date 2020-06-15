@@ -15,8 +15,10 @@ from elasticsearch.exceptions import (ElasticsearchException,
                                       TransportError)
 from urllib3.exceptions import HTTPWarning
 
+from ..env import envfile, getenv
 from ..exceptions import ESClientError
 from ..handlers import tqdm
+from ..secrets import get_secret
 
 # Types
 Location = Union[
@@ -33,6 +35,19 @@ Result = Union[
     NestedDict,
 ]
 
+# Globals
+_config = {
+    "timeout": 300,
+    "retry_on_timeout": True,
+    "http_auth": get_secret("MX_ELASTIC"),
+}
+_hosts = {
+    "address": "MX_ELASTIC_ADDR_IP",
+    "cdqc": "MX_ELASTIC_CDQC_IP",
+    "dev": "MX_ELASTIC_DEV_IP",
+    "prod": "MX_ELASTIC_PROD_IP",
+}
+_port = int(getenv("MX_ELASTIC_PORT", 9200))
 
 # Constants
 RE_OLD = "dev_realestate.realestate"
@@ -92,35 +107,36 @@ class ESClient(Elasticsearch):
         `size`: int, default results size (default 20, max 10000)
         `retry_on_timeout`: boolean (default True)
         """
-        config = {"timeout": 300, "retry_on_timeout": True}
-        if kwargs.pop("local", False) or kwargs.pop("host", None) == "localhost":
+        local = kwargs.pop("local", False)
+        host = kwargs.pop("host", None)
+        dev = kwargs.pop("dev", True)
+        if local or host == "localhost":
             self._host, self._port = "localhost", "9200"
+            del _config["http_auth"]
         else:
-            from ..env import getenv
-            from ..secrets import get_secret
-            secret = get_secret("MX_ELASTIC")
-            if es_index:
-                if "production_" in es_index:
-                    envv = "MX_ELASTIC_PROD_IP"
+            if es_index and not host:
+                if es_index.startswith("cdqc"):
+                    envv = _hosts["cdqc"]
+                elif "production_" in es_index:
+                    envv = _hosts["prod"]
                 elif "addressvalidation" in es_index:
-                    envv = "MX_ELASTIC_ADDR_IP"
+                    envv = _hosts["address"]
                 else:
-                    envv = "MX_ELASTIC_DEV_IP"
+                    envv = _hosts["dev"]
+            elif host:
+                envv = _hosts.get(host)
             else:
-                if kwargs.pop("dev", True):
-                    envv = "MX_ELASTIC_DEV_IP"
+                if dev:
+                    envv = _hosts["dev"]
                 else:
-                    envv = "MX_ELASTIC_PROD_IP"
-            self._host = getenv(envv)
+                    envv = _hosts["prod"]
+            self._host, self._port = getenv(envv), _port
             if not self._host:
-                from ..env import envfile
                 raise ESClientError(f"Make sure a host is configured for variable"
                                     f" name '{envv}' in file '{envfile}'")
-            self._port = int(getenv("MX_ELASTIC_PORT", 9200))
-            config["http_auth"] = secret
 
         hosts = [{"host": self._host, "port": self._port}]
-        super().__init__(hosts, **config)
+        super().__init__(hosts, **_config)
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
         self.index_exists = None
@@ -314,6 +330,14 @@ class ESClient(Elasticsearch):
         :return: Sequence[MutableMapping[Any, Any]]
         """
 
+        hits_only = kwargs.pop("hits_only", True)
+        source_only = kwargs.pop("source_only", False)
+        with_id = kwargs.pop("with_id", False)
+        if source_only:
+            hits_only = True
+        if with_id:
+            hits_only, source_only = True, False
+
         scroll = kwargs.pop("scroll", "10m")
 
         if not index:
@@ -332,7 +356,16 @@ class ESClient(Elasticsearch):
             sid = data["_scroll_id"]
             scroll_size = len(data["hits"]["hits"])
 
-        return results
+        if hits_only:
+            data = results
+        else:
+            data["hits"]["hits"] = results
+        if with_id:
+            data = [{**doc, **doc.pop("_source")} for doc in data]
+        if source_only:
+            data = [doc["_source"] for doc in data]
+
+        return data
 
     def scrollall(self,
                   query: Query = None,
@@ -352,14 +385,22 @@ class ESClient(Elasticsearch):
             for doc in data:
                 pass
         """
+        hits_only = kwargs.pop("hits_only", True)
+        if not hits_only:
+            raise ESClientError("Use `.findall()` instead.")
+        source_only = kwargs.pop("source_only", False)
+        with_id = kwargs.pop("with_id", False)
+        if source_only:
+            hits_only = True
+        if with_id:
+            hits_only, source_only = True, False
+
         field = kwargs.pop("field", None)
         scroll = kwargs.pop("scroll", "1440m")
-        chunk_size = kwargs.pop("chunk_size", 10_000)
+        as_chunks = kwargs.pop("as_chunks", False)
+        chunk_size = kwargs.pop("chunk_size", 10_000 if as_chunks else 1)
         if chunk_size > 10_000:
             chunk_size = 10_000
-        as_chunks = kwargs.pop("as_chunks", False)
-        hits_only = kwargs.pop("hits_only", True)
-        source_only = kwargs.pop("source_only", False)
         use_tqdm = kwargs.pop("use_tqdm", False)
         if not index:
             index = self.es_index
@@ -369,6 +410,8 @@ class ESClient(Elasticsearch):
         def _return(_data):
             if hits_only:
                 _data = _data["hits"]["hits"]
+            if with_id:
+                _data = ({**d, **d.pop("_source")} for d in _data)
             if source_only:
                 _data = (d["_source"] for d in _data)
             return _data

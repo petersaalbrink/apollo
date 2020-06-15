@@ -8,7 +8,8 @@ def test_email():
 
 @pytest.mark.parametrize("es_index", [
     "dev_realestate.realestate",
-    "production_cdqc.person_data",
+    "production_api.user",
+    "cdqc.person_data",
     "addressvalidation.netherlands",
 ])
 def test_elastic(es_index: str):

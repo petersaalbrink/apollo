@@ -21,10 +21,11 @@ from re import compile
 from requests import post
 try:
     from getpass import getpass
-    import termios
+    import termios  # noqa
     _ = termios.tcgetattr, termios.tcsetattr
 except (ImportError, AttributeError):
     getpass = input
+from .env import getenv
 
 Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
@@ -47,6 +48,7 @@ def change_secret(name: str) -> Credentials:
         "MX_FTP_VPS": "VPS11 FTP server",
         "MX_MAIL": "EmailClient account",
         "MX_MONGO_ADDR": "MongoDB addressvalidation server",
+        "MX_MONGO_CDQC": "MongoDB CDQC server",
         "MX_MONGO_DEV": "MongoDB dev server",
         "MX_MONGO_PROD": "MongoDB prod server",
         "MX_MYSQL_DEV": "MySQL dev server",

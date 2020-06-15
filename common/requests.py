@@ -31,6 +31,7 @@ Multithreading:
 
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
+from json import loads
 from pathlib import Path
 from threading import Lock
 from typing import (Any,
@@ -42,7 +43,6 @@ from typing import (Any,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
-from urllib3.exceptions import HTTPError
 from urllib3.util.retry import Retry
 
 
@@ -74,13 +74,10 @@ def get_proxies() -> Iterator[dict]:
     """Generator that returns headers with proxies and agents for requests."""
 
     # Get proxies
-    proxies = []
     file = Path(__file__).parent / "etc/proxies.txt"
     with open(file) as f:
-        for line in f:
-            proxy = line.strip().split(":")
-            proxy = f"http://{proxy[2]}:{proxy[3]}@{proxy[0]}:{proxy[1]}"
-            proxies.append({"https": proxy, "http": proxy})
+        proxies = [loads(line.strip().replace("'", '"'))
+                   for line in f]
 
     # Get user agents
     file = Path(__file__).parent / "etc/agents.txt"
@@ -128,8 +125,7 @@ def get_session(
     return session
 
 
-_common_session = get_session()
-_common_kwargs = get_proxies()
+_module_data = {}
 
 
 def request(method: str,
@@ -143,16 +139,20 @@ def request(method: str,
     :param kwargs: Optional arguments that ``request`` takes.
     """
     if kwargs.pop("use_proxies", False):
-        kwargs.update(next(_common_kwargs))
-    text_only = kwargs.pop("text_only", False)
-    while True:
         try:
-            response = _common_session.request(method, url, **kwargs)
-            if text_only:
-                return response.json()
-            return response
-        except (IOError, OSError, HTTPError):
-            pass
+            kwargs.update(next(_module_data["get_kwargs"]))
+        except KeyError:
+            _module_data["get_kwargs"] = get_proxies()
+            kwargs.update(next(_module_data["get_kwargs"]))
+    text_only = kwargs.pop("text_only", False)
+    try:
+        response = _module_data["common_session"].request(method, url, **kwargs)
+    except KeyError:
+        _module_data["common_session"] = get_session()
+        response = _module_data["common_session"].request(method, url, **kwargs)
+    if text_only:
+        return response.json()
+    return response
 
 
 def get(url: str,

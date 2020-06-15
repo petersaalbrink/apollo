@@ -22,7 +22,8 @@ from typing import (Any,
                     Union)
 
 from mysql.connector.cursor import MySQLCursor
-from mysql.connector import (connect,
+from mysql.connector import (HAVE_CEXT,
+                             connect,
                              MySQLConnection,
                              ClientFlag,
                              DatabaseError,
@@ -30,8 +31,26 @@ from mysql.connector import (connect,
                              OperationalError)
 from pandas import NaT, Timestamp, Timedelta, isna
 
+from ..env import getenv, commondir, envfile, _write_pem  # noqa
 from ..exceptions import MySQLClientError
 from ..handlers import tqdm, trange
+from ..secrets import get_secret
+
+_MAX_ERRORS = 100
+_MYSQL_TYPES = {
+    str: "CHAR",
+    int: "INT",
+    float: "DECIMAL",
+    Decimal: "DECIMAL",
+    bool: "TINYINT",
+    timedelta: "TIMESTAMP",
+    Timedelta: "DECIMAL",
+    Timestamp: "DATETIME",
+    NaT: "DATETIME",
+    datetime: "DATETIME",
+    date: "DATE",
+    datetime.date: "DATE"
+}
 
 
 class Query(str):
@@ -133,10 +152,7 @@ class MySQLClient:
     def __init__(self,
                  database: str = None,
                  table: str = None,
-                 buffered: bool = False,
-                 dictionary: bool = True,
-                 **kwargs
-                 ):
+                 **kwargs):
         """Create client for MySQL, and connect to a specific database.
         You can provide a database and optionally a table name.
         The default database is `mx_traineeship_peter`.
@@ -153,8 +169,14 @@ class MySQLClient:
         (default: False)
         :type buffered: bool
         :param dictionary: Whether or not to use :class:`CMySQLCursorDict`
-        (default: False)
+        (default: True)
         :type dictionary: bool
+        :param raise_on_warnings: Whether or not to raise on warnings
+        (default: True)
+        :type raise_on_warnings: bool
+        :param use_pure: Whether or not to use pure Python or C extension
+        (default: False)
+        :type use_pure: bool
 
         Examples::
             sql = MySQLClient()
@@ -165,62 +187,56 @@ class MySQLClient:
         Default::
             sql = MySQLClient("mx_traineeship_peter")
         """
-        from ..env import getenv, commondir
-        from ..secrets import get_secret
-        usr, pwd = get_secret("MX_MYSQL_DEV")
+        global commondir  # noqa
+
+        buffered = kwargs.pop("buffered", False)
+        dictionary = kwargs.pop("dictionary", True)
+        raise_on_warnings = kwargs.pop("raise_on_warnings", True)
+        use_pure = kwargs.pop("use_pure", False)
+
         if database and "." in database:
             database, table = database.split(".")
         if table and "." in table:
             database, table = database.split(".")
         self.database = database
         self.table_name = table
+
+        usr, pwd = get_secret("MX_MYSQL_DEV")
         envv = "MX_MYSQL_DEV_IP"
         host = getenv(envv)
         if not host:
-            from ..env import envfile
             raise MySQLClientError(f"Make sure a host is configured for variable"
                                    f" name '{envv}' in file '{envfile}'")
         if not list(commondir.glob("*.pem")):
             try:
-                from ..env import _write_pem
                 _write_pem()
                 commondir = Path.cwd()
             except Exception:
                 raise MySQLClientError(f"Please make sure all '.pem' SSL certificate "
                                        f"files are placed in directory '{commondir}'")
+
+        self.buffered = buffered
+        self.dictionary = dictionary
+        self.use_pure = use_pure if HAVE_CEXT else True
+
+        self.cnx = None
+        self.cursor = None
+        self.executed_query = None
+        self._cursor_columns = None
+        self._cursor_row_count = None
+        self._iter = None
+
         self.__config = {
             "user": usr,
             "password": pwd,
             "host": host,
             "database": self.database,
-            "raise_on_warnings": kwargs.get("raise_on_warnings", False),
+            "raise_on_warnings": raise_on_warnings,
             "client_flags": [ClientFlag.SSL],
             "ssl_ca": f'{commondir / "server-ca.pem"}',
             "ssl_cert": f'{commondir / "client-cert.pem"}',
             "ssl_key": f'{commondir / "client-key.pem"}',
-        }
-        self.cnx = None
-        self.cursor = None
-        self._iter = None
-        self._cursor_columns = None
-        self.executed_query = None
-        self._cursor_row_count = None
-        self.buffered = buffered
-        self.dictionary = dictionary
-        self._max_errors = 100
-        self._types = {
-            str: "CHAR",
-            int: "INT",
-            float: "DECIMAL",
-            Decimal: "DECIMAL",
-            bool: "TINYINT",
-            timedelta: "TIMESTAMP",
-            Timedelta: "DECIMAL",
-            Timestamp: "DATETIME",
-            NaT: "DATETIME",
-            datetime: "DATETIME",
-            date: "DATE",
-            datetime.date: "DATE"
+            "use_pure": self.use_pure,
         }
 
     def __repr__(self):
@@ -475,7 +491,9 @@ class MySQLClient:
         elif size <= 0:
             raise MySQLClientError("Chunk size must be > 0")
 
+        self.__config["use_pure"] = True
         self.connect()
+        cnx, cursor = self.cnx, self.cursor
 
         # We set these session variables to avoid error 2013 (Lost connection)
         for var, val in (
@@ -485,33 +503,38 @@ class MySQLClient:
             ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
             ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
         ):
-            self.execute(f"SET SESSION {var}={val}")
+            cursor.execute(f"SET SESSION {var}={val}")
 
         try:
-            self.execute(query, *args, **kwargs)
-            count = self._cursor_row_count
-            bar = tqdm_func(total=count)
-            while True:
-                while True:
-                    try:
-                        data = self.fetchmany(size)
-                        break
-                    except OperationalError as e:
-                        if e.errno == 2013:
-                            info("Attempting reconnect: %s", e)
-                            # Try to revive the connection
-                            self.cnx.ping(reconnect=True)
-                        else:
-                            raise
+            cursor.execute(query, *args, **kwargs)
+        except DatabaseError as e:
+            raise MySQLClientError(query) from e
+
+        try:
+            count = cursor.row_count
+        except AttributeError:
+            count = None
+
+        bar = tqdm_func(total=count)
+        while True:
+            try:
+                data = cursor.fetchmany(size)
                 if not data:
                     break
                 yield data
                 bar.update(len(data))
-        except DatabaseError as e:
-            raise MySQLClientError(query) from e
+            except OperationalError as e:
+                if e.errno == 2013:
+                    info("Attempting reconnect: %s", e)
+                    # Try to revive the connection
+                    cnx.ping(reconnect=True)
+                else:
+                    raise
 
-        self.disconnect()
+        cursor.close()
+        cnx.close()
         bar.close()
+        self.__config["use_pure"] = self.use_pure
 
     def iter(self,
              query: Union[Query, str] = None,
@@ -645,9 +668,10 @@ class MySQLClient:
 
         return type_dict
 
-    def _fields(self, fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
-        fields = [f"`{name}` {self._types[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in {date, datetime.date} else f"`{name}` {self._types[type_]}"
+    @staticmethod
+    def _fields(fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
+        fields = [f"`{name}` {_MYSQL_TYPES[type_]}({str(length).replace('.', ',')})"
+                  if type_ not in {date, datetime.date} else f"`{name}` {_MYSQL_TYPES[type_]}"
                   for name, (type_, length) in fields.items()]
         return ", ".join(fields)
 
@@ -702,7 +726,10 @@ class MySQLClient:
             raise
         field_type, field_len = field_type.strip(")").split("(")
 
-        if chunk is not None:
+        if field_type.upper() == "INT" and int(field_len) >= 10:
+            field_type = f"BIGINT({field_len})"
+
+        elif chunk is not None:
             position -= 1  # MySQL starts counting at 1, Python at 0
             if "," in field_len:
                 field_len = max(sum(map(len, f"{row[position]}")) for row in chunk)
@@ -715,6 +742,7 @@ class MySQLClient:
             else:
                 new_len = max(len(f"{row[position]}") for row in chunk)
                 field_type = f"{field_type}({new_len})"
+
         else:
             if "," in field_len:
                 field_len, decimal_part = field_len.split(",")
@@ -772,7 +800,7 @@ class MySQLClient:
                     break
                 except (DatabaseError, InterfaceError) as e:
                     errors += 1
-                    if errors >= self._max_errors:
+                    if errors >= _MAX_ERRORS:
                         raise MySQLClientError(query) from e
                     info("%s", e)
                     if "truncated" in e.args[1] or "Out of range value" in e.args[1]:
@@ -929,8 +957,10 @@ class MySQLClient:
                     v = v.lstrip("!IN ")
                     if "NULL" in v and '"NULL"' not in v:
                         v = v.replace("NULL", '"NULL"')
-                    v = literal_eval(v)
-                v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
+                    if "SELECT" not in v:
+                        v = literal_eval(v)
+                if isinstance(v, (tuple, list)):
+                    v = tuple(sv for _, sv, _ in (replace_quote(k, sv) for sv in v))
                 key = rf"{k} {_not} IN {v}"
                 key = key.replace('"NULL"', "NULL")
                 key = key.replace("'NULL'", "NULL")
@@ -1049,7 +1079,7 @@ class MySQLClient:
                 break
             except DatabaseError as e:
                 errors += 1
-                if errors >= self._max_errors:
+                if errors >= _MAX_ERRORS:
                     raise MySQLClientError(query) from e
                 if ("truncated" in e.args[1] or "Out of range value" in e.args[1]
                         and query.strip().upper().startswith("INSERT")):

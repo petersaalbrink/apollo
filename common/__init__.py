@@ -32,6 +32,8 @@ from .handlers import (
 from .parsers import (
     Checks,
     dateformat,
+    drop_empty_columns,
+    expand,
     flatten,
     levenshtein,
 )
@@ -77,6 +79,8 @@ __all__ = [
     "csv_read",
     "csv_write",
     "dateformat",
+    "drop_empty_columns",
+    "expand",
     "flatten",
     "get",
     "get_logger",

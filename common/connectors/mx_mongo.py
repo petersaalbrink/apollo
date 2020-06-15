@@ -9,6 +9,13 @@ from pymongo.operations import InsertOne, UpdateOne, UpdateMany
 
 from ..exceptions import MongoDBError
 
+_hosts = {
+    "address": "MX_MONGO_ADDR",
+    "cdqc": "MX_MONGO_CDQC",
+    "dev": "MX_MONGO_DEV",
+    "prod": "MX_MONGO_PROD",
+}
+
 
 class MongoDB(MongoClient):
     """Client for Matrixian's MongoDB databases.
@@ -51,18 +58,15 @@ class MongoDB(MongoClient):
                         host = "address"
                     elif "production" in database:
                         host = "prod"
+                    elif database.startswith("cdqc"):
+                        host = "cdqc"
             elif host == "stg":
                 raise MongoDBError("Staging database is not used anymore.")
             if not client and not database:
                 database = "admin"
-            hosts = {
-                "address": "MX_MONGO_ADDR",
-                "dev": "MX_MONGO_DEV",
-                "prod": "MX_MONGO_PROD",
-            }
-            if host not in hosts:
+            if host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
-            host = hosts[host]
+            host = _hosts[host]
             from ..env import getenv
             from ..secrets import get_secret
             usr, pwd = get_secret(host)
@@ -114,7 +118,7 @@ class MongoDB(MongoClient):
 
         Usage::
             from common.connectors import MongoDB
-            db = MongoDB("dev_peter.person_data_20190716")
+            db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
         """
