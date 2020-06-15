@@ -33,15 +33,20 @@ Result = Union[
     NestedDict,
 ]
 
+REAL_ESTATES = {
+    "dev_realestate.realestate",
+    "dev_realestate.real_estate",
+}
+
 
 class ESClient(Elasticsearch):
     """Client for Matrixian's Elasticsearch databases.
 
-    ESClient inherits from the officiel Elasticsearch client. This means
+    ESClient inherits from the official Elasticsearch client. This means
     that all its methods can be used. In addition, some added methods
     will help you in writing better scripts. These include:
 
-    `find`: Perform an ElasticSearch query, and return the hits.
+    `find`: Perform an Elasticsearch query, and return the hits.
     Like `search`, but better.
 
     `geo_distance`: Find all real estate objects for a specific location.
@@ -52,7 +57,7 @@ class ESClient(Elasticsearch):
     `scrollall`: Used for Elasticsearch queries that return more than
     10k documents. Returns an iterator of documents.
 
-    `query`: Perform a simple ElasticSearch query, and return the hits.
+    `query`: Perform a simple Elasticsearch query, and return the hits.
 
     `total`: The total number of documents within the index.
 
@@ -129,7 +134,7 @@ class ESClient(Elasticsearch):
              query: Query = None,
              *args, **kwargs
              ) -> Result:
-        """Perform an ElasticSearch query, and return the hits. Like `search`, but better.
+        """Perform an Elasticsearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
         Accepts a single query (dict) or multiple (List[dict]).
@@ -169,7 +174,10 @@ class ESClient(Elasticsearch):
         if with_id:
             debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
-        size = kwargs.pop("size", self.size)
+        try:
+            size = query[0].pop("size")
+        except KeyError:
+            size = kwargs.pop("size", self.size)
         results = []
         for q in query:
             if not q:
@@ -214,44 +222,74 @@ class ESClient(Elasticsearch):
         :param distance: Distance (in various units) in format "42km".
         :return: List of results that are :param distance: away.
 
-        Example:
-            es = ESClient("dev_realestate.realestate")
+        Example::
+            es = ESClient("dev_realestate.real_estate")
             res = es.geo_distance(
                 address_id="1071XB 71 B", distance="10m")
             for d in res:
-                print(d["avmData"]["locationData"]["address_id"])
+                print(d["address"]["identification"]["addressId"])
         """
+
+        if self.es_index not in REAL_ESTATES:
+            raise ESClientError(f"Index should be in {REAL_ESTATES}.")
 
         if not any((address_id, location)) or all((address_id, location)):
             raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
-            query = {"query": {"bool": {"must": [
-                {"match": {"avmData.locationData.address_id.keyword": address_id}}]}}}
-            result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
-            location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+            if self.es_index == "dev_realestate.realestate":
+                query = {"query": {"bool": {"must": {
+                    "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
+                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+            else:
+                query = {"query": {"bool": {"must": {
+                    "match": {"address.identification.addressId.keyword": address_id}}}}}
+                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
 
-        location = dict(zip(("latitude", "longitude"), location.values())) \
-            if isinstance(location, MutableMapping) else \
-            dict(zip(("latitude", "longitude"), location))
+        try:
+            location = dict(zip(("latitude", "longitude"), location.values()))
+        except AttributeError:
+            location = dict(zip(("latitude", "longitude"), location))
 
-        query = {
-            "query": {
-                "bool": {
-                    "filter": {
-                        "geo_distance": {
-                            "distance": distance,
-                            "geometry.geoPoint": {
-                                "lat": location["latitude"],
-                                "lon": location["longitude"]
-                            }}}}},
-            "sort": [{
-                "_geo_distance": {
-                    "geometry.geoPoint": {
-                        "lat": location["latitude"],
-                        "lon": location["longitude"]},
-                    "order": "asc"
-                }}]}
+        if self.es_index == "dev_realestate.realestate":
+            query = {
+                "query": {
+                    "bool": {
+                        "filter": {
+                            "geo_distance": {
+                                "distance": distance,
+                                "geometry.geoPoint": {
+                                    "lat": location["latitude"],
+                                    "lon": location["longitude"]
+                                }}}}},
+                "sort": [{
+                    "_geo_distance": {
+                        "geometry.geoPoint": {
+                            "lat": location["latitude"],
+                            "lon": location["longitude"]},
+                        "order": "asc"
+                    }}]}
+        else:
+            query = {
+                "query": {
+                    "bool": {
+                        "filter": {
+                            "geo_distance": {
+                                "distance": distance,
+                                "geometry.geoPoint.coordinates": [
+                                    location["longitude"],
+                                    location["latitude"],
+                                ]}}}},
+                "sort": [{
+                    "_geo_distance": {
+                        "geometry.geoPoint.coordinates": [
+                            location["longitude"],
+                            location["latitude"],
+                        ],
+                        "order": "asc"
+                    }}]}
 
         results = self.findall(query=query)
 
@@ -361,14 +399,14 @@ class ESClient(Elasticsearch):
               value: Any = None,
               **kwargs
               ) -> Result:
-        """Perform a simple ElasticSearch query, and return the hits.
+        """Perform a simple Elasticsearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
         Substitute period . for nested fields with underscore _
 
         Examples:
-            from common.classes import ElasticSearch
-            es = ElasticSearch()
+            from common.connectors import ESClient
+            es = ESClient()
             results = es.query(field="lastname", query="Saalbrink")
 
             # Add multiple search fields:
@@ -400,7 +438,7 @@ class ESClient(Elasticsearch):
             else:
                 args[k] = kwargs[k]
         if len(args) == 1:
-            q = {"query": {"bool": {"must": [{"match": args}]}}}
+            q = {"query": {"bool": {"must": {"match": args}}}}
             return self.find(q, **find_kwargs)
         elif len(args) > 1:
             q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
