@@ -11,7 +11,10 @@ from ..exceptions import MongoDBError
 
 
 class MongoDB(MongoClient):
-    """Client for MongoDB. Uses MongoClient as superclass."""
+    """Client for Matrixian's MongoDB databases.
+
+    Inherits from the official `MongoClient`.
+    """
 
     def __new__(cls,
                 database: str = None,
@@ -20,14 +23,21 @@ class MongoDB(MongoClient):
                 client: bool = False,
                 **kwargs
                 ) -> Union[MongoClient, Database, Collection]:
-        """Client for MongoDB
+        """Client for Matrixian's MongoDB databases.
 
-        Usage:
+        Creates a MongoClient, Database, or Collection object.
+
+        Usage::
+            # Create a MongoClient object
             client = MongoDB(client=True)
+
+            # Create a Database object
             db = MongoDB("cdqc")
-            coll = MongoDB("cdqc", "person_data")
-            coll = MongoDB("cdqc.person_data")
-            coll = MongoDB()["cdqc"]["person_data"]
+
+            # Create a Collection object
+            coll = MongoDB("cdqc", "person_data")  # first method
+            coll = MongoDB("cdqc.person_data")  # second method
+            coll = MongoDB()["cdqc"]["person_data"]  # third method
         """
         if kwargs.pop("local", False) or host == "localhost":
             uri = "mongodb://localhost"
@@ -77,6 +87,7 @@ class MongoDB(MongoClient):
 
     @staticmethod
     def test_connection(collection: Collection):
+        """Test connection by getting a document."""
         try:
             collection.find_one()
         except ServerSelectionTimeoutError as e:
@@ -85,14 +96,17 @@ class MongoDB(MongoClient):
 
     @staticmethod
     def InsertOne(document):  # noqa
+        """Convience method for `InsertOne`."""
         return InsertOne(document)
 
     @staticmethod
     def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+        """Convience method for `UpdateOne`."""
         return UpdateOne(filter, update, upsert, collation, array_filters)
 
     @staticmethod
     def UpdateMany(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+        """Convience method for `UpdateMany`."""
         return UpdateMany(filter, update, upsert, collation, array_filters)
 
     def find_last(self) -> dict:
