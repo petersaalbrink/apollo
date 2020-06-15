@@ -1,3 +1,34 @@
+"""Module for making requests, multithreaded!
+
+This module contains some functions that make two things that often
+co-occur easier: making requests, and executing some function for an
+iterable using multiple threads. Use these functions to speed up your
+scripts.
+
+Making requests:
+
+.. py:function: common.requests.request
+   Sends a request. Returns :class:`requests.Response` object.
+.. py:function: common.requests.get
+   Sends a GET request. Returns :class:`requests.Response` object.
+.. py:function: common.requests.post
+   Sends a POST request. Returns :class:`requests.Response` object.
+.. py:function: common.requests.get_session
+   Get session with predefined options for requests.
+.. py:function: common.requests.get_proxies
+   Generator that returns headers with proxies and agents for requests.
+
+Multithreading:
+
+.. py:function: common.requests.thread
+   Thread :param data: with :param function: and optionally do :param process:.
+.. py:class: common.requests.ThreadSafeIterator
+   Takes an iterator/generator and makes it thread-safe
+   by serializing call to the `next` method of given iterator/generator.
+.. py:function: common.requests.threadsafe
+   Decorator that takes a generator function and makes it thread-safe.
+"""
+
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import cycle
 from json import loads
@@ -32,14 +63,15 @@ class ThreadSafeIterator:
 
 
 def threadsafe(f):
-    """A decorator that takes a generator function and makes it thread-safe."""
-    def tsf(*args, **kwargs):
+    """Decorator that takes a generator function and makes it thread-safe."""
+    def decorate(*args, **kwargs):
         return ThreadSafeIterator(f(*args, **kwargs))
-    return tsf
+    return decorate
 
 
 @threadsafe
 def get_proxies() -> Iterator[dict]:
+    """Generator that returns headers with proxies and agents for requests."""
 
     # Get proxies
     file = Path(__file__).parent / "etc/proxies.txt"
@@ -71,6 +103,7 @@ def get_session(
     status_forcelist=(500, 502, 504),
     session=None,
 ) -> Session:
+    """Get session with predefined options for requests."""
     def hook(response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
@@ -99,7 +132,7 @@ def request(method: str,
             url: str,
             **kwargs
             ) -> Union[dict, Response]:
-    """Sends a request. Returns :class:`Response` object.
+    """Sends a request. Returns :class:`requests.Response` object.
 
     :param method: method for the request.
     :param url: URL for the new :class:`Request` object.
@@ -127,7 +160,7 @@ def get(url: str,
         use_proxies: bool = False,
         **kwargs
         ) -> Union[dict, Response]:
-    """Sends a GET request. Returns :class:`Response` object.
+    """Sends a GET request. Returns :class:`requests.Response` object.
 
     :param url: URL for the new :class:`Request` object.
     :param text_only: return JSON data from :class:`Response` as dictionary.
@@ -144,7 +177,7 @@ def post(url: str,
          use_proxies: bool = False,
          **kwargs
          ) -> Union[dict, Response]:
-    """Sends a POST request. Returns :class:`Response` object.
+    """Sends a POST request. Returns :class:`requests.Response` object.
 
     :param url: URL for the new :class:`Request` object.
     :param text_only: return JSON data from :class:`Response` as dictionary.

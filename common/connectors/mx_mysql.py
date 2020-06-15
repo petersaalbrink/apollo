@@ -1,3 +1,4 @@
+"""Connect to Matrixian's MySQL database."""
 from ast import literal_eval
 from contextlib import suppress
 from datetime import datetime, timedelta, date
@@ -144,6 +145,9 @@ class MySQLClient:
     :func:`super().__init__()` call, and provide login credentials using the
     :attr:`MySQLClient.__config` dictionary (**:attr:`MySQLClient.__config`
     will be used to connect the instance).
+
+    Please be aware that MySQLClient does not provide any protection
+    against SQL injection.
     """
     def __init__(self,
                  database: str = None,
@@ -190,11 +194,8 @@ class MySQLClient:
         raise_on_warnings = kwargs.pop("raise_on_warnings", True)
         use_pure = kwargs.pop("use_pure", False)
 
-        if database:
-            if "." in database:
-                database, table = database.split(".")
-        else:
-            database = "mx_traineeship_peter"
+        if database and "." in database:
+            database, table = database.split(".")
         if table and "." in table:
             database, table = database.split(".")
         self.database = database
@@ -321,15 +322,19 @@ class MySQLClient:
         self._set_cursor_properties()
 
     def fetchall(self) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
+        """Returns all rows of a query result set."""
         return self.cursor.fetchall()
 
     def fetchmany(self, size: int = None) -> List[Union[MutableMapping[str, Any], Tuple[Any]]]:
+        """Returns the next set of rows of a query result."""
         return self.cursor.fetchmany(size)
 
     def fetchone(self) -> Union[MutableMapping[str, Any], Tuple[Any]]:
+        """Returns next row of a query result set."""
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
+        """Check if the current table exists."""
         try:
             q = self.build(select_fields="1", limit=1)
             self._execute_query(q)
@@ -338,6 +343,7 @@ class MySQLClient:
             return False
 
     def truncate(self):
+        """Truncate the current table. ATTENTION: REMOVES ALL DATA!"""
         self.query(
             query=Query(
                 f"TRUNCATE TABLE {self.database}.{self.table_name}"))
@@ -346,7 +352,7 @@ class MySQLClient:
                query: Union[Query, str] = None,
                *args, **kwargs
                ) -> List[str]:
-        """Fetch one column from MySQL"""
+        """Fetch one column from MySQL."""
         if not self.table_name:
             raise MySQLClientError("Provide a table.")
         self.connect()
@@ -387,7 +393,7 @@ class MySQLClient:
               table: str = None,
               *args, **kwargs
               ) -> int:
-        """Fetch row count from MySQL"""
+        """Fetch row count from MySQL."""
         if table is None and self.table_name is None:
             raise MySQLClientError("No table name provided.")
         if table and "." in table:
@@ -405,7 +411,7 @@ class MySQLClient:
               fieldnames: bool = None,
               *args, **kwargs
               ) -> Union[List[Dict[str, Any]], List[List[Any]]]:
-        """Fetch a table from MySQL"""
+        """Fetch a table from MySQL."""
         if not self.table_name and query and "." in query:
             for word in query.split():
                 if "." in word:
@@ -428,7 +434,7 @@ class MySQLClient:
             fieldnames: bool = None,
             *args, **kwargs
             ) -> Union[Dict[str, Any], List[Any]]:
-        """Fetch one row from MySQL"""
+        """Fetch one row from MySQL."""
         if not query:
             query = self.build(
                 limit=1,
@@ -456,10 +462,10 @@ class MySQLClient:
               size: int = None,
               *args, **kwargs
               ) -> Iterator[Union[List[Dict[str, Any]], List[List[Any]]]]:
-        """Returns a generator for downloading a table in chunks
+        """Returns a generator for downloading a table in chunks.
 
         Example::
-            from common import MySQLClient
+            from common.connectors import MySQLClient
             sql = MySQLClient("real_estate.real_estate")
             for rows in sql.chunk():
                 for row in rows:
@@ -538,12 +544,12 @@ class MySQLClient:
         """Returns a generator for retrieving query data row by row.
 
         Example::
-            from common.classes import MySQLClient
+            from common.connectors import MySQLClient
             sql = MySQLClient()
             query = sql.build(
-                table="mx_traineeship_peter.client_data",
-                Province="Noord-Holland",
-                select_fields=['id', 'City']
+                table="real_estate.real_estate",
+                provincie="Noord-Holland",
+                select_fields=['bag_nummeraanduidingid', 'plaatsnaam']
             )
             for row in sql.iter(query=query):
                 print(row)
@@ -589,6 +595,7 @@ class MySQLClient:
         """Use this method to provide data for the fields argument in create_table.
 
         Example:
+            from common.connectors import MySQLClient
             sql = MySQLClient()
             data = [[1, "Peter"], [2, "Paul"]]
             fieldnames = ["id", "name"]
@@ -702,6 +709,7 @@ class MySQLClient:
                                 e: str,
                                 table: str = None,
                                 chunk: Sequence[Sequence[Any]] = None):
+        """If an error occurred, tries to increase the field length."""
         field = e.split("'")[1]
         if table is None:
             table = self.table_name
@@ -757,7 +765,8 @@ class MySQLClient:
                ) -> int:
         """Insert a data array into a SQL table.
 
-        The data is split into chunks of appropriate size before upload."""
+        The data is split into chunks of appropriate size before upload.
+        """
         if not data or not data[0]:
             raise MySQLClientError("No data provided.")
         if not table:
@@ -854,8 +863,7 @@ class MySQLClient:
                    data: Sequence[Union[Mapping[str, Any], Sequence[Any]]] = None,
                    fields: Mapping[str, Tuple[Type, Union[int, float]]] = None
                    ) -> int:
-        """Create a new SQL table in MySQLClient.database,
-         and insert a data array into it.
+        """Create a new SQL table in MySQLClient.database, and insert a data array into it.
 
         The data is split into chunks of appropriate size before upload.
 
@@ -917,7 +925,8 @@ class MySQLClient:
         """Build a MySQL query.
 
         For kwargs values, pass a list to create AND/OR statements,
-        and pass a tuple to create IN statement."""
+        and pass a tuple to create IN statement.
+        """
 
         def search_for(k, v):
             def replace_quote(_k, _v, _key=None):

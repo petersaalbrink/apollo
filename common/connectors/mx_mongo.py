@@ -1,3 +1,4 @@
+"""Connect to Matrixian's MongoDB databases."""
 from typing import List, Union
 from urllib.parse import quote_plus
 
@@ -17,7 +18,10 @@ _hosts = {
 
 
 class MongoDB(MongoClient):
-    """Client for MongoDB. Uses MongoClient as superclass."""
+    """Client for Matrixian's MongoDB databases.
+
+    Inherits from the official `MongoClient`.
+    """
 
     def __new__(cls,
                 database: str = None,
@@ -26,14 +30,21 @@ class MongoDB(MongoClient):
                 client: bool = False,
                 **kwargs
                 ) -> Union[MongoClient, Database, Collection]:
-        """Client for MongoDB
+        """Client for Matrixian's MongoDB databases.
 
-        Usage:
+        Creates a MongoClient, Database, or Collection object.
+
+        Usage::
+            # Create a MongoClient object
             client = MongoDB(client=True)
-            db = MongoDB("dev_peter")
-            coll = MongoDB("dev_peter", "person_data_20190606")
-            coll = MongoDB("dev_peter.person_data_20190606")
-            coll = MongoDB()["dev_peter"]["person_data_20190606"]
+
+            # Create a Database object
+            db = MongoDB("cdqc")
+
+            # Create a Collection object
+            coll = MongoDB("cdqc", "person_data")  # first method
+            coll = MongoDB("cdqc.person_data")  # second method
+            coll = MongoDB()["cdqc"]["person_data"]  # third method
         """
         if kwargs.pop("local", False) or host == "localhost":
             uri = "mongodb://localhost"
@@ -52,7 +63,7 @@ class MongoDB(MongoClient):
             elif host == "stg":
                 raise MongoDBError("Staging database is not used anymore.")
             if not client and not database:
-                database, collection = "dev_peter", "person_data_20190716"
+                database = "admin"
             if host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
             host = _hosts[host]
@@ -80,32 +91,33 @@ class MongoDB(MongoClient):
 
     @staticmethod
     def test_connection(collection: Collection):
+        """Test connection by getting a document."""
         try:
             collection.find_one()
         except ServerSelectionTimeoutError as e:
             raise MongoDBError(
                 "Are you contected with a Matrixian network?") from e
 
-    # noinspection PyPep8Naming
     @staticmethod
-    def InsertOne(document):
+    def InsertOne(document):  # noqa
+        """Convience method for `InsertOne`."""
         return InsertOne(document)
 
-    # noinspection PyPep8Naming, PyShadowingBuiltins
     @staticmethod
-    def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):
+    def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+        """Convience method for `UpdateOne`."""
         return UpdateOne(filter, update, upsert, collation, array_filters)
 
-    # noinspection PyPep8Naming, PyShadowingBuiltins
     @staticmethod
-    def UpdateMany(filter, update, upsert=False, collation=None, array_filters=None):
+    def UpdateMany(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+        """Convience method for `UpdateMany`."""
         return UpdateMany(filter, update, upsert, collation, array_filters)
 
     def find_last(self) -> dict:
         """Return the last document in a collection.
 
-        Usage:
-            from common import MongoDB
+        Usage::
+            from common.connectors import MongoDB
             db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
@@ -114,10 +126,10 @@ class MongoDB(MongoClient):
             return next(self.find().sort([("_id", -1)]).limit(1))
 
     def find_duplicates(self) -> List[dict]:
-        """Return duplicated documents in the person_data collection.
+        """Return duplicated documents in a collection.
 
-        Usage:
-            from common.classes import MongoDB
+        Usage::
+            from common.connectors import MongoDB
             db = MongoDB("dev_peter.person_data_20190716")
             docs = MongoDB.find_duplicates(db)
             print(docs)

@@ -11,6 +11,19 @@ VALIDATION = f"http://{LIVE}:5000/validation"
 
 
 def parse(address: str, country: str = "NL"):
+    """
+    Parses an address in a string format and returns address elements in JSON.
+
+    Example:
+        from common.address import parse
+        PARSED_ADDRESS = parse("Transformatorweg 102")
+        print(dumps(PARSED_ADDRESS, indent=2, ensure_ascii=False))
+
+    :param address: Address input you want parsed
+    :param country: ISO2 country code of the input address
+    :return: address elements in JSON
+    """
+
     for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
         address = address.replace(s, "")
     params = {
@@ -39,7 +52,27 @@ def parse(address: str, country: str = "NL"):
 
 
 def validate(params: Union[dict, str]) -> dict:
+    """
+    Uses the address checker API to validate an address.
 
+    Example:
+        from common.address import validate
+        from json import dumps
+
+        PARAMS = {
+            "input_street": "Transformatorweg",
+            "input_housenumber": "104",
+            "input_subBuilding": "",
+            "input_postcode": "1014AK",
+            "input_city": "Amsterdam",
+            "country": "NL"
+        }
+
+        print(dumps(validate(PARAMS), indent=2))
+
+    :param params: Dictionary containing the address elements you want to validate
+    :return:  JSON object containing validated address
+    """
     if isinstance(params, str):
         params = {"input_street": params}
 

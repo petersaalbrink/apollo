@@ -1,3 +1,4 @@
+"""Connect to Matrixian's Elasticsearch databases."""
 from contextlib import suppress
 from logging import debug
 from typing import (Any,
@@ -48,15 +49,64 @@ _hosts = {
 }
 _port = int(getenv("MX_ELASTIC_PORT", 9200))
 
+# Constants
+RE_OLD = "dev_realestate.realestate"
+RE_NEW = "dev_realestate.real_estate"
+REAL_ESTATES = {
+    RE_OLD,
+    RE_NEW,
+}
+
 
 class ESClient(Elasticsearch):
-    """Client for ElasticSearch"""
+    """Client for Matrixian's Elasticsearch databases.
+
+    ESClient inherits from the official Elasticsearch client. This means
+    that all its methods can be used. In addition, some added methods
+    will help you in writing better scripts. These include:
+
+    `find`: Perform an Elasticsearch query, and return the hits.
+    Like `search`, but better.
+
+    `geo_distance`: Find all real estate objects for a specific location.
+
+    `findall`: Used for Elasticsearch queries that return more than
+    10k documents. Returns all results at once.
+
+    `scrollall`: Used for Elasticsearch queries that return more than
+    10k documents. Returns an iterator of documents.
+
+    `query`: Perform a simple Elasticsearch query, and return the hits.
+
+    `total`: The total number of documents within the index.
+
+    `count`: Count the number of documents a query will return.
+
+    `distinct_count`: Provide a count of distinct values in a certain field.
+
+    `distinct_values`: Return distinct values in a certain field.
+    """
 
     def __init__(self,
                  es_index: str = None,
                  **kwargs
                  ):
-        """Client for ElasticSearch"""
+        """Client for Matrixian's Elasticsearch databases.
+
+        Provide an index (database.collection), and based on the name
+        the correct server is selected. Hosts are configured using
+        environment variables in the format "MX_ELASTIC_*_IP".
+
+        Authentication happens with the "MX_ELASTIC_USR" and
+        "MX_ELASTIC_PWD" credentials.
+
+        Possible keyword arguments include:
+        `local`: boolean, if True selects localhost (default False)
+        `host`: str, only possible value currently "localhost"
+        `dev`: boolean, only if no :param es_index: is provided (default True)
+        `size`: int, default results size (default 20, max 10000)
+        `retry_on_timeout`: boolean (default True)
+        """
         local = kwargs.pop("local", False)
         host = kwargs.pop("host", None)
         dev = kwargs.pop("dev", True)
@@ -77,9 +127,9 @@ class ESClient(Elasticsearch):
                 envv = _hosts.get(host)
             else:
                 if dev:
-                    envv, es_index = _hosts["dev"], "dev_peter.person_data_20190716"
+                    envv = _hosts["dev"]
                 else:
-                    envv, es_index = _hosts["prod"], "production_realestate.realestate"
+                    envv = _hosts["prod"]
             self._host, self._port = getenv(envv), _port
             if not self._host:
                 raise ESClientError(f"Make sure a host is configured for variable"
@@ -102,7 +152,7 @@ class ESClient(Elasticsearch):
              query: Query = None,
              *args, **kwargs
              ) -> Result:
-        """Perform an ElasticSearch query, and return the hits.
+        """Perform an Elasticsearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
         Accepts a single query (dict) or multiple (List[dict]).
@@ -142,7 +192,10 @@ class ESClient(Elasticsearch):
         if with_id:
             debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
-        size = kwargs.pop("size", self.size)
+        try:
+            size = query[0].pop("size")
+        except KeyError:
+            size = kwargs.pop("size", self.size)
         results = []
         for q in query:
             if not q:
@@ -187,44 +240,74 @@ class ESClient(Elasticsearch):
         :param distance: Distance (in various units) in format "42km".
         :return: List of results that are :param distance: away.
 
-        Example:
-            es = ESClient("dev_realestate.realestate")
+        Example::
+            es = ESClient("dev_realestate.real_estate")
             res = es.geo_distance(
                 address_id="1071XB 71 B", distance="10m")
             for d in res:
-                print(d["avmData"]["locationData"]["address_id"])
+                print(d["address"]["identification"]["addressId"])
         """
+
+        if self.es_index not in REAL_ESTATES:
+            raise ESClientError(f"Index should be in {REAL_ESTATES}.")
 
         if not any((address_id, location)) or all((address_id, location)):
             raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
-            query = {"query": {"bool": {"must": [
-                {"match": {"avmData.locationData.address_id.keyword": address_id}}]}}}
-            result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
-            location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+            if self.es_index == RE_OLD:
+                query = {"query": {"bool": {"must": {
+                    "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
+                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+            else:
+                query = {"query": {"bool": {"must": {
+                    "match": {"address.identification.addressId.keyword": address_id}}}}}
+                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
 
-        location = dict(zip(("latitude", "longitude"), location.values())) \
-            if isinstance(location, MutableMapping) else \
-            dict(zip(("latitude", "longitude"), location))
+        try:
+            location = dict(zip(("latitude", "longitude"), location.values()))
+        except AttributeError:
+            location = dict(zip(("latitude", "longitude"), location))
 
-        query = {
-            "query": {
-                "bool": {
-                    "filter": {
-                        "geo_distance": {
-                            "distance": distance,
-                            "geometry.geoPoint": {
-                                "lat": location["latitude"],
-                                "lon": location["longitude"]
-                            }}}}},
-            "sort": [{
-                "_geo_distance": {
-                    "geometry.geoPoint": {
-                        "lat": location["latitude"],
-                        "lon": location["longitude"]},
-                    "order": "asc"
-                }}]}
+        if self.es_index == RE_OLD:
+            query = {
+                "query": {
+                    "bool": {
+                        "filter": {
+                            "geo_distance": {
+                                "distance": distance,
+                                "geometry.geoPoint": {
+                                    "lat": location["latitude"],
+                                    "lon": location["longitude"]
+                                }}}}},
+                "sort": [{
+                    "_geo_distance": {
+                        "geometry.geoPoint": {
+                            "lat": location["latitude"],
+                            "lon": location["longitude"]},
+                        "order": "asc"
+                    }}]}
+        else:
+            query = {
+                "query": {
+                    "bool": {
+                        "filter": {
+                            "geo_distance": {
+                                "distance": distance,
+                                "geometry.geoPoint.coordinates": [
+                                    location["longitude"],
+                                    location["latitude"],
+                                ]}}}},
+                "sort": [{
+                    "_geo_distance": {
+                        "geometry.geoPoint.coordinates": [
+                            location["longitude"],
+                            location["latitude"],
+                        ],
+                        "order": "asc"
+                    }}]}
 
         results = self.findall(query=query)
 
@@ -238,8 +321,9 @@ class ESClient(Elasticsearch):
                 index: str = None,
                 **kwargs,
                 ) -> Result:
-        """Used for elastic search queries that are larger than the max
-        window size of 10,000. Returns all results at once.
+        """Used for Elasticsearch queries that return more than 10k documents.
+        Returns all results at once.
+
         :param query: MutableMapping[str, Any]
         :param index: str
         :param kwargs: scroll: str
@@ -288,8 +372,8 @@ class ESClient(Elasticsearch):
                   index: str = None,
                   **kwargs,
                   ) -> Iterator[Result]:
-        """Used for elastic search queries that are larger than the max
-        window size of 10,000. Returns an iterator of documents.
+        """Used for Elasticsearch queries that return more than 10k documents.
+        Returns an iterator of documents.
 
         The default behavior of iterating through documents can be changed
         into iterating through chunks of documents by setting `as_chunks=True`.
@@ -360,14 +444,14 @@ class ESClient(Elasticsearch):
               value: Any = None,
               **kwargs
               ) -> Result:
-        """Perform a simple ElasticSearch query, and return the hits.
+        """Perform a simple Elasticsearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
         Substitute period . for nested fields with underscore _
 
         Examples:
-            from common.classes import ElasticSearch
-            es = ElasticSearch()
+            from common.connectors import ESClient
+            es = ESClient()
             results = es.query(field="lastname", query="Saalbrink")
 
             # Add multiple search fields:
@@ -399,7 +483,7 @@ class ESClient(Elasticsearch):
             else:
                 args[k] = kwargs[k]
         if len(args) == 1:
-            q = {"query": {"bool": {"must": [{"match": args}]}}}
+            q = {"query": {"bool": {"must": {"match": args}}}}
             return self.find(q, **find_kwargs)
         elif len(args) > 1:
             q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
@@ -416,6 +500,7 @@ class ESClient(Elasticsearch):
 
     @property
     def total(self) -> int:
+        """The total number of documents within the index."""
         self._check_index_exists()
         return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
 
@@ -426,6 +511,7 @@ class ESClient(Elasticsearch):
               find: MutableMapping[str, MutableMapping] = None,
               **kwargs
               ) -> int:
+        """Count the number of documents a query will return."""
         if index is None:
             index = self.es_index
         if find:
@@ -483,7 +569,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                         field: str,
                         find: MutableMapping[str, MutableMapping] = None
                         ) -> List[Any]:
-        """Provide a count of distinct values in a certain field.
+        """Return distinct values in a certain field.
 
         See:
 https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html

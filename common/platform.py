@@ -1,3 +1,18 @@
+"""Module for FileTransfer with the Matrixian Group Platform.
+
+This module contains one object that can be used for both uploads to
+and downloads from the Platform.
+
+.. py:class:: common.platform.FileTranfer(
+       user_id: str = None,
+       username: str = None,
+       email: str = None,
+       filename: str = None,
+   )
+
+   Upload and download files to/from the Matrixian Platform.
+"""
+
 from datetime import datetime
 try:
     from functools import cached_property
@@ -17,17 +32,21 @@ from .exceptions import FileTransferError
 
 
 class FileTransfer:
-    """Upload a file to the Matrixian Platform.
-
-    NB. There is no method yet to download files,
-    but it can be made on request.
+    """Upload and download files to/from the Matrixian Platform.
 
     Example usage::
         ft = FileTransfer(
             username="Data Team",
-            filename="somefile.csv"
+            filename="somefile.csv",
         )
+
+        # Upload "somefile.csv"
         ft.transfer().notify()
+
+        # Download "somefile.csv"
+        ft.download(
+            ft.list_files().pop()
+        )
     """
 
     def __init__(
@@ -35,8 +54,15 @@ class FileTransfer:
             user_id: str = None,
             username: str = None,
             email: str = None,
-            filename: str = None
+            filename: str = None,
     ):
+        """Create a FileTransfer object to upload/download files.
+
+        To be able to connect to an account, you need to provide a
+        username, a user_id or a email.
+
+        To be able to upload a file, you need to provide a filename.
+        """
 
         # Check
         if not user_id and not username and not email:
@@ -68,18 +94,22 @@ class FileTransfer:
 
     @cached_property
     def unique_dir(self) -> str:
+        """Provide the unique directory name needed for uploads."""
         return f"{token_hex(10)}{round(time())}"
 
     @cached_property
     def insert_filename(self) -> str:
+        """Provide the file name needed for uploads."""
         return Path(self.filename).name
 
     @cached_property
     def filepath(self) -> str:
+        """Provide the full directory path needed for uploads."""
         return f"{self.ftpath}/{self.user_id}/{self.unique_dir}"
 
     @cached_property
     def cmds(self) -> Tuple[List[str], List[str], List[str]]:
+        """Provide the shell commands needed for uploads."""
         return (
             ["ssh", self.fthost, "install", "-d", "-m", "0777", self.filepath],
             ["scp", self.filename, f"{self.fthost}:{self.filepath}/"],
@@ -88,6 +118,7 @@ class FileTransfer:
 
     @cached_property
     def doc(self):
+        """Provide the MongoDB document needed for uploads."""
         return {
             "createdDate": datetime.now(tz=timezone("Europe/Amsterdam")),
             "filePath": f"{self.user_id}/{self.unique_dir}",
@@ -99,10 +130,12 @@ class FileTransfer:
         }
 
     def _check_filename(self):
+        """Check if a filename is provided."""
         if not self.filename:
             raise FileTransferError("Provide a filename.")
 
     def _check_process(self, p):
+        """Check if a process has completed successfully."""
         try:
             p.check_returncode()
         except CalledProcessError as e:
@@ -113,11 +146,12 @@ class FileTransfer:
             ) from e
 
     def _run_cmd(self, cmd: List[str]):
+        """Create a process from a shell command."""
         p = run(cmd, stdout=PIPE, stderr=PIPE)
         self._check_process(p)
 
     def list_files(self) -> list:
-        """List existing files in this user's folder."""
+        """List existing files in this user's Platform folder."""
         return [
             d["fileName"]
             for d in self.db.find({
@@ -125,29 +159,32 @@ class FileTransfer:
             })]
 
     def download(self, file: str):
-        """Download an existing file to disk."""
+        """Download an existing Platform file to disk."""
         result = self.db.find_one({"fileName": file})
         request = f'{self.fthost}:"{self.ftpath}/{result["filePath"]}/{result["fileName"]}"'
         cmd = ["scp", "-T", request, file]
         self._run_cmd(cmd)
 
     def download_all(self):
-        """Download all existing files to disk."""
+        """Download all existing Platform files to disk."""
         for file in self.list_files():
             self.download(file)
 
     def filetransfer_database_entry(self) -> "FileTransfer":
+        """Create a MongoDB entry for the current upload."""
         self._check_filename()
         self.db.insert_one(self.doc)
         return self
 
     def filetransfer_file_upload(self) -> "FileTransfer":
+        """Upload a file to the Platform host."""
         self._check_filename()
         for cmd in self.cmds:
             self._run_cmd(cmd)
         return self
 
     def test_mongo(self):
+        """Test if a connection can be made to the MongoDB host."""
         try:
             self.db.find_one()
         except PyMongoError as e:
@@ -156,6 +193,7 @@ class FileTransfer:
             ) from e
 
     def test_ssh(self):
+        """Test if a connection can be made to the Platform host."""
         try:
             run(["ssh", self.fthost, "echo", "ssh", "ok"], check=True, stdout=DEVNULL)
         except CalledProcessError as e:
@@ -164,10 +202,12 @@ class FileTransfer:
             ) from e
 
     def test_connections(self):
+        """Test if connections can be made to the necessary hosts."""
         self.test_mongo()
         self.test_ssh()
 
     def transfer(self) -> "FileTransfer":
+        """Upload the specified file to the specified Platform folder."""
         self.filetransfer_file_upload()
         self.filetransfer_database_entry()
         return self
@@ -177,6 +217,8 @@ class FileTransfer:
             to_address: Union[str, Sequence[str]] = None,
             username: str = None
     ) -> "FileTransfer":
+        """Notify the user of the new Platform upload."""
+
         # Prepare message
         template = Path(__file__).parent / "etc/email.html"
         with open(template) as f:
@@ -198,4 +240,5 @@ class FileTransfer:
             subject="Nieuw bestand in Filetransfer",
             message=message,
         )
+
         return self

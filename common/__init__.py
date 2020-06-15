@@ -1,3 +1,8 @@
+"""Common classes and functions for the Matrixian Group Data Team.
+
+Read the documentation on Confluence:
+https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+classes+mx
+"""
 from .address import (
     parse,
     validate,
@@ -20,7 +25,6 @@ from .handlers import (
     csv_write,
     csv_read,
     get_logger,
-    get_tqdm,
     pip_upgrade,
     send_email,
     timer,
@@ -42,12 +46,16 @@ from .platform import (
     FileTransfer,
 )
 from .requests import (
+    ThreadSafeIterator,
     get,
+    post,
+    request,
     thread,
+    threadsafe,
     get_proxies,
     get_session,
 )
-from ._version import (
+from .etc._version import (
     __version__,
 )
 
@@ -63,6 +71,7 @@ __all__ = [
     "NamesData",
     "NoMatch",
     "PersonData",
+    "ThreadSafeIterator",
     "TicToc",
     "Timer",
     "ZipData",
@@ -77,12 +86,14 @@ __all__ = [
     "get_logger",
     "get_proxies",
     "get_session",
-    "get_tqdm",
     "levenshtein",
     "parse",
+    "post",
     "pip_upgrade",
+    "request",
     "send_email",
     "thread",
+    "threadsafe",
     "timer",
     "validate",
 ]

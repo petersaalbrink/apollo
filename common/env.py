@@ -1,3 +1,12 @@
+"""Module that manages the environment variables needed by common.
+
+This module provides a function, `getenv`, which when imported first
+loads the necessary environment variables, and then can be used to
+return those. This module is used by common internally, but it can be
+used externally, if one needs to load secrets or hostnames into the
+system's environment variables outside of common.
+"""
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,6 +16,7 @@ envfile = Path(commondir / ".env")
 
 
 def getenv():
+    """Load the .env file that is used by common."""
 
     # Create .env, if it doesn't exist yet
     if not envfile.exists():
@@ -23,6 +33,11 @@ def getenv():
 
 
 def _write_pem():
+    """Create certificates needed by common.MySQLClient.
+
+    The certificates need to be present as environment variables and
+    will be written to the current working directory.
+    """
     keys = (
         "CLIENT_CERT",
         "CLIENT_KEY",
