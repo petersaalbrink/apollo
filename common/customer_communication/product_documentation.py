@@ -1,23 +1,29 @@
 import os
 import requests
 import json
+from ..secrets import get_secret
+from pathlib import Path
 
 
 class Document:
-
-    def __init__(self, folder, coded_input=False, to_zip=True):
-        self.ref = {'CDQC': {'id': 1287422041, 'title': 'Documentatie_CDQC.pdf'}, 'None': {}}
+    def __init__(self, folder, coded_input: dict = None, to_zip: bool = True):
         if not coded_input:
             self.input = input(f'Select product {list(self.ref.keys())}')
         else:
             self.input = coded_input['product']
-        self.product = self.ref[self.input]
-        self.headers = {'Content-Type': 'application/json', }
-        self.auth = ('llaagwater@matrixiangroup.com', 'dIsF8eXhVMUfa1ceeybp1BD2')
-        self.link = None
-        self.file = None
+
+        self.headers = {'Content-Type': 'application/json'}
+        self.auth = get_secret("MX_CONFLUENCE")
+        self.product = {}
+        self.ref = {}
+        self.link = self.file = None
         self.folder = folder
         self.to_zip = to_zip
+
+    def get_ref(self):
+        with open(Path(__file__).parent / "product_documentation.txt") as file:
+            self.ref = json.loads(file.read())
+            self.product = self.ref[self.input]
 
     def download(self):
         url = f'https://matrixiangroup.atlassian.net/wiki/rest/api/content/{self.product["id"]}/child/attachment'
@@ -32,15 +38,17 @@ class Document:
     def save(self):
         self.file = requests.request('GET', f'https://matrixiangroup.atlassian.net/wiki{self.link}',
                                      headers=self.headers, auth=self.auth)
-        open(f'{self.product["title"]}', 'wb').write(self.file.content)
+        with open(f'{self.product["title"]}', 'wb') as f:
+            f.write(self.file.content)
         self.folder.write(f'{self.product["title"]}')
         if self.to_zip:
             os.remove(f'{self.product["title"]}')
 
 
-def documentation_exe(folder, coded_input=False, to_zip=True):
+def documentation_exe(folder, coded_input: dict = None, to_zip: bool = True):
     get = Document(folder, coded_input, to_zip)
     if get.input != 'None':
+        get.get_ref()
         get.download()
         get.save()
-    return get.input
+    return get.product['title']

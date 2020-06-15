@@ -9,7 +9,7 @@ from common import MySQLClient
 
 def clean_c(c):
     for char in (" ", "-", "_", ".", ",", "!", "@", "#"):
-        c = c.replace(char, "")
+        c = c.replace(char, "").lower()
     return c
 
 
@@ -22,6 +22,7 @@ class DataProfileBuilder:
         self.columns = list(self.data.columns)
 
     def memory_calc(self):
+        """Used for calculating the memory usages of a single column, currently not shown in output."""
         self.mem_used_dtypes = pd.DataFrame(
             self.data.memory_usage(deep=True) / 1024 ** 2
         )
@@ -29,7 +30,7 @@ class DataProfileBuilder:
         self.mem_used_dtypes.drop("Index", axis=0, inplace=True)
 
     def construct_dq_df(self):
-
+        # Create empty DF for metadata
         self.data_qlt_df = pd.DataFrame(
             index=np.arange(0, self.no_of_rows),
             columns=(
@@ -131,7 +132,9 @@ class DataProfileBuilder:
         descriptions = []
 
         for c in self.columns:
-            if "Unnamed" not in c:
+            if "std_" in c or "out_" in c or "res_" in c:
+                descriptions.append("Consult document")
+            elif "Unnamed" not in c:
                 cc = clean_c(c)
                 mask = (
                     self.desc["mapping"]
@@ -149,8 +152,7 @@ class DataProfileBuilder:
         self.data_qlt_df["description"] = descriptions
 
     def reorder_df(self):
-
-        # Reorder the Data Profile Dataframe columns
+        """Reorder the Data Profile Dataframe columns"""
         self.data_desc_df = self.data_qlt_df[["column_name", "description"]]
         self.data_qlt_df = self.data_qlt_df[
             [
@@ -181,6 +183,8 @@ class GraphBuilder:
         self.colors = ["#037960", "#05AB89", "#01DEB1", "#7FAE92", "#9AD2B1", "#B4FFD2"]
         self.kleur = sns.color_palette(self.colors)
         self.folder_name = "plots_temp"
+        self.exclude = None
+        self.desc = None
         sns.set_style("whitegrid")
         sns.set_context("talk")
 
@@ -191,6 +195,21 @@ class GraphBuilder:
         for f in Path(self.folder_name).glob("*"):
             f.unlink()
         os.removedirs(self.folder_name)
+
+    def exclude_cols(self):
+        sql = MySQLClient("client_work_google.field_descriptions")
+        q = """SELECT *
+        FROM client_work_google.field_descriptions"""
+        self.desc = pd.read_sql(q, sql.connect(conn=True))
+
+        self.exclude = (
+                self.desc[self.desc["field"] == "huisnummer"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
+                + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
+        )
 
     def bool_graph(self):
         for col_name in self.bool_cols:
@@ -229,7 +248,7 @@ class GraphBuilder:
                 plt.close("all")
 
     def num_graph(self):
-        for col_name in set(self.num_cols) - set(self.bool_cols):
+        for col_name in (set(self.num_cols) - set(self.bool_cols) - set(self.exclude)):
             if len(self.data[col_name].value_counts()) > 0:
                 data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
@@ -259,7 +278,7 @@ class GraphBuilder:
                 plt.close("all")
 
     def obj_graph(self):
-        for col_name in set(self.obj_cols) - set(self.bool_cols):
+        for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
                 fig.subplots_adjust(top=0.8)
@@ -333,7 +352,7 @@ class CodebookBuilder:
 
     def distribution_page(self):
         cell_format1 = self.workbook.add_format(
-            {"bold": True, "font_color": "green", "font_size": 15, "shrink": True}
+            {"bold": True, "font_color": "037960", "font_size": 15, "shrink": True}
         )
         cell_format2 = self.workbook.add_format({"bottom": True})
 
@@ -386,6 +405,7 @@ def codebook_exe(data, folder, to_zip=True):
 
     gr_b = GraphBuilder(data)
     gr_b.make_folder()
+    gr_b.exclude_cols()
     gr_b.bool_graph()
     gr_b.num_graph()
     gr_b.obj_graph()
@@ -399,3 +419,5 @@ def codebook_exe(data, folder, to_zip=True):
     cb_b.save_xlsx()
 
     gr_b.del_folder()
+
+    return 'Codebook.xlsx'

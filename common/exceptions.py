@@ -1,46 +1,49 @@
+"""Module that contains exceptions used by other common modules."""
+
+
 class CommonError(Exception):
-    pass
+    """Base exception for all common modules."""
 
 
 class ConnectorError(Exception):
-    pass
+    """Base exception for all common.connectors modules."""
 
 
 class ESClientError(ConnectorError):
-    pass
+    """Exception for ESClient."""
 
 
 class MongoDBError(ConnectorError):
-    pass
+    """Exception for MongoDB."""
 
 
 class MySQLClientError(ConnectorError):
-    pass
+    """Exception for MySQLClient."""
 
 
 class DataError(CommonError):
-    pass
+    """Exception for data handlers."""
 
 
 class FileTransferError(CommonError):
-    pass
+    """Exception for FileTransfer."""
 
 
 class MatchError(CommonError):
-    pass
+    """Exception for Person Matching."""
 
 
 class NoMatch(CommonError):
-    pass
+    """Exception for Person Matching."""
 
 
 class ParseError(CommonError):
-    pass
+    """Exception for data parsers."""
 
 
 class TimerError(CommonError):
-    """Exception used to report errors in use of Timer class."""
+    """Exception for Timer."""
 
 
 class ZipDataError(CommonError):
-    """Exception used to report errors in use of ZipData class."""
+    """Exception for ZipData."""

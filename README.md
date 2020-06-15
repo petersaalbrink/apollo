@@ -2,10 +2,12 @@
 
 Python classes for Matrixian Group.  
 
+Read the [documentation on Confluence](https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+classes+mx).  
+
 They include common.connectors: MySQLClient, MongoDB, ESClient, and an
 EmailClient. Furthermore, they include an address parser
 common.parsers.parse, a RadarPlot class in common.visualizations,
-Match and NamesData classes in common.persondata, csv_read and
+PersonData and NamesData classes in common.persondata, csv_read and
 csv_write functions in common.handlers, and much more. Enjoy!
 
 Install:  
