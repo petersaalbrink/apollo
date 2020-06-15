@@ -62,8 +62,6 @@ class MongoDB(MongoClient):
                         host = "cdqc"
             elif host == "stg":
                 raise MongoDBError("Staging database is not used anymore.")
-            if not client and not database:
-                database = "admin"
             if host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
             host = _hosts[host]
