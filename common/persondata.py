@@ -31,6 +31,7 @@ from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from json import loads
 from logging import debug
 from re import sub
@@ -96,7 +97,7 @@ class Data(BaseDataClass):
 # TODO: convert to pydantic.BaseModel
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Score:
     """Dataclass for score calculation."""
     __slots__ = [
@@ -368,6 +369,7 @@ class _SourceScore:
         score_percentage = full_score(result_tuple)
         return score_percentage
 
+    @lru_cache
     def _convert_score(self, result_tuple: _Score) -> Union[int, float]:
         """Calculate and categorize a match score based on match properties."""
         score_percentage = self._calc_score(result_tuple)
@@ -696,6 +698,7 @@ class PersonData(_MatchQueries,
         if country and country.lower() not in self._countries:
             raise NoMatch(f"Not implemented for country {country}.")
 
+    @lru_cache
     def _check_match(self, key: str):
         """Matches where we found a phone number, but the phone number
         occurs more recently on another address, or with another
@@ -753,6 +756,7 @@ class PersonData(_MatchQueries,
                 if all(map(self.result.get, self._main_fields)):
                     return
 
+    @lru_cache
     def _phone_valid(self, number: int):
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
@@ -784,6 +788,7 @@ class PersonData(_MatchQueries,
                             break
         return valid
 
+    @lru_cache
     def _email_valid(self, email: str):
         """Check validity of email address."""
         try:
