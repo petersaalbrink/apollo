@@ -285,6 +285,7 @@ class _SourceScore:
         def source_score(result: _Score, score: float) -> float:
             """Lower quality of the record's source means a lower score."""
             source = {
+                "saneringen": 1,
                 "Kadaster_4": 1,
                 "Kadaster_3": 2,
                 "Kadaster_2": 3,
