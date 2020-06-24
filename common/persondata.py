@@ -31,6 +31,7 @@ from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from json import loads
 from logging import debug
 from re import sub
@@ -51,13 +52,19 @@ from .parsers import flatten, levenshtein
 from .requests import get
 
 ND_INDEX = "cdqc.names_data"
-PD_INDEX = "cdqc.person_data_20190716"
+PD_INDEX = "cdqc.person_data"
 VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
 DATE = "%Y-%m-%d"
 DATE_FORMAT = "%Y-%m-%dT00:00:00.000Z"
 DEFAULT_DATE = "1900-01-01T00:00:00.000Z"
+
+ADDRESS_KEY = "address"
+DATE_KEYS = {"address_moved", "birth_date", "death_date"}
+EMAIL_KEY = "contact_email"
+PERSONAL_KEYS = ("details", "birth")
+PHONE_KEYS = {"phoneNumber_number", "phoneNumber_mobile"}
 
 
 class BaseDataClass(MutableMapping):
@@ -96,7 +103,7 @@ class Data(BaseDataClass):
 # TODO: convert to pydantic.BaseModel
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Score:
     """Dataclass for score calculation."""
     __slots__ = [
@@ -146,35 +153,35 @@ class _SourceMatch:
 
     def _lastname_match(self, response):
         """Does the last name match?"""
-        return (response.get("lastname")
+        return (response.get("details_lastname")
                 and self.data.lastname
-                and (response.get("lastname") in self.data.lastname
-                     or self.data.lastname in response.get("lastname"))
+                and (response.get("details_lastname") in self.data.lastname
+                     or self.data.lastname in response.get("details_lastname"))
                 ) or False
 
     def _initials_match(self, response):
         """Do the initials match?"""
         try:
-            return (response.get("initials") and self.data.initials
-                    and response.get("initials")[0] == self.data.initials[0]
+            return (response.get("details_initials") and self.data.initials
+                    and response.get("details_initials")[0] == self.data.initials[0]
                     ) or False
         except IndexError:
             return False
 
     def _gender_match(self, response):
         """Does the gender match?"""
-        return (response.get("gender") and self.data.gender
-                and response.get("gender") == self.data.gender
+        return (response.get("details_gender") and self.data.gender
+                and response.get("details_gender") == self.data.gender
                 ) or False
 
     def _address_match(self, response):
         """Do the postal code and house number match?"""
-        return (response.get("address_current_postalCode")
+        return (response.get("address_postalCode")
                 and self.data.postalCode
-                and response.get("address_current_houseNumber")
+                and response.get("address_houseNumber")
                 and self.data.houseNumber
-                and response.get("address_current_postalCode") == self.data.postalCode
-                and response.get("address_current_houseNumber") == self.data.houseNumber
+                and response.get("address_postalCode") == self.data.postalCode
+                and response.get("address_houseNumber") == self.data.houseNumber
                 ) or False
 
     def _phone_match(self, response):
@@ -246,10 +253,10 @@ class _SourceScore:
         self._year = datetime.now().year
         self._score_testing = False
         self._score_mapping = {
-            "lastname": "name_score",
+            "details_lastname": "name_score",
             "phoneNumber_mobile": "mobile_score",
             "phoneNumber_number": "number_score",
-            "address_current_postalCode": "address_score",
+            "address_postalCode": "address_score",
         }
 
     @staticmethod
@@ -278,6 +285,7 @@ class _SourceScore:
         def source_score(result: _Score, score: float) -> float:
             """Lower quality of the record's source means a lower score."""
             source = {
+                "saneringen": 1,
                 "Kadaster_4": 1,
                 "Kadaster_3": 2,
                 "Kadaster_2": 3,
@@ -368,6 +376,7 @@ class _SourceScore:
         score_percentage = full_score(result_tuple)
         return score_percentage
 
+    @lru_cache
     def _convert_score(self, result_tuple: _Score) -> Union[int, float]:
         """Calculate and categorize a match score based on match properties."""
         score_percentage = self._calc_score(result_tuple)
@@ -388,14 +397,14 @@ class _MatchQueries:
         super().__init__()
         self.data = None
         self._es_mapping = {
-            "lastname": "lastname",
-            "initials": "initials",
-            "postalCode": "address.current.postalCode",
-            "houseNumber": "address.current.houseNumber",
-            "houseNumberExt": "address.current.houseNumberExt",
+            "lastname": "details.lastname",
+            "initials": "details.initials",
+            "postalCode": "address.postalCode",
+            "houseNumber": "address.houseNumber",
+            "houseNumberExt": "address.houseNumberExt",
             "mobile": "phoneNumber.mobile",
             "number": "phoneNumber.number",
-            "gender": "gender",
+            "gender": "details.gender",
             "date_of_birth": "birth.date",
         }
         self._name_only_query = kwargs.pop("name_only_query", False)
@@ -425,10 +434,10 @@ class _MatchQueries:
         if (self.data.postalCode
                 and self.data.lastname and self.data.initials):
             yield "initial", self._base_query(must=[
-                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
-                {"match": {"lastname": {
+                {"term": {"address.postalCode.keyword": self.data.postalCode}},
+                {"match": {"details.lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+                {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
         if self.data.lastname and self.data.initials:
             if self.data.date_of_birth:
                 if self.data.date_of_birth.day <= 12:
@@ -442,58 +451,58 @@ class _MatchQueries:
                     dob = {"term": {"birth.date": self.data.date_of_birth}}
                 yield "dob", self._base_query(must=[
                     dob,
-                    {"match": {"lastname": {
+                    {"match": {"details.lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+                    {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.number:
                 yield "number", self._base_query(must=[
                     {"term": {"phoneNumber.number": self.data.number}},
-                    {"match": {"lastname": {
+                    {"match": {"details.lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+                    {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
             if self.data.mobile:
                 yield "mobile", self._base_query(must=[
                     {"term": {"phoneNumber.mobile": self.data.mobile}},
-                    {"match": {"lastname": {
+                    {"match": {"details.lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                    {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+                    {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
         if (self.data.postalCode
                 and self.data.lastname):
             query = self._base_query(must=[
-                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
-                {"match": {"lastname": {
+                {"term": {"address.postalCode.keyword": self.data.postalCode}},
+                {"match": {"details.lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}}])
             if self.data.initials:
                 query["query"]["bool"]["should"] = {
-                    "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
+                    "wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}
             yield "name", query
             query = self._base_query(must=[
-                {"term": {"address.current.postalCode.keyword": self.data.postalCode}},
+                {"term": {"address.postalCode.keyword": self.data.postalCode}},
                 {"wildcard": {
-                    "lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
+                    "details.lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}}])
             if self.data.initials:
                 query["query"]["bool"]["should"] = {
-                    "wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}
+                    "wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}
             yield "wildcard", query
         if (self.data.postalCode
                 and self.data.houseNumber):
-            must = [{"term": {"address.current.postalCode.keyword": self.data.postalCode}},
-                    {"term": {"address.current.houseNumber": self.data.houseNumber}}]
+            must = [{"term": {"address.postalCode.keyword": self.data.postalCode}},
+                    {"term": {"address.houseNumber": self.data.houseNumber}}]
             if self.data.houseNumberExt:
                 must.append({"wildcard": {
-                    "address.current.houseNumberExt":
+                    "address.houseNumberExt":
                         f"*{self.data.houseNumberExt[0].lower()}*"}})
             yield "address", self._base_query(must=must)
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
-                must=[{"wildcard": {"lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
-                      {"wildcard": {"initials": f"{self.data.initials[0].lower()}*"}}])
+                must=[{"wildcard": {"details.lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
+                      {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
 
     def _base_query(self, **kwargs):
         """Encapsulate clauses in a bool query, with sorting on date."""
         return self._extend_query({
             "query": {"bool": kwargs},
-            "sort": {"dateOfRecord": "desc"}})
+            "sort": {"date": "desc"}})
 
     def _extend_query(self, query):
         """Extend a complete query with a restriction of select sources."""
@@ -520,7 +529,7 @@ class _MatchQueries:
                     "minimum_should_match": 1
                 }
             },
-            "sort": {"dateOfRecord": "desc"},
+            "sort": {"date": "desc"},
         }
 
 
@@ -602,45 +611,43 @@ class PersonData(_MatchQueries,
             return self._response_type
         elif self._response_type == "all":
             return (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
+                "address_city",
+                "address_country",
+                "address_houseNumber",
+                "address_houseNumberExt",
+                "address_location",
+                "address_postalCode",
+                "address_state",
+                "address_street",
                 "address_moved",
                 "birth_date",
-                "common",
                 "contact_email",
                 "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
+                "details_firstname",
+                "details_gender",
+                "details_initials",
+                "details_lastname",
+                "details_middlename",
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
             ) if self._email else (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
+                "address_city",
+                "address_country",
+                "address_houseNumber",
+                "address_houseNumberExt",
+                "address_location",
+                "address_postalCode",
+                "address_state",
+                "address_street",
                 "address_moved",
                 "birth_date",
-                "common",
                 "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
+                "details_firstname",
+                "details_gender",
+                "details_initials",
+                "details_lastname",
+                "details_middlename",
                 "phoneNumber_country",
                 "phoneNumber_mobile",
                 "phoneNumber_number",
@@ -648,24 +655,23 @@ class PersonData(_MatchQueries,
         elif self._response_type == "name":
             return (
                 "birth_date",
-                "common",
                 "death_date",
-                "firstname",
-                "gender",
-                "initials",
-                "lastname",
-                "middlename",
+                "details_firstname",
+                "details_gender",
+                "details_initials",
+                "details_lastname",
+                "details_middlename",
             )
         elif self._response_type == "address":
             return (
-                "address_current_city",
-                "address_current_country",
-                "address_current_houseNumber",
-                "address_current_houseNumberExt",
-                "address_current_location",
-                "address_current_postalCode",
-                "address_current_state",
-                "address_current_street",
+                "address_city",
+                "address_country",
+                "address_houseNumber",
+                "address_houseNumberExt",
+                "address_location",
+                "address_postalCode",
+                "address_state",
+                "address_street",
                 "address_moved",
             )
         elif self._response_type == "phone":
@@ -684,11 +690,11 @@ class PersonData(_MatchQueries,
         elif self._response_type == "phone":
             return "phoneNumber_number", "phoneNumber_mobile"
         elif self._response_type == "address":
-            return "address_current_postalCode",
+            return "address_postalCode",
         elif self._response_type == "name":
-            return "lastname",
+            return "details_lastname",
         else:
-            return ("lastname", "address_current_postalCode",
+            return ("details_lastname", "address_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
 
     def _check_country(self, country: str):
@@ -696,6 +702,7 @@ class PersonData(_MatchQueries,
         if country and country.lower() not in self._countries:
             raise NoMatch(f"Not implemented for country {country}.")
 
+    @lru_cache
     def _check_match(self, key: str):
         """Matches where we found a phone number, but the phone number
         occurs more recently on another address, or with another
@@ -708,7 +715,7 @@ class PersonData(_MatchQueries,
                         "must":
                             {"match": {key.replace("_", "."): self.result[key]}}
                     }},
-                "sort": {"dateOfRecord": "desc"}
+                "sort": {"date": "desc"}
             }, size=1)
             if response and self._responses[key]["_id"] != response["_id"]:
                 occurring = True
@@ -724,35 +731,37 @@ class PersonData(_MatchQueries,
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
-                             for d in self._es.find(
-                        self._id_query(self._es.find(
-                            q, source_only=True)))]
+                responses = self._es.find(
+                    self._id_query(self._es.find(
+                        q, source_only=True)), with_id=True)
             else:
-                responses = [{"_id": d["_id"], **d["_source"]}  # noqa
-                             for d in self._es.find(q)]
+                responses = self._es.find(q, with_id=True)
             for response in responses:
                 response = flatten(response)
                 for key in self._requested_fields:
                     if key not in self.result and response.get(key):
-                        if (key in ("phoneNumber_number", "phoneNumber_mobile")
-                                and not self._phone_valid(response[key])):
-                            continue
-                        if (key in ("address_moved", "birth_date", "death_date")
-                                and response[key] == DEFAULT_DATE):
-                            continue
-                        if (key == "contact_email" and
-                                not self._email_valid(response[key])):
+                        skip_key = (
+                                (key in PHONE_KEYS
+                                 and not self._phone_valid(response[key]))
+                                or (key in DATE_KEYS
+                                    and response[key] == DEFAULT_DATE)
+                                or (_type == ADDRESS_KEY
+                                    and key.startswith(PERSONAL_KEYS))
+                                or (key == EMAIL_KEY
+                                    and not self._email_valid(response[key]))
+                        )
+                        if skip_key:
                             continue
                         self.result[key] = response[key]
                         if key in self._main_fields:
                             self._responses[key] = response
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
-                        self.result["date"] = response["dateOfRecord"]
+                        self.result["date"] = response["date"]
                 if all(map(self.result.get, self._main_fields)):
                     return
 
+    @lru_cache
     def _phone_valid(self, number: int):
         """Don't call between 22PM and 8AM; if the
         script is running then, just pause it."""
@@ -784,6 +793,7 @@ class PersonData(_MatchQueries,
                             break
         return valid
 
+    @lru_cache
     def _email_valid(self, email: str):
         """Check validity of email address."""
         try:
@@ -807,17 +817,17 @@ class PersonData(_MatchQueries,
                 self.result["match_keys"].update(self._match_keys)
                 score = self._convert_score(_Score(
                     source=response["source"],
-                    year_of_record=response["dateOfRecord"][:4],
+                    year_of_record=response["date"][:4],
                     deceased=response["death_year"],
-                    lastname_number=len(set(d["lastname"] for d in self._responses.values())),
-                    gender=response["gender"],
+                    lastname_number=len(set(d["details_lastname"] for d in self._responses.values())),
+                    gender=response["details_gender"],
                     date_of_birth=response["birth_year"],
                     phonenumber_number=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
                     moved=response["address_moved"] != DEFAULT_DATE,
                     mobile="mobile" in key or "lastname" in key,
-                    matched_names=(self.data.lastname, response["lastname"]),
+                    matched_names=(self.data.lastname, response["details_lastname"]),
                     found_persons=len({response["id"] for response in self._responses.values()}),
                 ))
                 self.result[self._score_mapping.get(key, f"{key}_score")] = f"{source}{score}"
