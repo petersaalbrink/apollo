@@ -55,7 +55,6 @@ def parse(address: str, country: str = "NL"):
     return response
 
 
-@lru_cache
 def validate(params: Union[dict, str]) -> dict:
     """
     Uses the address checker API to validate an address.
