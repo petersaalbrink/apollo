@@ -95,7 +95,7 @@ class SQLtoMongo:
             return read_sql(
                 sql=self.query,
                 con=self.engine,
-                chunksize=10_000,
+                chunksize=1_000,
             )
         except Exception as e:
             if not self.query:
