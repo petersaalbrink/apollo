@@ -3,7 +3,9 @@
 Read the documentation on Confluence:
 https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+classes+mx
 """
-from .address import (
+from .api import (
+    check_email,
+    check_phone,
     parse,
     validate,
 )
@@ -55,7 +57,7 @@ from .requests import (
     get_proxies,
     get_session,
 )
-from .etc._version import (
+from .etc.version import (
     __version__,
 )
 
@@ -76,6 +78,8 @@ __all__ = [
     "Timer",
     "ZipData",
     "__version__",
+    "check_email",
+    "check_phone",
     "csv_read",
     "csv_write",
     "dateformat",

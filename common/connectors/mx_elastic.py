@@ -396,7 +396,7 @@ class ESClient(Elasticsearch):
             hits_only, source_only = True, False
 
         field = kwargs.pop("field", None)
-        scroll = kwargs.pop("scroll", "1440m")
+        scroll = kwargs.pop("scroll", "10m")
         as_chunks = kwargs.pop("as_chunks", False)
         chunk_size = kwargs.pop("chunk_size", 10_000 if as_chunks else 1)
         if chunk_size > 10_000:

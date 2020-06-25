@@ -1,6 +1,7 @@
 from setuptools import setup
 
-exec(open("common/etc/_version.py").read())
+__version__ = None
+exec(open("common/etc/version.py").read())  # noqa
 
 with open("README.md") as f:
     long_description = f.read()

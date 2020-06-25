@@ -653,13 +653,13 @@ def timer(f):
         my_func()
     """
     @wraps(f)
-    def wrapped(*args, **kwargs):
+    def timed(*args, **kwargs):
         start_time = perf_counter()
         return_value = f(*args, **kwargs)
         elapsed_time = perf_counter() - start_time
         logging.info("%s:%.8f", f.__name__, elapsed_time)
         return return_value
-    return wrapped
+    return timed
 
 
 def pip_upgrade():
