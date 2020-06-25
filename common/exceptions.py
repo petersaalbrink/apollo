@@ -5,12 +5,20 @@ class CommonError(Exception):
     """Base exception for all common modules."""
 
 
+class ApiError(Exception):
+    """Base exception for all common.api modules."""
+
+
 class ConnectorError(Exception):
     """Base exception for all common.connectors modules."""
 
 
 class ESClientError(ConnectorError):
     """Exception for ESClient."""
+
+
+class PhoneApiError(ApiError):
+    """Exception for Phone Checker API."""
 
 
 class MongoDBError(ConnectorError):

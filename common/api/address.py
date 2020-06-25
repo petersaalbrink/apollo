@@ -1,8 +1,11 @@
+from functools import lru_cache
 from typing import Union
+
 from pycountry import countries
 from requests.exceptions import HTTPError
-from .requests import get
-from .connectors import EmailClient
+
+from ..requests import get
+from ..connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
@@ -10,12 +13,13 @@ PARSER = f"http://{LIVE}:5000/parser"
 VALIDATION = f"http://{LIVE}:5000/validation"
 
 
+@lru_cache
 def parse(address: str, country: str = "NL"):
     """
     Parses an address in a string format and returns address elements in JSON.
 
     Example:
-        from common.address import parse
+        from common.api.address import parse
         PARSED_ADDRESS = parse("Transformatorweg 102")
         print(dumps(PARSED_ADDRESS, indent=2, ensure_ascii=False))
 
@@ -51,12 +55,13 @@ def parse(address: str, country: str = "NL"):
     return response
 
 
+@lru_cache
 def validate(params: Union[dict, str]) -> dict:
     """
     Uses the address checker API to validate an address.
 
     Example:
-        from common.address import validate
+        from common.api.address import validate
         from json import dumps
 
         PARAMS = {

@@ -32,28 +32,23 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-from json import loads
 from logging import debug
 from re import sub
-from socket import gethostname
-from time import localtime, sleep
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
 from dateutil.parser import parse as dateparse
 from phonenumbers import is_valid_number, parse as phoneparse
 from phonenumbers.phonenumberutil import NumberParseException
-from requests.exceptions import RetryError
 from text_unidecode import unidecode
-from urllib3.exceptions import MaxRetryError
 
-from .connectors.mx_elastic import ESClient, ElasticsearchException
+import common.api.phone
+from .api.email import check_email
+from .connectors.mx_elastic import ESClient
 from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
-from .requests import get
 
 ND_INDEX = "cdqc.names_data"
 PD_INDEX = "cdqc.person_data"
-VN_INDEX = "cdqc.validated_numbers"
 HOST = "cdqc"
 
 DATE = "%Y-%m-%d"
@@ -577,22 +572,15 @@ class PersonData(_MatchQueries,
 
         # connectors
         self._es = ESClient(PD_INDEX, host=HOST)
-        self._vn = ESClient(VN_INDEX, host=HOST)
         self._es.index_exists = True
-        self._vn.index_exists = True
-        if gethostname() == "matrixian":
-            self._phone_url = "http://localhost:5000/call/"
-        else:
-            self._phone_url = "http://94.168.87.210:4000/call/"
-        self._email_url = ("http://develop.platform.matrixiangroup.com"
-                           ":4000/email?email=")
+
+        common.api.phone.RESPECT_HOURS = kwargs.pop("respect_hours", True)
+        common.api.phone.CALL_TO_VALIDATE = kwargs.pop("call_to_validate", False)
 
         # kwargs
         self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
-        self._respect_hours = kwargs.pop("respect_hours", True)
         self._score_testing = kwargs.pop("score_testing", False)
-        self._call_to_validate = kwargs.pop("call_to_validate", False)
         self._response_type = kwargs.pop("response_type", "all")
         categories = ("all", "name", "address", "phone")
         if (self._response_type not in categories and
@@ -742,13 +730,13 @@ class PersonData(_MatchQueries,
                     if key not in self.result and response.get(key):
                         skip_key = (
                                 (key in PHONE_KEYS
-                                 and not self._phone_valid(response[key]))
+                                 and not common.api.phone.check_phone(response[key], valid=True))
                                 or (key in DATE_KEYS
                                     and response[key] == DEFAULT_DATE)
                                 or (_type == ADDRESS_KEY
                                     and key.startswith(PERSONAL_KEYS))
                                 or (key == EMAIL_KEY
-                                    and not self._email_valid(response[key]))
+                                    and not check_email(response[key]))
                         )
                         if skip_key:
                             continue
@@ -760,50 +748,6 @@ class PersonData(_MatchQueries,
                         self.result["date"] = response["date"]
                 if all(map(self.result.get, self._main_fields)):
                     return
-
-    @lru_cache
-    def _phone_valid(self, number: int):
-        """Don't call between 22PM and 8AM; if the
-        script is running then, just pause it."""
-        if f"{number}".startswith(("8", "9")):
-            return False
-        phone = f"+31{number}"
-        try:
-            valid = is_valid_number(phoneparse(phone, "NL"))
-        except NumberParseException:
-            return False
-        if valid and not f"{number}".startswith("6"):
-            with suppress(ElasticsearchException):
-                query = {"query": {"bool": {"must": {"term": {"phoneNumber": number}}}}}
-                result = self._vn.find(query=query, first_only=True)
-                if result:
-                    return result["valid"]
-            if self._call_to_validate:
-                if self._respect_hours:
-                    t = localtime().tm_hour
-                    while t >= 22 or t < 8:
-                        sleep(60)
-                        t = localtime().tm_hour
-                while True:
-                    with suppress(RetryError, MaxRetryError):
-                        response = get(f"{self._phone_url}{phone}",
-                                       auth=("datateam", "matrixian"))
-                        if response.ok:
-                            valid = loads(response.text)
-                            break
-        return valid
-
-    @lru_cache
-    def _email_valid(self, email: str):
-        """Check validity of email address."""
-        try:
-            return get(f"{self._email_url}{email}",
-                       text_only=True,
-                       timeout=10
-                       )["status"] == "OK"
-        except Exception as e:
-            debug("Exception: %s: %s", email, e)
-            return False
 
     def _get_score(self):
         """After a result has been found, calculate the score for this match."""
