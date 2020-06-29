@@ -33,6 +33,7 @@ class SQLtoMongo:
             sql_database: str,
             sql_table: str,
             mappings: Mappings = None,
+            **kwargs,
     ):
         """Create an object to perform MySQL-to-MongoDB operations.
 
@@ -55,6 +56,7 @@ class SQLtoMongo:
         self.mappings = mappings
         self.query = None
         self.matched_count = self.number_of_insertions = self.number_of_updates = self.number_of_deletions = 0
+        self.chunksize = kwargs.pop("chunksize", 1_000)
 
     def create_indexes(self, names: List[str]):
         """Create indexes in the MongoDB collection.
@@ -95,7 +97,7 @@ class SQLtoMongo:
             return read_sql(
                 sql=self.query,
                 con=self.engine,
-                chunksize=1_000,
+                chunksize=self.chunksize,
             )
         except Exception as e:
             if not self.query:
