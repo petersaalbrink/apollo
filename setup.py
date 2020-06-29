@@ -19,7 +19,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
-    packages=["common", "common.connectors"],
+    packages=["common", "common.connectors", "common.api"],
     install_requires=pkgs,
     package_data={"": ["certificates/*.pem", "etc/*", "etc/.env"]},
     include_package_data=True,
