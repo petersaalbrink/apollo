@@ -17,7 +17,7 @@ from ..requests import get
 from ..secrets import get_secret
 
 _vn = None
-_SECRET = get_secret("MX_WEBHOOK_DATATEAM")
+_SECRET = None
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
 VN_INDEX = "cdqc.validated_numbers"
@@ -41,7 +41,7 @@ def check_phone(
     function will be suspended instead.
     """
 
-    global _vn
+    global _vn, _SECRET
 
     if not (isinstance(country, str) and len(country) == 2):
         raise PhoneApiError("Provide two-letter country code.")
@@ -70,6 +70,8 @@ def check_phone(
         if result:
             return result["valid"] if valid else {"phone": phone, "valid": result["valid"]}
     if CALL_TO_VALIDATE:
+        if not _SECRET:
+            _SECRET = get_secret("MX_WEBHOOK_DATATEAM")
         if RESPECT_HOURS:
             t = localtime().tm_hour
             while t >= 22 or t < 8:
