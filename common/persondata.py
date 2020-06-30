@@ -931,7 +931,7 @@ class Cleaner:
         """Clean and parse phone and mobile numbers."""
         for _type in self._phone_fields:
             if self.data.get(_type):
-                parsed = common.api.phone.parse_phone(self.data[_type])
+                parsed = common.api.phone.parse_phone(self.data[_type], "NL")
                 if parsed.is_valid_number:
                     self.data[_type] = parsed.national_number
                     if _type == "telephone":
