@@ -37,8 +37,6 @@ from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
 from dateutil.parser import parse as dateparse
-from phonenumbers import is_valid_number, parse as phoneparse
-from phonenumbers.phonenumberutil import NumberParseException
 from text_unidecode import unidecode
 
 import common.api.phone
@@ -917,6 +915,7 @@ class Cleaner:
         been loaded already.
         """
         self.data = {}
+        self._phone_fields = ("number", "telephone", "mobile")
         if "title_data" not in _module_data:
             _module_data["title_data"] = NamesData().titles()
 
@@ -930,30 +929,18 @@ class Cleaner:
 
     def _clean_phones(self):
         """Clean and parse phone and mobile numbers."""
-        for _type in ("number", "telephone", "mobile"):
-            if _type in self.data:
-                if isinstance(self.data[_type], str):
-                    # Clean number
-                    for s in (".0", "+31"):
-                        self.data[_type] = self.data[_type].replace(s, "")
-                    self.data[_type] = sub(r"[^0-9]", "", self.data[_type])
-                    self.data[_type] = self.data[_type].lstrip("0")
-                    if self.data[_type]:
-                        self.data[_type] = int(self.data[_type])
-                    else:
-                        self.data.pop(_type)
-                # Check format and syntax
-                try:
-                    number_valid = is_valid_number(phoneparse(f"+31{self.data[_type]}", "NL"))
-                except NumberParseException:
-                    number_valid = False
-                if not number_valid:
+        for _type in self._phone_fields:
+            if self.data.get(_type):
+                parsed = common.api.phone.parse_phone(self.data[_type])
+                if parsed.is_valid_number:
+                    self.data[_type] = parsed.national_number
+                    if _type == "telephone":
+                        if f"{self.data[_type]}".startswith("6"):
+                            self.data["mobile"] = self.data.pop(_type)
+                        else:
+                            self.data["number"] = self.data.pop(_type)
+                else:
                     self.data.pop(_type)
-                elif _type == "telephone":
-                    if f"{self.data[_type]}".startswith("6"):
-                        self.data["mobile"] = self.data.pop(_type)
-                    else:
-                        self.data["number"] = self.data.pop(_type)
 
     def _clean_initials(self):
         """Clean initials."""
