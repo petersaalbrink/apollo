@@ -49,9 +49,8 @@ ND_INDEX = "cdqc.names_data"
 PD_INDEX = "cdqc.person_data"
 HOST = "cdqc"
 
-DATE = "%Y-%m-%d"
-DATE_FORMAT = "%Y-%m-%dT00:00:00.000Z"
-DEFAULT_DATE = "1900-01-01T00:00:00.000Z"
+DATE_FORMAT = "%Y-%m-%d"
+DEFAULT_DATE = "1900-01-01"
 
 ADDRESS_KEY = "address"
 DATE_KEYS = {"address_moved", "birth_date", "death_date"}
@@ -189,9 +188,9 @@ class _SourceMatch:
 
     def _dob_match(self, response):
         """Does the date of birth match?"""
-        return (response.get("birth_date") != DEFAULT_DATE
+        return (response.get("birth_date")[:10] != DEFAULT_DATE
                 and self.data.date_of_birth
-                and response.get("birth_date") == self.data.date_of_birth.strftime(DATE_FORMAT)
+                and response.get("birth_date")[:10] == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
 
     def _set_match(self, response: dict):
@@ -730,7 +729,7 @@ class PersonData(_MatchQueries,
                                 (key in PHONE_KEYS
                                  and not common.api.phone.check_phone(response[key], valid=True))
                                 or (key in DATE_KEYS
-                                    and response[key] == DEFAULT_DATE)
+                                    and response[key][:10] == DEFAULT_DATE)
                                 or (_type == ADDRESS_KEY
                                     and key.startswith(PERSONAL_KEYS))
                                 or (key == EMAIL_KEY
@@ -767,7 +766,7 @@ class PersonData(_MatchQueries,
                     phonenumber_number=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
-                    moved=response["address_moved"] != DEFAULT_DATE,
+                    moved=response["address_moved"][:10] != DEFAULT_DATE,
                     mobile="mobile" in key or "lastname" in key,
                     matched_names=(self.data.lastname, response["details_lastname"]),
                     found_persons=len({response["id"] for response in self._responses.values()}),
@@ -782,7 +781,7 @@ class PersonData(_MatchQueries,
         # Fix dates
         for key in ("date", "address_moved", "birth_date", "death_date"):
             if key in self.result and isinstance(self.result[key], str):
-                self.result[key] = datetime.strptime(self.result[key], DATE_FORMAT)
+                self.result[key] = datetime.strptime(self.result[key][:10], DATE_FORMAT)
 
         debug("Result = %s", self.result)
 
@@ -980,7 +979,7 @@ class Cleaner:
         if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
             self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
             try:
-                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE)
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE_FORMAT)
             except ValueError:
                 try:
                     self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
