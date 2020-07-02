@@ -13,7 +13,7 @@ PARSER = f"http://{LIVE}:5000/parser"
 VALIDATION = f"http://{LIVE}:5000/validation"
 
 
-@lru_cache
+@lru_cache()
 def parse(address: str, country: str = "NL"):
     """
     Parses an address in a string format and returns address elements in JSON.

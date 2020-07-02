@@ -62,7 +62,7 @@ def _return(
     )
 
 
-@lru_cache
+@lru_cache()
 def parse_phone(
         number: Union[int, str],
         country: str = None,
@@ -98,7 +98,7 @@ def parse_phone(
         raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
 
 
-@lru_cache
+@lru_cache()
 def lookup_phone(
         parsed: ParsedPhoneNumber,
         valid: bool,
@@ -121,7 +121,7 @@ def lookup_phone(
             return _return(parsed, valid)
 
 
-@lru_cache
+@lru_cache()
 def call_phone(
         parsed: ParsedPhoneNumber,
         valid: bool,
@@ -150,7 +150,7 @@ def call_phone(
     return _return(parsed, valid)
 
 
-@lru_cache
+@lru_cache()
 def check_phone(
         number: Union[int, str],
         country: str = None,

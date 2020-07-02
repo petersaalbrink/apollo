@@ -12,7 +12,7 @@ JSON = {
 URL = f"http://{LIVE}:4000/email?email="
 
 
-@lru_cache
+@lru_cache()
 def check_email(
         email: str,
         safe_to_send: bool = False,
