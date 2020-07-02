@@ -497,7 +497,18 @@ class _MatchQueries:
             "sort": {"date": "desc"}})
 
     def _extend_query(self, query):
-        """Extend a complete query with a restriction of select sources."""
+        """Extend a complete query with some restrictions."""
+        if self.data.date_of_birth:
+            clause = {"bool": {"should": [
+                {"term": {"birth.date": self.data.date_of_birth}},
+                {"term": {"birth.date": DEFAULT_DATE}},
+            ],
+                "minimum_should_match": 1,
+            }}
+            try:
+                query["query"]["bool"]["must"].append(clause)
+            except KeyError:
+                query["query"]["bool"]["must"] = clause
         if self._use_sources:
             query["query"]["bool"]["must"].append({"terms": {"source": [*self._use_sources]}})
         return query
