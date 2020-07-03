@@ -941,15 +941,18 @@ class Cleaner:
         """Clean and parse phone and mobile numbers."""
         for _type in self._phone_fields:
             if self.data.get(_type):
-                parsed = common.api.phone.parse_phone(self.data[_type], "NL")
-                if parsed.is_valid_number:
-                    self.data[_type] = parsed.national_number
-                    if _type == "telephone":
-                        if f"{self.data[_type]}".startswith("6"):
-                            self.data["mobile"] = self.data.pop(_type)
-                        else:
-                            self.data["number"] = self.data.pop(_type)
-                else:
+                try:
+                    parsed = common.api.phone.parse_phone(self.data[_type], "NL")
+                    if parsed.is_valid_number:
+                        self.data[_type] = parsed.national_number
+                        if _type == "telephone":
+                            if f"{self.data[_type]}".startswith("6"):
+                                self.data["mobile"] = self.data.pop(_type)
+                            else:
+                                self.data["number"] = self.data.pop(_type)
+                    else:
+                        self.data.pop(_type)
+                except common.api.phone.PhoneApiError:
                     self.data.pop(_type)
 
     def _clean_initials(self):
