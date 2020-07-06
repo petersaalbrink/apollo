@@ -738,7 +738,7 @@ class PersonData(_MatchQueries,
                     if key not in self.result and response.get(key):
                         skip_key = (
                                 (key in PHONE_KEYS
-                                 and not common.api.phone.check_phone(response[key], valid=True))
+                                 and not common.api.phone.check_phone(response[key], valid=True, call=True))
                                 or (key in DATE_KEYS
                                     and response[key][:10] == DEFAULT_DATE)
                                 or (_type == ADDRESS_KEY
