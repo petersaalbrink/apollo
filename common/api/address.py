@@ -13,7 +13,7 @@ PARSER = f"http://{LIVE}:5000/parser"
 VALIDATION = f"http://{LIVE}:5000/validation"
 
 
-@lru_cache
+@lru_cache()
 def parse(address: str, country: str = "NL"):
     """
     Parses an address in a string format and returns address elements in JSON.
@@ -38,14 +38,19 @@ def parse(address: str, country: str = "NL"):
             "United Kingdom": "UK"
         }.get(country, countries.lookup(country).name)
     }
-    try:
-        response = get(
-            PARSER,
-            params=params,
-            text_only=True,
-        )
-    except HTTPError as e:
-        response = {"status": f"{e}"}
+    while True:
+        try:
+            response = get(
+                PARSER,
+                params=params,
+                text_only=True,
+            )
+            break
+        except HTTPError as e:
+            e = f"{e}"
+            if not e.startswith("400 Client Error: BAD REQUEST"):
+                response = {"status": e}
+                break
     if "status" in response:
         EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
                                              "psaalbrink@matrixiangroup.com"],

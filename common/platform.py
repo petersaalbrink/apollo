@@ -113,7 +113,7 @@ class FileTransfer:
         return (
             ["ssh", self.fthost, "install", "-d", "-m", "0777", self.filepath],
             ["scp", self.filename, f"{self.fthost}:{self.filepath}/"],
-            ["ssh", self.fthost, "chmod", "777", f"{self.filepath}/{self.insert_filename}"],
+            ["ssh", self.fthost, "chmod", "777", f'"{self.filepath}/{self.insert_filename}"'],
         )
 
     @cached_property
