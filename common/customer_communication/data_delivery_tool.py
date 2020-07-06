@@ -33,7 +33,10 @@ def data_delivery_tool(
         ddt("some_file.csv", coded_input=coded_input, documentation=True)
     """
     if filename[-3:] == 'csv':
-        df = pd.read_csv(filename, encoding=encoding, low_memory=False)
+        try:
+            df = pd.read_csv(filename, encoding=encoding, low_memory=False)
+        except pd.errors.ParserError:
+            df = pd.read_csv(filename, encoding=encoding, delimiter=";", low_memory=False)
     else:
         df = pd.read_excel(filename, low_memory=False)
 
