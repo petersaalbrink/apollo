@@ -1,7 +1,6 @@
 from contextlib import suppress
 from dataclasses import astuple, dataclass
 from functools import lru_cache
-from json import loads
 from socket import gethostname
 from time import localtime, sleep
 from typing import Optional, Union
@@ -144,7 +143,7 @@ def call_phone(
             with suppress(RetryError, MaxRetryError):
                 response = get(f"{URL}{parsed.parsed_number}", auth=_SECRET)
                 if response.ok:
-                    parsed.is_valid_number = loads(response.text)
+                    parsed.is_valid_number = response.json()["valid"]
                     break
 
     return _return(parsed, valid)
