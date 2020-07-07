@@ -31,7 +31,7 @@ from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 from logging import debug
 from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
@@ -57,6 +57,8 @@ DATE_KEYS = {"address_moved", "birth_date", "death_date"}
 EMAIL_KEY = "contact_email"
 PERSONAL_KEYS = ("details", "birth")
 PHONE_KEYS = {"phoneNumber_number", "phoneNumber_mobile"}
+
+_module_data = {}
 
 
 class BaseDataClass(MutableMapping):
@@ -137,11 +139,10 @@ class _SourceMatch:
     input.
     The main entry point is the `_get_source()` method.
     """
-
-    def __init__(self):
-        super().__init__()
-        self.data = self._matched = None
-        self._source_match = {5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}
+    data: Optional[Data] = None
+    _source: Optional[str] = None
+    _matched = {}
+    _source_match = {6: "A", 5: "A", 4: "A", 3: "B", 2: "C", 1: "D"}
 
     def _lastname_match(self, response):
         """Does the last name match?"""
@@ -209,26 +210,22 @@ class _SourceMatch:
         """Get the matching keys from the match properties."""
         return {key for key in self._matched if self._matched[key]}
 
-    def _match_sources(self) -> str:
+    @property
+    def _match_source(self) -> str:
         """Decide which fields are the source of the match."""
-        # TODO: incorporate gender into match scoring system
-        keys = ("lastname", "initials", "address", "birth_date", "phone")
-        values = (self._matched[m] for m in keys)
-        matches = sum(bool(v) for v in values)
-        return self._source_match[matches]
+        return self._source_match[sum(map(bool, self._matched.values()))]
 
-    def _get_source(self, response: dict) -> str:
+    def _get_source(self, response: dict):
         """Get the source of the person match."""
         self._set_match(response)
         try:
-            source = self._match_sources()
+            self._source = self._match_source
         except KeyError as e:
             if e.args[0] == 0:
                 raise NoMatch
             raise MatchError(
                 "No source could be defined for this match!",
                 self.data, response) from e
-        return source
 
 
 class _SourceScore:
@@ -237,145 +234,137 @@ class _SourceScore:
     This score will be a number ranging from 1 (best) to 4 (worst).
     It is calculated trough an algorithm using several key aspects of
     the output.
-    The main entry point is the `_convert_score()` method.
+    The main entry point is the `_calc_score()` method.
     """
+    _year = datetime.now().year
+    _score: Optional[int] = None
+    _score_mapping = {
+        "details_lastname": "name_score",
+        "phoneNumber_mobile": "mobile_score",
+        "phoneNumber_number": "number_score",
+        "address_postalCode": "address_score",
+    }
+    _source_valuation = {
+        "saneringen": 1,
+        "Kadaster_4": 1,
+        "Kadaster_3": 1,
+        "Kadaster_2": 1,
+        "Kadaster_1": 1,
+        "company_data_NL_contact": 1,
+        "shop_data_nl_main": 1,
 
-    def __init__(self):
-        super().__init__()
-        self._year = datetime.now().year
-        self._score_testing = False
-        self._score_mapping = {
-            "details_lastname": "name_score",
-            "phoneNumber_mobile": "mobile_score",
-            "phoneNumber_number": "number_score",
-            "address_postalCode": "address_score",
-        }
+        "whitepages_nl_2020_final": 2,
+        "whitepages_nl_2019": 2,
+        "whitepages_nl_2018": 2,
 
-    @staticmethod
-    def _categorize_score(score: float) -> int:
-        """Take a calculated percentual score, and categorize it."""
-        if score is not None:
-            if score >= 3 / 4:
-                score = 1
-            elif score >= 2 / 4:
-                score = 2
-            elif score >= 1 / 4:
-                score = 3
-            else:
-                score = 4
-        return score
+        "YP_CDs_Consumer_main": 3,
+        "car_data_names_only_dob": 3,
+        "yp_2004_2005": 3,
 
-    def _calc_score(self, result_tuple: _Score) -> float:
-        """Calculate a quality score for the found number."""
-        # Set constant
-        x = 100
-
-        def date_score(result: _Score, score: float) -> float:
-            """The older the record, the lower the score."""
-            return (1 - ((self._year - int(result.year_of_record)) / (x / 2))) * score
-
-        def source_score(result: _Score, score: float) -> float:
-            """Lower quality of the record's source means a lower score."""
-            source = {
-                "saneringen": 1,
-                "Kadaster_4": 1,
-                "Kadaster_3": 2,
-                "Kadaster_2": 3,
-                "Kadaster_1": 4,
-                "company_data_NL_contact": 5,
-                "shop_data_nl_main": 5,
-                "whitepages_nl_2020_final": 5,
-                "whitepages_nl_2019": 6,
-                "whitepages_nl_2018": 7,
-                "YP_CDs_Consumer_main": 8,
-                "car_data_names_only_dob": 9,
-                "yp_2004_2005": 10,
-                "postregister_dm": 11,
-                "Insolventies_main": 12,
-                "GevondenCC": 13,
-                "consumer_table_distinct_indexed": 14
-            }
-            return (1 - ((source[result.source] - 1) / (x * 2))) * score
-
-        def death_score(result: _Score, score: float) -> float:
-            """Lower score if a person is deceased."""
-            _x = max((self._year - result.date_of_birth) / 100, .5) if result.date_of_birth else .5
-            return score if result.deceased is None else _x * score
-
-        def n_score(result: _Score, score: float) -> float:
-            """The more different names and numbers, the lower the score."""
-            for var in [result.phonenumber_number, result.lastname_number]:
-                score *= (1 - ((var - 1) / x))
-            return score
-
-        def fuzzy_score(result: _Score, score: float) -> float:
-            """Uses name_input and name_output,
-            taking into account the number of changes in name."""
-            n1, n2 = result.matched_names
-            if n1 and n2:
-                lev = levenshtein(n1, n2)
-                if lev < .4 and (n1 not in n2 or n2 not in n1):
-                    return 0
-                return lev * score
-            return score
-
-        def missing_score(result: _Score, score: float) -> float:
-            """Lower score if date of birth or gender is missing."""
-            if result.date_of_birth is None:
-                score *= .9
-            if result.gender is None:
-                score *= .9
-            return score
-
-        def occurring_score(result: _Score, score: float) -> float:
-            """Score is zero if a number occurs more recently elsewhere."""
-            if result.occurring:
-                return 0
-            return score
-
-        def moved_score(result: _Score, score: float) -> float:
-            """Lower score if there was an address movement."""
-            if result.moved:
-                return 0.9 * score if result.mobile else 0.2 * score
-            return score
-
-        def data_score(result: _Score, score: float) -> float:
-            """Score is zero if there was no lastname input."""
-            return 0 if not result.matched_names[0] else score
-
-        def persons_score(result: _Score, score: float) -> float:
-            """The more persons matched, the lower the score."""
-            return (1 - ((result.found_persons - 1) / (x / 4))) * score
-
-        def full_score(result: _Score, score: int = 1) -> Union[float, None]:
-            """Calculate a score from all the scoring properties."""
-            if result is None:
-                return
-            for func in (persons_score,
-                         data_score,
-                         moved_score,
-                         n_score,
-                         missing_score,
-                         fuzzy_score,
-                         death_score,
-                         source_score,
-                         date_score,
-                         occurring_score):
-                score = func(result, score)
-            return score
-
-        # Calculate score
-        score_percentage = full_score(result_tuple)
-        return score_percentage
+        "postregister_dm": 4,
+        "Insolventies_main": 4,
+        "GevondenCC": 4,
+        "consumer_table_distinct_indexed": 4,
+    }
 
     @lru_cache()
-    def _convert_score(self, result_tuple: _Score) -> Union[int, float]:
-        """Calculate and categorize a match score based on match properties."""
-        score_percentage = self._calc_score(result_tuple)
-        if self._score_testing:
-            return score_percentage
-        categorized_score = self._categorize_score(score_percentage)
-        return categorized_score
+    def _calc_score(self, result_tuple: _Score) -> int:
+        """Calculates and categorizes a match quality score
+        based on match properties.
+        """
+
+        def data_score(result: _Score):
+            """Score is lowest if there was no lastname input."""
+            if not result.matched_names[0]:
+                self._score = 4
+
+        def occurring_score(result: _Score):
+            """Score is zero if a number occurs more recently elsewhere."""
+            if result.occurring:
+                self._score = 4
+
+        def death_score(result: _Score):
+            """Lowest score if a person is deceased."""
+            if result.deceased:
+                self._score = 4
+
+        def date_score(result: _Score):
+            """The older the record, the lower the score."""
+            delta = self._year - int(result.year_of_record)
+            if delta <= 4:
+                self._score = 1
+            elif delta <= 8:
+                self._score = 2
+            elif delta <= 12:
+                self._score = 3
+            else:
+                self._score = 4
+
+        def source_score(result: _Score):
+            """Lower quality of the record's source means a lower score."""
+            self._score = max((self._score, self._source_valuation[result.source]))
+
+        def moved_score(result: _Score):
+            """Lower score if there was an address movement."""
+            if result.moved:
+                if result.mobile:
+                    self._score = max((self._score, 2))
+                else:
+                    self._score = 4
+
+        def missing_score(result: _Score):
+            """Lower score if date of birth or gender is missing."""
+            if result.date_of_birth is None:
+                self._score = max((self._score, 2))
+            if result.gender is None:
+                self._score = max((self._score, 2))
+
+        def fuzzy_score(result: _Score):
+            """Uses name_input and name_output,
+            taking into account the number of changes in name."""
+            if all(result.matched_names):
+                lev = levenshtein(*result.matched_names)
+                if lev >= .8:
+                    self._score = max((self._score, 1))
+                elif lev >= .6:
+                    self._score = max((self._score, 2))
+                elif lev >= .4:
+                    self._score = max((self._score, 3))
+                else:
+                    self._score = 4
+            else:
+                self._score = 4
+
+        def n_score(result: _Score):
+            """The more different names and numbers, the lower the score."""
+            self._score = max((
+                self._score,
+                min((result.phonenumber_number, 4)),
+                min((result.lastname_number, 4)),
+                min((result.found_persons, 4)),
+            ))
+
+        def full_score(result: _Score):
+            """Calculate a score from all the scoring properties."""
+            if result is None:
+                raise NoMatch
+            self._score = 1
+            for func in (
+                    data_score,
+                    occurring_score,
+                    death_score,
+                    date_score,
+                    source_score,
+                    moved_score,
+                    missing_score,
+                    fuzzy_score,
+                    n_score,
+            ):
+                func(result)
+                if self._score == 4:
+                    break
+
+        return full_score(result_tuple)
 
 
 class _MatchQueries:
@@ -385,20 +374,21 @@ class _MatchQueries:
     which contains several queries in order of decreasing quality or
     strictness. These are returned as name-query pairs.
     """
+    data: Optional[Data] = None
+    _es_mapping = {
+        "lastname": "details.lastname",
+        "initials": "details.initials",
+        "postalCode": "address.postalCode",
+        "houseNumber": "address.houseNumber",
+        "houseNumberExt": "address.houseNumberExt",
+        "mobile": "phoneNumber.mobile",
+        "number": "phoneNumber.number",
+        "gender": "details.gender",
+        "date_of_birth": "birth.date",
+    }
+
     def __init__(self, **kwargs):
-        super().__init__()
-        self.data = None
-        self._es_mapping = {
-            "lastname": "details.lastname",
-            "initials": "details.initials",
-            "postalCode": "address.postalCode",
-            "houseNumber": "address.houseNumber",
-            "houseNumberExt": "address.houseNumberExt",
-            "mobile": "phoneNumber.mobile",
-            "number": "phoneNumber.number",
-            "gender": "details.gender",
-            "date_of_birth": "birth.date",
-        }
+        self._address_query = kwargs.pop("address_query", False)
         self._name_only_query = kwargs.pop("name_only_query", False)
         self._strictness = kwargs.pop("strictness", 5)
         self._use_sources = kwargs.pop("sources", ())
@@ -536,6 +526,229 @@ class _MatchQueries:
         }
 
 
+class NamesData:
+    """Access data on several names statistics.
+
+    These include:
+        * initials with frequencies
+        * possible affixes (prefixes and suffixes)
+        * first names and accompanying genders
+        * possible titles
+        * last names and their occurrences
+
+    All data pertains to the Netherlands, and is loaded using Elasticsearch.
+    """
+    def __init__(self):
+        self.es = ESClient(ND_INDEX, host=HOST)
+        self.es.index_exists = True
+        self.uncommon_initials = {
+            "I",
+            "K",
+            "N",
+            "O",
+            "Q",
+            "U",
+            "V",
+            "X",
+            "Y",
+            "Z",
+        }
+        self.initial_freq = {
+            "A": 0.10395171481742668,
+            "B": 0.02646425590465198,
+            "C": 0.0624646058908782,
+            "D": 0.02830463793241263,
+            "E": 0.04368881360131388,
+            "F": 0.028797360001816555,
+            "G": 0.046652085281351154,
+            "H": 0.06267525720019877,
+            "I": 0.013224965395575616,
+            "J": 0.1499112822017472,
+            "K": 0.015244050637799001,
+            "L": 0.03944411414236686,
+            "M": 0.14917774707325376,
+            "N": 0.01947222640467436,
+            "O": 0.003400582698897405,
+            "P": 0.04273322203716372,
+            "Q": 0.0010834182963716224,
+            "R": 0.040866938005614986,
+            "S": 0.03767597603233326,
+            "T": 0.03086106951847034,
+            "U": 0.0004628351419562074,
+            "V": 0.005300463759232,
+            "W": 0.040004889089096926,
+            "X": 0.0005470681834522827,
+            "Y": 0.005756428343154263,
+            "Z": 0.0017861046192925779
+        }
+
+    def affixes(self) -> set:
+        """Load a set with affixes.
+
+        The output can be used to clean last name data.
+        """
+        return {doc["_source"]["affix"] for doc in self.es.findall(
+            {"query": {"bool": {"must": {"term": {"data": "affixes"}}}}}
+        )}
+
+    def first_names(self) -> dict:
+        """Load a dictionary with first names and gender occurrence.
+
+        This function returns if any given Dutch first name has more
+        male or female bearers. If the number is equal, None is
+        returned. Names are cleaned before output.
+
+        The output can be used to fill missing gender data.
+        """
+        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
+                self.es.findall(
+                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
+
+    def titles(self) -> set:
+        """Load a set with titles.
+
+        The output can be used to clean last name data.
+        """
+        return set(doc["_source"]["title"] for doc in  # noqa
+                   self.es.findall(
+                       {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
+
+    def surnames(self) -> dict:
+        """Load a dictionary with surnames and their numbers.
+
+        The output can be used for data and matching quality calculations.
+        """
+        return {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
+                for doc in self.es.findall(
+                {"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})}
+
+
+class Cleaner:
+    """Clean input data for use with PersonData.
+
+    The main entry point is the `.clean()` method.
+    """
+
+    def __init__(self):
+        """Make a cleaner.
+
+        Loads the NamesData.titles into the module if they're haven't
+        been loaded already.
+        """
+        self.data = {}
+        self._phone_fields = ("number", "telephone", "mobile")
+
+    def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
+        self.data = data
+        for function in [function for function in dir(self)
+                         if function.startswith("_clean")]:
+            with suppress(KeyError):
+                self.__getattribute__(function)()
+        return self.data
+
+    def _clean_phones(self):
+        """Clean and parse phone and mobile numbers."""
+        for _type in self._phone_fields:
+            if self.data.get(_type):
+                try:
+                    parsed = common.api.phone.parse_phone(self.data[_type], "NL")
+                    if parsed.is_valid_number:
+                        self.data[_type] = parsed.national_number
+                        if _type == "telephone":
+                            if f"{self.data[_type]}".startswith("6"):
+                                self.data["mobile"] = self.data.pop(_type)
+                            else:
+                                self.data["number"] = self.data.pop(_type)
+                    else:
+                        self.data.pop(_type)
+                except common.api.phone.PhoneApiError:
+                    self.data.pop(_type)
+
+    def _clean_initials(self):
+        """Clean initials."""
+        if isinstance(self.data["initials"], str):
+            self.data["initials"] = sub(r"[^A-Za-z\u00C0-\u017F]", "",
+                                        self.data["initials"].upper())
+        if not self.data["initials"]:
+            self.data.pop("initials")
+
+    def _clean_gender(self):
+        """Clean gender."""
+        if isinstance(self.data["gender"], str) and self.data["gender"] in (
+                "Man", "Vrouw", "MAN", "VROUW", "man", "vrouw", "m", "v", "M", "V"):
+            self.data["gender"] = self.data["gender"].upper().replace("MAN", "M").replace("VROUW", "V")
+        else:
+            self.data.pop("gender")
+
+    def _clean_lastname(self):
+        """Clean last name.
+
+        Keep only letters; hyphens become spaces.
+        Remove all special characters and titles.
+        """
+        if isinstance(self.data["lastname"], str):
+            self.data["lastname"] = self.data["lastname"].title()
+            self.data["lastname"] = sub(r"-", " ", self.data["lastname"])
+            self.data["lastname"] = sub(r"[^\sA-Za-z\u00C0-\u017F]", "", self.data["lastname"])
+            self.data["lastname"] = unidecode(self.data["lastname"].strip())
+            self.data["lastname"] = self.data["lastname"].replace("÷", "o").replace("y", "ij")
+            try:
+                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
+                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
+            except KeyError:
+                _module_data["title_data"] = NamesData().titles()
+                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
+                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
+        if not self.data["lastname"]:
+            self.data.pop("lastname")
+
+    def _clean_dob(self):
+        """Clean and parse date of birth."""
+        if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
+            self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
+            try:
+                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE_FORMAT)
+            except ValueError:
+                try:
+                    self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
+                except ValueError:
+                    self.data["date_of_birth"] = None
+        if not self.data["date_of_birth"]:
+            self.data.pop("date_of_birth")
+
+    def _clean_pc(self):
+        """Clean postal code."""
+        if isinstance(self.data["postalCode"], str):
+            self.data["postalCode"] = self.data["postalCode"].replace(" ", "").upper()
+            if len(self.data["postcode"]) != 6:
+                self.data.pop("postalCode")
+        else:
+            self.data.pop("postalCode")
+
+    def _clean_hn(self):
+        """Clean house number."""
+        if isinstance(self.data["houseNumber"], str):
+            for d in ("/", "-"):
+                if d in self.data["houseNumber"]:
+                    self.data["houseNumber"] = self.data["houseNumber"].split(d)[0]
+            self.data["houseNumber"] = sub(r"[^0-9]", "", self.data["houseNumber"])
+        if not self.data["houseNumber"] or self.data["houseNumber"] == "nan":
+            self.data.pop("houseNumber")
+        else:
+            self.data["houseNumber"] = int(float(self.data["houseNumber"]))
+        if not self.data["houseNumber"]:
+            self.data.pop("houseNumber")
+
+    def _clean_hne(self):
+        """Clean house number extension."""
+        if isinstance(self.data["houseNumberExt"], str):
+            self.data["houseNumberExt"] = sub(r"[^A-Za-z0-9\u00C0-\u017F]", "",
+                                              self.data["houseNumberExt"].upper())
+            self.data["houseNumberExt"] = sub(r"\D+(?=\d)", "", self.data["houseNumberExt"])
+        if not self.data["houseNumberExt"]:
+            self.data.pop("houseNumberExt")
+
+
 class PersonData(_MatchQueries,
                  _SourceMatch,
                  _SourceScore):
@@ -569,33 +782,39 @@ class PersonData(_MatchQueries,
         except NoMatch:
             pass
     """
+
+    result: Optional[dict] = None
+    data: Optional[Data] = None
+    _clean = Cleaner().clean
+    _categories = ("all", "name", "address", "phone")
+    _countries = {"nederland", "netherlands", "nl", "nld"}
+
     def __init__(self, **kwargs):
         """Make an object for person matching (not threadsafe)."""
 
         super().__init__(**kwargs)
 
-        # data holders
-        self.result = self.data = None
-        self._clean = Cleaner().clean
-
         # connectors
         self._es = ESClient(PD_INDEX, host=HOST)
         self._es.index_exists = True
+        self._es_find = partial(self._es.find, with_id=True)
 
         common.api.phone.RESPECT_HOURS = kwargs.pop("respect_hours", True)
         common.api.phone.CALL_TO_VALIDATE = kwargs.pop("call_to_validate", False)
+        self._check_phone = partial(
+            common.api.phone.check_phone,
+            valid=True,
+            call=common.api.phone.CALL_TO_VALIDATE,
+        )
 
         # kwargs
         self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
-        self._score_testing = kwargs.pop("score_testing", False)
         self._response_type = kwargs.pop("response_type", "all")
-        categories = ("all", "name", "address", "phone")
-        if (self._response_type not in categories and
+        if (self._response_type not in self._categories and
                 not isinstance(self._response_type, (tuple, list))):
             raise MatchError(f"Requested fields should be one"
-                             f" of {', '.join(categories)}")
-        self._countries = {"nederland", "netherlands", "nl", "nld"}
+                             f" of {', '.join(self._categories)}")
 
     def __repr__(self):
         return f"PersonData(in={self.data}, out={self.result})"
@@ -727,18 +946,16 @@ class PersonData(_MatchQueries,
         self._responses = {}
         for _type, q in self._queries:
             if self._use_id_query:
-                responses = self._es.find(
-                    self._id_query(self._es.find(
-                        q, source_only=True)), with_id=True)
+                responses = self._es_find(self._id_query(self._es.find(q)))
             else:
-                responses = self._es.find(q, with_id=True)
+                responses = self._es_find(q)
             for response in responses:
                 response = flatten(response)
                 for key in self._requested_fields:
                     if key not in self.result and response.get(key):
                         skip_key = (
                                 (key in PHONE_KEYS
-                                 and not common.api.phone.check_phone(response[key], valid=True, call=True))
+                                 and not self._check_phone(response[key]))
                                 or (key in DATE_KEYS
                                     and response[key][:10] == DEFAULT_DATE)
                                 or (_type == ADDRESS_KEY
@@ -755,7 +972,7 @@ class PersonData(_MatchQueries,
                         self.result["source"] = response["source"]
                         self.result["date"] = response["date"]
                 if all(map(self.result.get, self._main_fields)):
-                    return
+                    return enumerate
 
     def _get_score(self):
         """After a result has been found, calculate the score for this match."""
@@ -765,9 +982,9 @@ class PersonData(_MatchQueries,
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
-                source = self._get_source(response)
+                self._get_source(response)
                 self.result["match_keys"].update(self._match_keys)
-                score = self._convert_score(_Score(
+                self._calc_score(_Score(
                     source=response["source"],
                     year_of_record=response["date"][:4],
                     deceased=response["death_year"],
@@ -777,12 +994,12 @@ class PersonData(_MatchQueries,
                     phonenumber_number=len(set(d[key] for d in self._responses.values()))
                     if "phoneNumber" in key else 1,
                     occurring=self._check_match(key),
-                    moved=response["address_moved"][:10] != DEFAULT_DATE,
-                    mobile="mobile" in key or "lastname" in key,
+                    moved=response["address_moved"][:10] > response["date"][:10],
+                    mobile="number" not in key,
                     matched_names=(self.data.lastname, response["details_lastname"]),
                     found_persons=len({response["id"] for response in self._responses.values()}),
                 ))
-                self.result[self._score_mapping.get(key, f"{key}_score")] = f"{source}{score}"
+                self.result[self._score_mapping.get(key, f"{key}_score")] = f"{self._source}{self._score}"
 
     def _finalize(self):
         """After getting and scoring the result, complete the output."""
@@ -810,226 +1027,3 @@ class PersonData(_MatchQueries,
             return self.result
         else:
             raise NoMatch
-
-
-class NamesData:
-    """Access data on several names statistics.
-
-    These include:
-        * initials with frequencies
-        * possible affixes (prefixes and suffixes)
-        * first names and accompanying genders
-        * possible titles
-        * last names and their occurrences
-
-    All data pertains to the Netherlands, and is loaded using Elasticsearch.
-    """
-    def __init__(self):
-        self.es = ESClient(ND_INDEX, host=HOST)
-        self.es.index_exists = True
-        self.uncommon_initials = {
-            "I",
-            "K",
-            "N",
-            "O",
-            "Q",
-            "U",
-            "V",
-            "X",
-            "Y",
-            "Z",
-        }
-        self.initial_freq = {
-            "A": 0.10395171481742668,
-            "B": 0.02646425590465198,
-            "C": 0.0624646058908782,
-            "D": 0.02830463793241263,
-            "E": 0.04368881360131388,
-            "F": 0.028797360001816555,
-            "G": 0.046652085281351154,
-            "H": 0.06267525720019877,
-            "I": 0.013224965395575616,
-            "J": 0.1499112822017472,
-            "K": 0.015244050637799001,
-            "L": 0.03944411414236686,
-            "M": 0.14917774707325376,
-            "N": 0.01947222640467436,
-            "O": 0.003400582698897405,
-            "P": 0.04273322203716372,
-            "Q": 0.0010834182963716224,
-            "R": 0.040866938005614986,
-            "S": 0.03767597603233326,
-            "T": 0.03086106951847034,
-            "U": 0.0004628351419562074,
-            "V": 0.005300463759232,
-            "W": 0.040004889089096926,
-            "X": 0.0005470681834522827,
-            "Y": 0.005756428343154263,
-            "Z": 0.0017861046192925779
-        }
-
-    def affixes(self) -> set:
-        """Load a set with affixes.
-
-        The output can be used to clean last name data.
-        """
-        return {doc["_source"]["affix"] for doc in self.es.findall(
-            {"query": {"bool": {"must": {"term": {"data": "affixes"}}}}}
-        )}
-
-    def first_names(self) -> dict:
-        """Load a dictionary with first names and gender occurrence.
-
-        This function returns if any given Dutch first name has more
-        male or female bearers. If the number is equal, None is
-        returned. Names are cleaned before output.
-
-        The output can be used to fill missing gender data.
-        """
-        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
-                self.es.findall(
-                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
-
-    def titles(self) -> set:
-        """Load a set with titles.
-
-        The output can be used to clean last name data.
-        """
-        return set(doc["_source"]["title"] for doc in  # noqa
-                   self.es.findall(
-                       {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
-
-    def surnames(self) -> dict:
-        """Load a dictionary with surnames and their numbers.
-
-        The output can be used for data and matching quality calculations.
-        """
-        return {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
-                for doc in self.es.findall(
-                {"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})}
-
-
-_module_data = {}
-
-
-class Cleaner:
-    """Clean input data for use with PersonData.
-
-    The main entry point is the `.clean()` method.
-    """
-
-    def __init__(self):
-        """Make a cleaner.
-
-        Loads the NamesData.titles into the module if they're haven't
-        been loaded already.
-        """
-        self.data = {}
-        self._phone_fields = ("number", "telephone", "mobile")
-        if "title_data" not in _module_data:
-            _module_data["title_data"] = NamesData().titles()
-
-    def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
-        self.data = data
-        for function in [function for function in dir(self)
-                         if function.startswith("_clean")]:
-            with suppress(KeyError):
-                self.__getattribute__(function)()
-        return self.data
-
-    def _clean_phones(self):
-        """Clean and parse phone and mobile numbers."""
-        for _type in self._phone_fields:
-            if self.data.get(_type):
-                try:
-                    parsed = common.api.phone.parse_phone(self.data[_type], "NL")
-                    if parsed.is_valid_number:
-                        self.data[_type] = parsed.national_number
-                        if _type == "telephone":
-                            if f"{self.data[_type]}".startswith("6"):
-                                self.data["mobile"] = self.data.pop(_type)
-                            else:
-                                self.data["number"] = self.data.pop(_type)
-                    else:
-                        self.data.pop(_type)
-                except common.api.phone.PhoneApiError:
-                    self.data.pop(_type)
-
-    def _clean_initials(self):
-        """Clean initials."""
-        if isinstance(self.data["initials"], str):
-            self.data["initials"] = sub(r"[^A-Za-z\u00C0-\u017F]", "",
-                                        self.data["initials"].upper())
-        if not self.data["initials"]:
-            self.data.pop("initials")
-
-    def _clean_gender(self):
-        """Clean gender."""
-        if isinstance(self.data["gender"], str) and self.data["gender"] in (
-                "Man", "Vrouw", "MAN", "VROUW", "man", "vrouw", "m", "v", "M", "V"):
-            self.data["gender"] = self.data["gender"].upper().replace("MAN", "M").replace("VROUW", "V")
-        else:
-            self.data.pop("gender")
-
-    def _clean_lastname(self):
-        """Clean last name.
-
-        Keep only letters; hyphens become spaces.
-        Remove all special characters and titles.
-        """
-        if isinstance(self.data["lastname"], str):
-            self.data["lastname"] = self.data["lastname"].title()
-            self.data["lastname"] = sub(r"-", " ", self.data["lastname"])
-            self.data["lastname"] = sub(r"[^\sA-Za-z\u00C0-\u017F]", "", self.data["lastname"])
-            self.data["lastname"] = unidecode(self.data["lastname"].strip())
-            self.data["lastname"] = self.data["lastname"].replace("÷", "o").replace("y", "ij")
-            if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
-                self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
-        if not self.data["lastname"]:
-            self.data.pop("lastname")
-
-    def _clean_dob(self):
-        """Clean and parse date of birth."""
-        if self.data["date_of_birth"] and isinstance(self.data["date_of_birth"], str):
-            self.data["date_of_birth"] = self.data["date_of_birth"].split()[0]
-            try:
-                self.data["date_of_birth"] = datetime.strptime(self.data["date_of_birth"][:10], DATE_FORMAT)
-            except ValueError:
-                try:
-                    self.data["date_of_birth"] = dateparse(self.data["date_of_birth"], ignoretz=True)
-                except ValueError:
-                    self.data["date_of_birth"] = None
-        if not self.data["date_of_birth"]:
-            self.data.pop("date_of_birth")
-
-    def _clean_pc(self):
-        """Clean postal code."""
-        if isinstance(self.data["postalCode"], str):
-            self.data["postalCode"] = self.data["postalCode"].replace(" ", "").upper()
-            if len(self.data["postcode"]) != 6:
-                self.data.pop("postalCode")
-        else:
-            self.data.pop("postalCode")
-
-    def _clean_hn(self):
-        """Clean house number."""
-        if isinstance(self.data["houseNumber"], str):
-            for d in ("/", "-"):
-                if d in self.data["houseNumber"]:
-                    self.data["houseNumber"] = self.data["houseNumber"].split(d)[0]
-            self.data["houseNumber"] = sub(r"[^0-9]", "", self.data["houseNumber"])
-        if not self.data["houseNumber"] or self.data["houseNumber"] == "nan":
-            self.data.pop("houseNumber")
-        else:
-            self.data["houseNumber"] = int(float(self.data["houseNumber"]))
-        if not self.data["houseNumber"]:
-            self.data.pop("houseNumber")
-
-    def _clean_hne(self):
-        """Clean house number extension."""
-        if isinstance(self.data["houseNumberExt"], str):
-            self.data["houseNumberExt"] = sub(r"[^A-Za-z0-9\u00C0-\u017F]", "",
-                                              self.data["houseNumberExt"].upper())
-            self.data["houseNumberExt"] = sub(r"\D+(?=\d)", "", self.data["houseNumberExt"])
-        if not self.data["houseNumberExt"]:
-            self.data.pop("houseNumberExt")
