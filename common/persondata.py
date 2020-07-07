@@ -412,14 +412,15 @@ class _MatchQueries:
             {"match_phrase" if field == "lastname" else "match":
              {self._es_mapping[field]: self.data[field]}}
             for field in self.data if field != "telephone" and self.data[field]],
-                                       minimum_should_match=self._strictness)
-        if (self.data.postalCode
-                and self.data.lastname and self.data.initials):
+                                       minimum_should_match=self._strictness,
+                                       person=True)
+        if self.data.postalCode and self.data.lastname and self.data.initials:
             yield "initial", self._base_query(must=[
                 {"term": {"address.postalCode.keyword": self.data.postalCode}},
                 {"match": {"details.lastname": {
                     "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
+                {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}],
+                person=True)
         if self.data.lastname and self.data.initials:
             if self.data.date_of_birth:
                 if self.data.date_of_birth.day <= 12:
@@ -435,7 +436,8 @@ class _MatchQueries:
                     dob,
                     {"match": {"details.lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
-                    {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
+                    {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}],
+                    person=True)
             if self.data.number:
                 yield "number", self._base_query(must=[
                     {"term": {"phoneNumber.number": self.data.number}},
@@ -448,8 +450,7 @@ class _MatchQueries:
                     {"match": {"details.lastname": {
                         "query": max(self.data.lastname.split(), key=len), "fuzziness": 2}}},
                     {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
-        if (self.data.postalCode
-                and self.data.lastname):
+        if self.data.postalCode and self.data.lastname:
             query = self._base_query(must=[
                 {"term": {"address.postalCode.keyword": self.data.postalCode}},
                 {"match": {"details.lastname": {
@@ -466,8 +467,7 @@ class _MatchQueries:
                 query["query"]["bool"]["should"] = {
                     "wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}
             yield "wildcard", query
-        if (self.data.postalCode
-                and self.data.houseNumber):
+        if self._address_query and self.data.postalCode and self.data.houseNumber:
             must = [{"term": {"address.postalCode.keyword": self.data.postalCode}},
                     {"term": {"address.houseNumber": self.data.houseNumber}}]
             if self.data.houseNumberExt:
@@ -480,15 +480,16 @@ class _MatchQueries:
                 must=[{"wildcard": {"details.lastname": f"*{max(self.data.lastname.split(), key=len).lower()}*"}},
                       {"wildcard": {"details.initials": f"{self.data.initials[0].lower()}*"}}])
 
-    def _base_query(self, **kwargs):
+    def _base_query(self, person: bool = False, **kwargs):
         """Encapsulate clauses in a bool query, with sorting on date."""
-        return self._extend_query({
+        return self._extend_query(query={
             "query": {"bool": kwargs},
-            "sort": {"date": "desc"}})
+            "sort": {"date": "desc"}},
+            person=person)
 
-    def _extend_query(self, query):
+    def _extend_query(self, query: dict, person: bool):
         """Extend a complete query with some restrictions."""
-        if self.data.date_of_birth:
+        if person and self.data.date_of_birth:
             clause = {"bool": {"should": [
                 {"term": {"birth.date": self.data.date_of_birth}},
                 {"term": {"birth.date": DEFAULT_DATE}},
