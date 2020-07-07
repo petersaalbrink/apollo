@@ -923,7 +923,6 @@ class PersonData(_MatchQueries,
         """Matches where we found a phone number, but the phone number
         occurs more recently on another address, or with another
         lastname, should get a lower score."""
-        occurring = False
         if "phoneNumber" in key:
             response = self._es.find({
                 "query": {
@@ -934,8 +933,8 @@ class PersonData(_MatchQueries,
                 "sort": {"date": "desc"}
             }, size=1)
             if response and self._responses[key]["_id"] != response["_id"]:
-                occurring = True
-        return occurring
+                return True
+        return False
 
     def _find(self):
         """Main logic for finding a match.
