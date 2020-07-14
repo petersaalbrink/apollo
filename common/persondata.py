@@ -93,6 +93,7 @@ class Data(BaseDataClass):
     mobile: int = None
     number: int = None
     gender: str = None
+    firstname: str = None
     date_of_birth: datetime = None
 # TODO: convert to pydantic.BaseModel
 
@@ -384,6 +385,7 @@ class _MatchQueries:
         "mobile": "phoneNumber.mobile",
         "number": "phoneNumber.number",
         "gender": "details.gender",
+        "firstname": "details.firstname",
         "date_of_birth": "birth.date",
     }
 
@@ -971,6 +973,7 @@ class PersonData(_MatchQueries,
                         self.result["search_type"] = _type
                         self.result["source"] = response["source"]
                         self.result["date"] = response["date"]
+
                 if all(map(self.result.get, self._main_fields)):
                     return enumerate
 
