@@ -147,10 +147,11 @@ class _SourceMatch:
 
     def _lastname_match(self, response):
         """Does the last name match?"""
-        return (response.get("details_lastname")
-                and self.data.lastname
-                and (response.get("details_lastname") in self.data.lastname
-                     or self.data.lastname in response.get("details_lastname"))
+        return (response.get("details_lastname") and self.data.lastname
+                and (response.get("details_lastname", "") in self.data.lastname
+                     or self.data.lastname in response.get("details_lastname", "")
+                     or levenshtein(response.get("details_lastname", ""),
+                                    self.data.lastname, measure="distance") <= 2)
                 ) or False
 
     def _initials_match(self, response):
@@ -222,8 +223,6 @@ class _SourceMatch:
         try:
             self._source = self._match_source
         except KeyError as e:
-            if e.args[0] == 0:
-                raise NoMatch
             raise MatchError(
                 "No source could be defined for this match!",
                 self.data, response) from e
