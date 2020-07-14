@@ -43,6 +43,7 @@ This module contains the following objects:
 """
 
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, List, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
@@ -164,6 +165,7 @@ class Checks:
         return int(lev * 100)
 
 
+@lru_cache()
 def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
 
