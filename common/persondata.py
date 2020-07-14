@@ -801,9 +801,6 @@ class PersonData(_MatchQueries,
             pass
     """
 
-    result: Optional[dict] = None
-    data: Optional[Data] = None
-    _clean = Cleaner().clean
     _categories = ("all", "name", "address", "phone")
     _countries = {"nederland", "netherlands", "nl", "nld"}
 
@@ -811,6 +808,8 @@ class PersonData(_MatchQueries,
         """Make an object for person matching (not threadsafe)."""
 
         super().__init__(**kwargs)
+        self.result: Optional[dict] = None
+        self.data: Optional[Data] = None
 
         # connectors
         self._es = ESClient(PD_INDEX, host=HOST)
@@ -1013,7 +1012,11 @@ class PersonData(_MatchQueries,
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
-                self._get_source(response)
+                try:
+                    self._get_source(response)
+                except MatchError:
+                    del self._responses[key]
+                    continue
                 self.result["match_keys"].update(self._match_keys)
                 self._calc_score(_Score(
                     source=response["source"],
