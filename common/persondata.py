@@ -240,6 +240,7 @@ class _SourceScore:
     _score: Optional[int] = None
     _score_mapping = {
         "details_lastname": "name_score",
+        "birth_date": "dob_score",
         "phoneNumber_mobile": "mobile_score",
         "phoneNumber_number": "number_score",
         "address_postalCode": "address_score",
@@ -926,7 +927,7 @@ class PersonData(_MatchQueries,
         elif self._response_type == "name":
             return "details_lastname",
         else:
-            return ("details_lastname", "address_postalCode",
+            return ("details_lastname", "birth_date", "address_postalCode",
                     "phoneNumber_number", "phoneNumber_mobile")
 
     def _check_country(self, country: str):
