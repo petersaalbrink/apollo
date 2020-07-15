@@ -412,18 +412,18 @@ class _MatchQueries:
         """
         def lastname_clause(f: int = 2):
             if "ij" in self.data.lastname:
-                lastname = {"bool": {"should": [
+                clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("ij", "y"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}},
                 ], "minimum_should_match": 1}}
             elif "y" in self.data.lastname:
-                lastname = {"bool": {"should": [
+                clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("y", "ij"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}},
                 ], "minimum_should_match": 1}}
             else:
-                lastname = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}}
-            return lastname
+                clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}}
+            return clause
 
         if self.data.lastname and self.data.initials and self.data.date_of_birth:
             if self.data.date_of_birth.day <= 12:
@@ -442,6 +442,7 @@ class _MatchQueries:
                     {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 2}}},
                 ], "minimum_should_match": 1}},
             ], person=True)
+
         yield "full", self._base_query(
             must=[], should=[{"wildcard" if field == "initials" else "match": {
                 self._es_mapping[field]: {"query": self.data[field], "boost": 2}
@@ -451,38 +452,49 @@ class _MatchQueries:
                 for field in self.data if field != "telephone" and self.data[field]],
             minimum_should_match=self._strictness,
             person=True)
-        if self.data.postalCode and self.data.lastname and self.data.initials:
-            yield "initial", self._base_query(must=[
-                {"term": {"address.postalCode.keyword": self.data.postalCode}},
-                lastname_clause(),
-                {"wildcard": {"details.initials": self.data.initials[0]}}],
-                person=True)
-        if self.data.lastname and self.data.initials:
-            if self.data.number:
-                yield "number", self._base_query(must=[
-                    {"term": {"phoneNumber.number": self.data.number}},
-                    lastname_clause(),
-                ], should=[{"wildcard": {"details.initials": self.data.initials[0]}}])
-            if self.data.mobile:
-                yield "mobile", self._base_query(must=[
-                    {"term": {"phoneNumber.mobile": self.data.mobile}},
-                    lastname_clause(),
-                ], should=[{"wildcard": {"details.initials": self.data.initials[0]}}])
-        if self.data.postalCode and self.data.lastname:
-            query = self._base_query(must=[
-                {"term": {"address.postalCode.keyword": self.data.postalCode}},
-                lastname_clause()])
+
+        if self.data.lastname:
+            lastname = lastname_clause()
+
             if self.data.initials:
-                query["query"]["bool"]["should"] = {
-                    "wildcard": {"details.initials": self.data.initials[0]}}
-            yield "name", query
-            query = self._base_query(must=[
-                {"term": {"address.postalCode.keyword": self.data.postalCode}},
-                {"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}}])
-            if self.data.initials:
-                query["query"]["bool"]["should"] = {
-                    "wildcard": {"details.initials": self.data.initials[0]}}
-            yield "wildcard", query
+
+                if self.data.postalCode:
+                    yield "initial", self._base_query(must=[
+                        {"term": {"address.postalCode.keyword": self.data.postalCode}},
+                        lastname,
+                        {"wildcard": {"details.initials": self.data.initials[0]}}],
+                        person=True)
+
+                if self.data.number:
+                    yield "number", self._base_query(must=[
+                        {"term": {"phoneNumber.number": self.data.number}},
+                        lastname,
+                    ], should=[{"wildcard": {"details.initials": self.data.initials[0]}}])
+
+                if self.data.mobile:
+                    yield "mobile", self._base_query(must=[
+                        {"term": {"phoneNumber.mobile": self.data.mobile}},
+                        lastname,
+                    ], should=[{"wildcard": {"details.initials": self.data.initials[0]}}])
+
+            if self.data.postalCode:
+
+                query = self._base_query(must=[
+                    {"term": {"address.postalCode.keyword": self.data.postalCode}},
+                    lastname])
+                if self.data.initials:
+                    query["query"]["bool"]["should"] = {
+                        "wildcard": {"details.initials": self.data.initials[0]}}
+                yield "name", query
+
+                query = self._base_query(must=[
+                    {"term": {"address.postalCode.keyword": self.data.postalCode}},
+                    {"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}}])
+                if self.data.initials:
+                    query["query"]["bool"]["should"] = {
+                        "wildcard": {"details.initials": self.data.initials[0]}}
+                yield "wildcard", query
+
         if self._address_query and self.data.postalCode and self.data.houseNumber:
             must = [{"term": {"address.postalCode.keyword": self.data.postalCode}},
                     {"term": {"address.houseNumber": self.data.houseNumber}}]
@@ -490,6 +502,7 @@ class _MatchQueries:
                 must.append({"wildcard": {
                     "address.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}})
             yield "address", self._base_query(must=must)
+
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
                 must=[{"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}},
@@ -1015,7 +1028,6 @@ class PersonData(_MatchQueries,
                 try:
                     self._get_source(response)
                 except MatchError:
-                    del self._responses[key]
                     continue
                 self.result["match_keys"].update(self._match_keys)
                 self._calc_score(_Score(
