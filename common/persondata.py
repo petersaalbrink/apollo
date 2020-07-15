@@ -947,7 +947,6 @@ class PersonData(_MatchQueries,
         if country and country.lower() not in self._countries:
             raise NoMatch(f"Not implemented for country {country}.")
 
-    @lru_cache()
     def _check_match(self, key: str):
         """Matches where we found a phone number, but the phone number
         occurs more recently on another address, or with another
