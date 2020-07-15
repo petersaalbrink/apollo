@@ -187,3 +187,11 @@ def check_phone(
     if call:
         return call_phone(parsed, valid)
     return _return(parsed, valid)
+
+
+def cache_clear():
+    """Convenience function to clear the cache for this module's functions."""
+    call_phone.cache_clear()
+    check_phone.cache_clear()
+    lookup_phone.cache_clear()
+    parse_phone.cache_clear()
