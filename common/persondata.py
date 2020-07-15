@@ -410,19 +410,19 @@ class _MatchQueries:
         address: query with must-clause (address)
         name_only: query with must-clause (lastname and initials)
         """
-        def lastname_clause(f: int = 2):
+        def lastname_clause(f: int = 1):
             if "ij" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("ij", "y"), "fuzziness": f}}},
-                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
                 ], "minimum_should_match": 1}}
             elif "y" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("y", "ij"), "fuzziness": f}}},
-                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
                 ], "minimum_should_match": 1}}
             else:
-                clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": 1}}}
+                clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}}
             return clause
 
         if self.data.lastname and self.data.initials and self.data.date_of_birth:
@@ -436,7 +436,7 @@ class _MatchQueries:
             else:
                 dob = {"term": {"birth.date": self.data.date_of_birth}}
             yield "dob", self._base_query(must=[
-                dob, lastname_clause(1),
+                dob, lastname_clause(),
                 {"bool": {"should": [
                     {"wildcard": {"details.initials": self.data.initials[0]}},
                     {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 2}}},
