@@ -148,17 +148,20 @@ class _SourceMatch:
     def _lastname_match(self, response):
         """Does the last name match?"""
         return (response.get("details_lastname") and self.data.lastname
-                and (response.get("details_lastname", "") in self.data.lastname
-                     or self.data.lastname in response.get("details_lastname", "")
+                and (response["details_lastname"] in self.data.lastname
+                     or self.data.lastname in response["details_lastname"]
+                     or set(self.data.lastname.split()).issubset(set(response["details_lastname"].split()))
+                     or set(response["details_lastname"].split()).issubset(set(self.data.lastname.split()))
                      or levenshtein(response.get("details_lastname", ""),
-                                    self.data.lastname, measure="distance") <= 2)
+                                    self.data.lastname,
+                                    measure="distance") < 2)
                 ) or False
 
     def _initials_match(self, response):
         """Do the initials match?"""
         try:
             return (response.get("details_initials") and self.data.initials
-                    and response.get("details_initials")[0] == self.data.initials[0]
+                    and response["details_initials"][0] == self.data.initials[0]
                     ) or False
         except IndexError:
             return False
@@ -166,7 +169,7 @@ class _SourceMatch:
     def _gender_match(self, response):
         """Does the gender match?"""
         return (response.get("details_gender") and self.data.gender
-                and response.get("details_gender") == self.data.gender
+                and response["details_gender"] == self.data.gender
                 ) or False
 
     def _address_match(self, response):
@@ -175,25 +178,25 @@ class _SourceMatch:
                 and self.data.postalCode
                 and response.get("address_houseNumber")
                 and self.data.houseNumber
-                and response.get("address_postalCode") == self.data.postalCode
-                and response.get("address_houseNumber") == self.data.houseNumber
+                and response["address_postalCode"] == self.data.postalCode
+                and response["address_houseNumber"] == self.data.houseNumber
                 ) or False
 
     def _phone_match(self, response):
         """Do the phone numbers match?"""
         return ((response.get("phoneNumber_mobile")
                  and self.data.mobile
-                 and response.get("phoneNumber_mobile") == self.data.mobile
+                 and response["phoneNumber_mobile"] == self.data.mobile
                  ) or (response.get("phoneNumber_number")
                        and self.data.number and
-                       response.get("phoneNumber_number") == self.data.number)
+                       response["phoneNumber_number"] == self.data.number)
                 ) or False
 
     def _dob_match(self, response):
         """Does the date of birth match?"""
-        return (response.get("birth_date")[:10] != DEFAULT_DATE
+        return (response["birth_date"][:10] != DEFAULT_DATE
                 and self.data.date_of_birth
-                and response.get("birth_date")[:10] == self.data.date_of_birth.strftime(DATE_FORMAT)
+                and response["birth_date"][:10] == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
 
     def _set_match(self, response: dict):
