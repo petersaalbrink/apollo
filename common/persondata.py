@@ -894,6 +894,7 @@ class PersonData(_MatchQueries,
                 "birth_date",
                 "contact_email",
                 "death_date",
+                "details_common",
                 "details_firstname",
                 "details_gender",
                 "details_initials",
@@ -914,6 +915,7 @@ class PersonData(_MatchQueries,
                 "address_moved",
                 "birth_date",
                 "death_date",
+                "details_common",
                 "details_firstname",
                 "details_gender",
                 "details_initials",
@@ -927,6 +929,7 @@ class PersonData(_MatchQueries,
             return (
                 "birth_date",
                 "death_date",
+                "details_common",
                 "details_firstname",
                 "details_gender",
                 "details_initials",
@@ -1050,6 +1053,8 @@ class PersonData(_MatchQueries,
         for key in self._main_fields:
             if key in self._responses:
                 response = self._responses[key]
+                if not self.result.get("details_common"):
+                    self.result["details_common"] = response.get("details_common")
                 try:
                     self._get_source(response)
                 except MatchError:
@@ -1076,6 +1081,12 @@ class PersonData(_MatchQueries,
         """After getting and scoring the result, complete the output."""
         # Get match keys
         self.result["match_keys"].update(self._match_keys)
+
+        # Get commonalities
+        if not self.result.get("details_common"):
+            mm = MatchMetrics(list(self._responses.values())[0])
+            mm.get_metrics()
+            self.result["details_common"] = mm.counts
 
         # Fix dates
         for key in ("date", "address_moved", "birth_date", "death_date"):
@@ -1157,8 +1168,12 @@ class MatchMetrics:
         return self.response
 
     def get_count_and_type(self, count_type: str) -> Tuple[int, str]:
+        try:
+            lastname = self.doc["details"]["lastname"]
+        except KeyError:
+            lastname = self.doc["details_lastname"]
         q = {"query": {"bool": {"filter": {"term": {
-            "lastname.keyword": self.doc["details"]["lastname"]
+            "lastname.keyword": lastname
         }}}}}
         res = self.esl.find(q, size=1, source_only=True)
         count_ = res[count_type] if res else 1
@@ -1169,9 +1184,13 @@ class MatchMetrics:
         return count_, suffix
 
     def calc_prob(self):
-        if self.doc["details"]["initials"]:
+        try:
+            initials = self.doc["details"]["initials"]
+        except KeyError:
+            initials = self.doc["details_initials"]
+        if initials:
             # Get all the probabilities
-            prob = [self.initials[i] for i in self.doc["details"]["initials"]]
+            prob = [self.initials[i] for i in initials]
             # Get total probability by muliplying
             result = prod(prob)
             for count_type in ("fuzzy", "count"):
