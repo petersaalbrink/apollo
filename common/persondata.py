@@ -8,7 +8,9 @@ also the main method used by the `PersonChecker` of the CDQC product
 
 Additionally, there is a `NamesData` class which provides some methods
 for easy access to data on several names statistics, such as last name
-occurrence in the Netherlands.
+occurrence in the Netherlands; and a `MatchMetrics` class which can be
+used to collect statistics on a document from the `person_data`
+collection.
 
 Other useful objects include the `Data` class, which can serve as a
 container for person data, and the `Cleaner` class, which cleans said
@@ -19,6 +21,9 @@ data.
 
 .. py:class:: common.persondata.Data
    Dataclass for person input.
+
+.. py:class:: common.persondata.MatchMetrics
+   Access data on person statistics.
 
 .. py:class:: common.persondata.NamesData
    Access data on several names statistics.
@@ -32,7 +37,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache, partial
+from itertools import combinations
 from logging import debug
+from math import prod
 from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
@@ -42,6 +49,7 @@ from text_unidecode import unidecode
 import common.api.phone
 from .api.email import check_email
 from .connectors.mx_elastic import ESClient
+from .connectors.mx_mongo import MongoDB
 from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
 
@@ -59,6 +67,21 @@ PERSONAL_KEYS = ("details", "birth")
 PHONE_KEYS = {"phoneNumber_number", "phoneNumber_mobile"}
 
 _module_data = {}
+_extra_fields = {
+    "birth.date": 1 / 38,
+    "phoneNumber.mobile": 1 / 38,
+    "phoneNumber.number": 1 / 26,
+    "address.address_id": 1 / 26,
+}
+_extra_fields = {
+    field: _extra_fields[field]
+    for field in (
+        "birth.date",
+        "phoneNumber.mobile",
+        "phoneNumber.number",
+        "address.address_id",
+    )
+}
 
 
 class BaseDataClass(MutableMapping):
@@ -1078,3 +1101,95 @@ class PersonData(_MatchQueries,
             return self.result
         else:
             raise NoMatch
+
+
+class MatchMetrics:
+    """Get match metrics for a person data record.
+
+    Main method::
+        :meth:`MatchMetrics.get_metrics`
+
+    Main attributes::
+        :attr:`MatchMetrics.counts`
+        :attr:`MatchMetrics.response`
+
+    Example::
+        from common.connectors import ESClient
+        from common.persondata import MatchMetrics
+        es = ESClient(MatchMetrics.collection)
+        mm_doc = es.find({"query": {"match_all": {}}}, size=1, with_id=True)
+        match_metrics = MatchMetrics(mm_doc)
+        match_metrics.get_metrics()
+        print(match_metrics.counts)
+        print(match_metrics.response)
+    """
+    alpha = .05
+    collection = "cdqc.person_data"
+    combinations = {
+        t: prod(map(_extra_fields.get, t))
+        for t in [
+            t for r in range(4, 0, -1) for t in
+            combinations(_extra_fields, r=r)
+        ]
+    }
+
+    def __init__(self, doc):
+        self.doc = doc
+        self.counts = {}
+        self.response = {}
+        self.esl = ESClient(f"{self.collection}_lastname_occurrence")
+        self.esl.index_exists = True
+        try:
+            self.initials = _module_data["initials"]
+        except KeyError:
+            self.initials = _module_data["initials"] = {
+                d["initials"]: d["frequency"]
+                for d in MongoDB(f"{self.collection}_initials_occurrence").find()
+            }
+
+    def get_metrics(self) -> dict:
+        self.calc_prob()
+        self.get_response()
+        self.counts = {
+            k: round(v, 4)
+            for k, v in self.counts.items()
+        }
+        return self.response
+
+    def get_count_and_type(self, count_type: str) -> Tuple[int, str]:
+        q = {"query": {"bool": {"filter": {"term": {
+            "lastname.keyword": self.doc["details"]["lastname"]
+        }}}}}
+        res = self.esl.find(q, size=1, source_only=True)
+        count_ = res[count_type] if res else 1
+        count_ -= 1
+        if count_type == "fuzzy" and not count_:
+            raise MatchError(self.doc["_id"])
+        suffix = "_fuzzy" if count_type == "fuzzy" else ""
+        return count_, suffix
+
+    def calc_prob(self):
+        if self.doc["details"]["initials"]:
+            # Get all the probabilities
+            prob = [self.initials[i] for i in self.doc["details"]["initials"]]
+            # Get total probability by muliplying
+            result = prod(prob)
+            for count_type in ("fuzzy", "count"):
+                count_, suffix = self.get_count_and_type(count_type)
+                self.counts[f"full{suffix}"] = count_ * result
+                # Get first initial probability
+                self.counts[f"first{suffix}"] = count_ * prob[0]
+        else:
+            for count_type in ("fuzzy", "count"):
+                count_, suffix = self.get_count_and_type(count_type)
+                for key in ("full", "first"):
+                    self.counts[f"{key}{suffix}"] = count_
+
+    def get_response(self):
+        for key, count_ in self.counts.items():
+            if count_ < self.alpha:
+                self.response[key] = True
+            else:
+                self.response[key] = [
+                    keys for keys, p in self.combinations.items()
+                    if count_ * p < self.alpha]
