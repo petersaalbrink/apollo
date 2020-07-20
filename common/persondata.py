@@ -1176,10 +1176,7 @@ class MatchMetrics:
             "lastname.keyword": lastname
         }}}}}
         res = self.esl.find(q, size=1, source_only=True)
-        count_ = res[count_type] if res else 1
-        count_ -= 1
-        if count_type == "fuzzy" and not count_:
-            raise MatchError(self.doc["_id"])
+        count_ = res[count_type] - 1 if res else 0
         suffix = "_fuzzy" if count_type == "fuzzy" else ""
         return count_, suffix
 
