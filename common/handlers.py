@@ -664,5 +664,8 @@ def timer(f):
 
 def pip_upgrade():
     """Upgrade all installed Python packages using pip."""
-    packages = [dist.project_name for dist in pkg_resources.working_set]
+    packages = [
+        dist.project_name for dist in pkg_resources.working_set
+        if not dist.project_name.startswith("-")
+    ]
     run(["pip", "install", "--upgrade", *packages])
