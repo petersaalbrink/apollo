@@ -45,6 +45,8 @@ from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+Executor = ThreadPoolExecutor
+
 
 class ThreadSafeIterator:
     """Takes an iterator/generator and makes it thread-safe
@@ -216,14 +218,14 @@ def thread(function: Callable,
     process_chunk_size = kwargs.pop("process_chunk_size", 1_000)
     max_workers = kwargs.pop("max_workers", None)
     if process is None:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with Executor(max_workers=max_workers) as executor:
             # noinspection PyUnresolvedReferences
             return [f.result() for f in
                     wait({executor.submit(function, row) for row in data},
                          return_when="FIRST_EXCEPTION").done]
     else:
         futures = set()
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with Executor(max_workers=max_workers) as executor:
             for row in data:
                 futures.add(executor.submit(function, row))
                 if len(futures) == process_chunk_size:

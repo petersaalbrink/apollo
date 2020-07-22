@@ -57,6 +57,8 @@ class SQLtoMongo:
         self.query = None
         self.matched_count = self.number_of_insertions = self.number_of_updates = self.number_of_deletions = 0
         self.chunksize = kwargs.pop("chunksize", 1_000)
+        self.date_columns = kwargs.pop("date_columns", None)
+        self.index_columns = kwargs.pop("index_columns", None)
 
     def create_indexes(self, names: List[str]):
         """Create indexes in the MongoDB collection.
@@ -98,6 +100,8 @@ class SQLtoMongo:
                 sql=self.query,
                 con=self.engine,
                 chunksize=self.chunksize,
+                parse_dates=self.date_columns,
+                index_col=self.index_columns
             )
         except Exception as e:
             if not self.query:

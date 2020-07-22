@@ -3,13 +3,9 @@ from typing import Union
 
 from ..requests import get
 
-from .address import LIVE
+from .address import TEST
 
-JSON = {
-    "true": True,
-    "false": False,
-}
-URL = f"http://{LIVE}:4000/email?email="
+URL = f"http://{TEST}:4000/email?email="
 
 
 @lru_cache()
@@ -26,9 +22,6 @@ def check_email(
         text_only=True,
         timeout=10,
     )
-    for k, v in response.items():
-        if v in JSON:
-            response[k] = JSON[v]
     if safe_to_send:
         return response["safe_to_send"]
     return response
