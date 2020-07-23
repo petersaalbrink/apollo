@@ -79,6 +79,10 @@ trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
 DEFAULT_EMAIL = "datateam@matrixiangroup.com"
 
+def chunker(lst: list, n) -> list:
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
