@@ -173,9 +173,9 @@ class SQLtoMongo:
             filter: Callable,
             update: Callable,
             preprocessing: Callable = None,
-            check_progress: bool = False,
+            no_progress: bool = False,
     ):
-        for chunk in tqdm(self.generator_df, disable=check_progress):
+        for chunk in tqdm(self.generator_df, disable=no_progress):
             if preprocessing:
                 chunk = preprocessing(chunk)
             chunk = [MongoDB.UpdateOne(
