@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from contextlib import suppress
 from typing import Callable, List, NewType
+from tqdm import tqdm
 
 from pandas import read_sql
 from pymongo import IndexModel
@@ -57,6 +58,8 @@ class SQLtoMongo:
         self.query = None
         self.matched_count = self.number_of_insertions = self.number_of_updates = self.number_of_deletions = 0
         self.chunksize = kwargs.pop("chunksize", 1_000)
+        self.date_columns = kwargs.pop("date_columns", None)
+        self.index_columns = kwargs.pop("index_columns", None)
 
     def create_indexes(self, names: List[str]):
         """Create indexes in the MongoDB collection.
@@ -98,6 +101,8 @@ class SQLtoMongo:
                 sql=self.query,
                 con=self.engine,
                 chunksize=self.chunksize,
+                parse_dates=self.date_columns,
+                index_col=self.index_columns
             )
         except Exception as e:
             if not self.query:
@@ -168,8 +173,9 @@ class SQLtoMongo:
             filter: Callable,
             update: Callable,
             preprocessing: Callable = None,
+            no_progress: bool = False,
     ):
-        for chunk in self.generator_df:
+        for chunk in tqdm(self.generator_df, disable=no_progress):
             if preprocessing:
                 chunk = preprocessing(chunk)
             chunk = [MongoDB.UpdateOne(
