@@ -39,7 +39,13 @@ from datetime import datetime
 from functools import lru_cache, partial
 from itertools import combinations
 from logging import debug
-from math import prod
+try:
+    from math import prod
+except ImportError:
+    def prod(iterable, *, start=1):
+        for i in iterable:
+            start *= i
+        return start
 from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
