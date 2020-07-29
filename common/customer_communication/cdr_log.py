@@ -9,11 +9,10 @@ class CdrLogger:
         self.data = pd.read_csv(self.filename)
 
     def clean(self):
-        self.data.columns = self.data.columns = [
-            x.strip(" ") for x in self.data.columns
-        ]
-		self.data = self.data.replace({np.nan : None})
+        self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
+        self.data = self.data.replace({np.nan : None})
         self.data = self.data.to_dict("records")
+
 
         def hasDate(inputString):
             return all(char.isdigit() for char in inputString)
@@ -26,7 +25,6 @@ class CdrLogger:
                 .replace(".xls", "")
                 .replace(".xlsx", "")
             )
-		
 
 
     def insert_mysql(self):
