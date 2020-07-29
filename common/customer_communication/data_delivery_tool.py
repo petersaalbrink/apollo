@@ -6,6 +6,7 @@ import pandas as pd
 from .readme import readme_exe
 from .product_documentation import documentation_exe
 from .codebook import codebook_exe
+from .cdr_log import cdrlog_exe
 
 
 def data_delivery_tool(
@@ -13,6 +14,7 @@ def data_delivery_tool(
         readme: bool = True,
         codebook: bool = True,
         documentation: bool = False,
+        log_cdr: bool = True,
         to_zip: bool = True,
         coded_input: dict = None,
         encoding: str = None,
@@ -33,10 +35,7 @@ def data_delivery_tool(
         ddt("some_file.csv", coded_input=coded_input, documentation=True)
     """
     if filename[-3:] == 'csv':
-        try:
-            df = pd.read_csv(filename, encoding=encoding, low_memory=False)
-        except pd.errors.ParserError:
-            df = pd.read_csv(filename, encoding=encoding, delimiter=";", low_memory=False)
+        df = pd.read_csv(filename, encoding=encoding, low_memory=False)
     else:
         df = pd.read_excel(filename, low_memory=False)
 
@@ -61,6 +60,9 @@ def data_delivery_tool(
 
         if readme:
             readme_exe(df, folder, filename, cb_name, doc_name, coded_input, to_zip)
+            
+        if log_cdr:
+            cdrlog_exe(filename)
 
         # Writing
         folder.write(f'{filename}')
