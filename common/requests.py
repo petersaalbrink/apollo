@@ -124,8 +124,8 @@ def get_session(
         max_retries=retry,
         pool_connections=100,
         pool_maxsize=100)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     return session
 
 
