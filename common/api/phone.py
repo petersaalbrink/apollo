@@ -1,44 +1,41 @@
 from contextlib import suppress
-from dataclasses import asdict, astuple, dataclass
+from dataclasses import astuple, dataclass
 from datetime import datetime
 from functools import lru_cache
+import pickle
 from socket import gethostname
 from time import localtime, sleep
 from typing import Optional, Union
 
-from phonenumbers import is_valid_number, parse as phoneparse
+from phonenumbers import is_valid_number, parse, PhoneNumber
+from phonenumbers.carrier import name_for_number, number_type  # noqa
+from phonenumbers.geocoder import country_name_for_number
 from phonenumbers.phonenumberutil import NumberParseException
+from pycountry import countries
 from requests.exceptions import RetryError
 from urllib3.exceptions import MaxRetryError
 
-from ..connectors.mx_elastic import ESClient, ElasticsearchException
+from ..connectors.mx_elastic import ESClient
 from ..exceptions import PhoneApiError
 from ..persondata import HOST
-from ..requests import get
+from ..requests import post
 from ..secrets import get_secret
 
-_vn = None
 _SECRET = None
-CALL_TO_VALIDATE = True
-RESPECT_HOURS = True
 _WRONG_CHARS = (".0", "%2B")
 _WRONG_NUMS = ("8", "9", "66", "67", "69", "60")
+_vn = None
+CALL_TO_VALIDATE = True
+RESPECT_HOURS = True
 VN_INDEX = "cdqc.validated_numbers"
+TYPES = {
+    0: "landline",
+    1: "mobile",
+}
 if gethostname() == "matrixian":
     URL = "http://localhost:5000/call/"
 else:
     URL = "http://94.168.87.210:4000/call/"
-
-
-@dataclass
-class ParsedPhoneNumber:
-    country_code: int = None
-    national_number: int = None
-    parsed_number: str = None
-    valid_number: bool = None
-
-    def __hash__(self):
-        return hash(astuple(self))
 
 
 @dataclass
@@ -61,16 +58,31 @@ class PhoneApiResponse:
     valid_format: bool = None
     valid_number: bool = None
 
+    def __hash__(self):
+        return hash(astuple(self))
+
     @classmethod
-    def from_parsed(cls, parsed: ParsedPhoneNumber):
-        return cls(**asdict(parsed))
+    def from_parsed(cls, parsed: PhoneNumber, valid_number: bool = None):
+        country = countries.lookup(country_name_for_number(parsed, "en"))
+        return cls(
+            country_code=parsed.country_code,
+            country_iso2=country.alpha_2,
+            country_iso3=country.alpha_3,
+            country_name=country.name,
+            national_number=parsed.national_number,
+            number_type=TYPES.get(number_type(parsed)),
+            original_carrier=name_for_number(parsed, "en"),
+            parsed_number=f"+{parsed.country_code}{parsed.national_number}",
+            valid_format=True,
+            valid_number=valid_number,
+        )
 
 
 @lru_cache()
 def parse_phone(
         number: Union[int, str],
         country: str = None,
-) -> Optional[ParsedPhoneNumber]:
+) -> Optional[PhoneApiResponse]:
 
     if not ((isinstance(country, str) and len(country) == 2)
             or f"{number}".startswith("+")):
@@ -83,7 +95,7 @@ def parse_phone(
 
     try:
         # Parse the number
-        parsed = phoneparse(number, country)
+        parsed = parse(number, country)
 
         # Validate the number
         if parsed.country_code == 31 and f"{parsed.national_number}".startswith(_WRONG_NUMS):
@@ -91,42 +103,45 @@ def parse_phone(
         else:
             valid = is_valid_number(parsed)
 
-        return ParsedPhoneNumber(
-            parsed.country_code,
-            parsed.national_number,
-            f"+{parsed.country_code}{parsed.national_number}",
-            valid,
-        )
+        return PhoneApiResponse.from_parsed(parsed, valid)
 
     except NumberParseException:
         raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
 
 
 @lru_cache()
-def lookup_phone(
-        parsed: ParsedPhoneNumber,
+def lookup_carriers_acm(
+        phone: PhoneApiResponse,
+) -> PhoneApiResponse:
+
+    # TODO: implement lookup current carrier (scrape ACM)
+
+    # TODO: implement lookup original carrier (MongoDB: find & update)
+
+    return phone
+
+
+@lru_cache()
+def lookup_call_result(
+        phone: PhoneApiResponse,
 ) -> Optional[PhoneApiResponse]:
 
     global _vn
 
-    with suppress(ElasticsearchException):
+    if not _vn:
+        _vn = ESClient(VN_INDEX, host=HOST)
+        _vn.index_exists = True
 
-        if not _vn:
-            _vn = ESClient(VN_INDEX, host=HOST)
-            _vn.index_exists = True
-
-        result = _vn.find(
-            query={"query": {"bool": {"must": {"term": {"phoneNumber": parsed.national_number}}}}},
-            first_only=True,
-        )
-        if result:
-            parsed.valid_number = result["valid"]
-            return PhoneApiResponse.from_parsed(parsed)
+    query = {"query": {"bool": {"filter": {"term": {"phoneNumber": phone.national_number}}}}}
+    result = _vn.find(query, size=1, source_only=True)
+    if result:
+        phone.valid_number = result["valid"]
+        return phone
 
 
 @lru_cache()
 def call_phone(
-        parsed: ParsedPhoneNumber,
+        phone: PhoneApiResponse,
 ) -> PhoneApiResponse:
 
     global _SECRET
@@ -144,12 +159,16 @@ def call_phone(
 
         while True:
             with suppress(RetryError, MaxRetryError):
-                response = get(f"{URL}{parsed.parsed_number}", auth=_SECRET)
+                response = post(
+                    url=URL,
+                    auth=_SECRET,
+                    data=pickle.dumps(phone),
+                )
                 if response.ok:
-                    parsed.valid_number = response.json()["valid"]
+                    phone = pickle.loads(response.content)  # noqa
                     break
 
-    return PhoneApiResponse.from_parsed(parsed)
+    return phone
 
 
 @lru_cache()
@@ -174,25 +193,28 @@ def check_phone(
             not isinstance(number, str)
             or not f"{number}".startswith("+")):
         country = "NL"
-    parsed = parse_phone(number, country)
+    phone = parse_phone(number, country)
 
-    if (not parsed.valid_number
-            or parsed.country_code != 31
-            or f"{parsed.national_number}".startswith("6")):
-        return PhoneApiResponse.from_parsed(parsed)
+    if (not phone.valid_number
+            or phone.country_code != 31
+            or f"{phone.national_number}".startswith("6")):
+        return phone
 
-    result = lookup_phone(parsed)
+    phone = lookup_carriers_acm(phone)
+    result = lookup_call_result(phone)
     if result:
         return result
 
     if call:
-        return call_phone(parsed)
-    return PhoneApiResponse.from_parsed(parsed)
+        return call_phone(phone)
+
+    return phone
 
 
 def cache_clear():
     """Convenience function to clear the cache for this module's functions."""
     call_phone.cache_clear()
     check_phone.cache_clear()
-    lookup_phone.cache_clear()
+    lookup_call_result.cache_clear()
+    lookup_carriers_acm.cache_clear()
     parse_phone.cache_clear()
