@@ -1,5 +1,6 @@
 from contextlib import suppress
-from dataclasses import astuple, dataclass
+from dataclasses import asdict, astuple, dataclass
+from datetime import datetime
 from functools import lru_cache
 from socket import gethostname
 from time import localtime, sleep
@@ -31,34 +32,38 @@ else:
 
 @dataclass
 class ParsedPhoneNumber:
-    __slots__ = [
-        "country_code",
-        "national_number",
-        "parsed_number",
-        "is_valid_number",
-    ]
-    country_code: int
-    national_number: int
-    parsed_number: str
-    is_valid_number: bool
-
-    def __bool__(self):
-        return any(astuple(self))
+    country_code: int = None
+    national_number: int = None
+    parsed_number: str = None
+    valid_number: bool = None
 
     def __hash__(self):
         return hash(astuple(self))
 
 
-def _return(
-        parsed: ParsedPhoneNumber,
-        valid: bool,
-) -> Union[dict, bool]:
-    return (
-        parsed.is_valid_number
-        if valid else
-        {"phone": parsed.parsed_number,
-         "valid": parsed.is_valid_number}
-    )
+@dataclass
+class PhoneApiResponse:
+    country_code: int = None
+    country_iso2: str = None
+    country_iso3: str = None
+    country_name: str = None
+    current_carrier: str = None
+    date_allocation: datetime = None
+    date_cooldown: datetime = None
+    date_mutation: datetime = None
+    date_portation: datetime = None
+    national_number: int = None
+    number_status: str = None
+    number_type: str = None
+    original_carrier: str = None
+    parsed_number: str = None
+    status: str = "OK"
+    valid_format: bool = None
+    valid_number: bool = None
+
+    @classmethod
+    def from_parsed(cls, parsed: ParsedPhoneNumber):
+        return cls(**asdict(parsed))
 
 
 @lru_cache()
@@ -100,8 +105,7 @@ def parse_phone(
 @lru_cache()
 def lookup_phone(
         parsed: ParsedPhoneNumber,
-        valid: bool,
-) -> Optional[Union[dict, bool]]:
+) -> Optional[PhoneApiResponse]:
 
     global _vn
 
@@ -116,15 +120,14 @@ def lookup_phone(
             first_only=True,
         )
         if result:
-            parsed.is_valid_number = result["valid"]
-            return _return(parsed, valid)
+            parsed.valid_number = result["valid"]
+            return PhoneApiResponse.from_parsed(parsed)
 
 
 @lru_cache()
 def call_phone(
         parsed: ParsedPhoneNumber,
-        valid: bool,
-) -> Union[dict, bool]:
+) -> PhoneApiResponse:
 
     global _SECRET
 
@@ -143,19 +146,18 @@ def call_phone(
             with suppress(RetryError, MaxRetryError):
                 response = get(f"{URL}{parsed.parsed_number}", auth=_SECRET)
                 if response.ok:
-                    parsed.is_valid_number = response.json()["valid"]
+                    parsed.valid_number = response.json()["valid"]
                     break
 
-    return _return(parsed, valid)
+    return PhoneApiResponse.from_parsed(parsed)
 
 
 @lru_cache()
 def check_phone(
         number: Union[int, str],
         country: str = None,
-        valid: bool = False,
         call: bool = False,
-) -> Union[dict, bool]:
+) -> PhoneApiResponse:
     """Use Matrixian's Phone Checker API to validate a phone number.
 
     :param number: the phone number to validate.
@@ -163,7 +165,6 @@ def check_phone(
     Optional arguments:
         :param country: default "NL"; set the country if the number does not
             contain a country code.
-        :param valid: default False; set to True for boolean output.
         :param call: default False; set to True to call Dutch landlines.
             Doesn't call between 22PM and 8AM; the function will be suspended
             instead.
@@ -175,18 +176,18 @@ def check_phone(
         country = "NL"
     parsed = parse_phone(number, country)
 
-    if (not parsed.is_valid_number
+    if (not parsed.valid_number
             or parsed.country_code != 31
             or f"{parsed.national_number}".startswith("6")):
-        return _return(parsed, valid)
+        return PhoneApiResponse.from_parsed(parsed)
 
-    result = lookup_phone(parsed, valid)
+    result = lookup_phone(parsed)
     if result:
         return result
 
     if call:
-        return call_phone(parsed, valid)
-    return _return(parsed, valid)
+        return call_phone(parsed)
+    return PhoneApiResponse.from_parsed(parsed)
 
 
 def cache_clear():
