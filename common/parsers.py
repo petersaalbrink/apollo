@@ -47,7 +47,7 @@ from functools import lru_cache
 from typing import Any, List, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
-from pandas import isna
+from pandas import isna, notna
 from text_unidecode import unidecode
 from .exceptions import ParseError
 
@@ -92,42 +92,42 @@ class Checks:
     def int_or_null(var: Any) -> Optional[int]:
         """Transform to an integer, if possible."""
         try:
-            return int(var) if var and not isna(var) else None
-        except ValueError:
+            return int(var)
+        except (TypeError, ValueError):
             return None
 
     @staticmethod
     def bool_or_null(var: Any) -> Optional[bool]:
         """Transform to a boolean, if possible."""
-        return bool(Checks.int_or_null(var)) if var and not isna(var) else None
+        return bool(Checks.float_or_null(var))
 
     @staticmethod
     def str_or_null(var: Any) -> Optional[str]:
         """Transform to a string, if possible."""
-        return str(var) if var and not isna(var) else None
+        return str(var) if notna(var) else None
 
     @staticmethod
     def str_or_empty(var: Any) -> str:
         """Always transform to a string."""
-        return str(var) if var and not isna(var) else ""
+        return str(var) if notna(var) else ""
 
     @staticmethod
     def float_or_null(var: Any) -> Optional[float]:
         """Transform to a floating point, if possible."""
         try:
-            return float(var) if var and not isna(var) else None
-        except ValueError:
+            return float(var)
+        except (TypeError, ValueError):
             return None
 
     @staticmethod
     def date_or_null(var: str, f: str) -> Optional[datetime]:
         """Transform to a datetime, if possible."""
-        return datetime.strptime(var, f) if var and not isna(var) else None
+        return datetime.strptime(var, f) if notna(var) else None
 
     @staticmethod
     def check_null(var: Any) -> Optional[Any]:
         """Check if data resolves to True, otherwise return None."""
-        return var if var and not isna(var) else None
+        return var if notna(var) else None
 
     @staticmethod
     def energy_label(var: str) -> int:
