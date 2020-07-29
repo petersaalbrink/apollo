@@ -43,7 +43,15 @@ from typing import (Any,
                     Union)
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
+
+from hashlib import sha1
 from urllib3.util.retry import Retry
+import urllib.parse as urlparse
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+import hmac
+
+from shutil import copyfileobj
+
 
 Executor = ThreadPoolExecutor
 
@@ -234,3 +242,25 @@ def thread(function: Callable,
             done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]
+
+def google_sign_url(input_url=None, secret=None):
+    if not input_url or not secret:
+        raise Exception("Error: input_url or secret can not be empty.")
+
+    url = urlparse.urlparse(input_url)
+    url_to_sign = url.path + "?" + url.query
+    decoded_key = urlsafe_b64decode(secret)
+    signature = hmac.new(decoded_key, str.encode(url_to_sign), sha1)
+    encoded_signature = urlsafe_b64encode(signature.digest())
+    original_url = url.scheme + "://" + url.netloc + url.path + "?" + url.query
+    return original_url + "&signature=" + encoded_signature.decode()
+
+def download_file(url=None, filepath=None):
+    if not url or not filepath:
+        raise Exception("Error: url or filepath can not be empty.")
+
+    response = get(url, stream=True)
+    if response.status_code == 200:
+        with open(filepath, 'wb') as f:
+            response.raw.decode_content = True
+            copyfileobj(response.raw, f)
