@@ -21,10 +21,13 @@ from ..persondata import HOST
 from ..requests import post
 from ..secrets import get_secret
 
+from ._acm import ACM
+
 _SECRET = None
 _WRONG_CHARS = (".0", "%2B")
 _WRONG_NUMS = ("8", "9", "66", "67", "69", "60")
 _vn = None
+_acm = None
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
 VN_INDEX = "cdqc.validated_numbers"
@@ -56,26 +59,33 @@ class PhoneApiResponse:
     parsed_number: str = None
     status: str = "OK"
     valid_format: bool = None
-    valid_number: bool = None
+    valid_number: bool = True
 
     def __hash__(self):
         return hash(astuple(self))
 
     @classmethod
-    def from_parsed(cls, parsed: PhoneNumber, valid_number: bool = None):
-        country = countries.lookup(country_name_for_number(parsed, "en"))
-        return cls(
-            country_code=parsed.country_code,
-            country_iso2=country.alpha_2,
-            country_iso3=country.alpha_3,
-            country_name=country.name,
-            national_number=parsed.national_number,
-            number_type=TYPES.get(number_type(parsed)),
-            original_carrier=name_for_number(parsed, "en"),
-            parsed_number=f"+{parsed.country_code}{parsed.national_number}",
-            valid_format=True,
-            valid_number=valid_number,
-        )
+    def from_parsed(cls, parsed: PhoneNumber):
+        if parsed.country_code == 31:
+            return cls(
+                country_code=parsed.country_code,
+                national_number=parsed.national_number,
+                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
+                valid_format=is_valid_number(parsed),
+            )
+        else:
+            country = countries.lookup(country_name_for_number(parsed, "en"))
+            return cls(
+                country_code=parsed.country_code,
+                country_iso2=country.alpha_2,
+                country_iso3=country.alpha_3,
+                country_name=country.name,
+                national_number=parsed.national_number,
+                number_type=TYPES.get(number_type(parsed)),
+                original_carrier=name_for_number(parsed, "en"),
+                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
+                valid_format=is_valid_number(parsed),
+            )
 
 
 @lru_cache()
@@ -86,7 +96,7 @@ def parse_phone(
 
     if not ((isinstance(country, str) and len(country) == 2)
             or f"{number}".startswith("+")):
-        raise PhoneApiError("Provide two-letter country code.")
+        raise PhoneApiError("Provide two-letter country code or international number.")
 
     # Clean up
     number = f"{number}"
@@ -95,15 +105,15 @@ def parse_phone(
 
     try:
         # Parse the number
-        parsed = parse(number, country)
+        phone = PhoneApiResponse.from_parsed(parse(number, country))
 
-        # Validate the number
-        if parsed.country_code == 31 and f"{parsed.national_number}".startswith(_WRONG_NUMS):
-            valid = False
-        else:
-            valid = is_valid_number(parsed)
+        # Set number to invalid for some cases
+        if (not phone.valid_format
+                or (phone.country_code == 31
+                    and f"{phone.national_number}".startswith(_WRONG_NUMS))):
+            phone.valid_number = False
 
-        return PhoneApiResponse.from_parsed(parsed, valid)
+        return phone
 
     except NumberParseException:
         raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
@@ -113,11 +123,12 @@ def parse_phone(
 def lookup_carriers_acm(
         phone: PhoneApiResponse,
 ) -> PhoneApiResponse:
-
-    # TODO: implement lookup current carrier (scrape ACM)
-
-    # TODO: implement lookup original carrier (MongoDB: find & update)
-
+    global _acm
+    try:
+        phone = _acm.get_acm_data(phone)
+    except AttributeError:
+        _acm = ACM()
+        phone = _acm.get_acm_data(phone)
     return phone
 
 
@@ -196,8 +207,7 @@ def check_phone(
     phone = parse_phone(number, country)
 
     if (not phone.valid_number
-            or phone.country_code != 31
-            or f"{phone.national_number}".startswith("6")):
+            or phone.country_code != 31):
         return phone
 
     phone = lookup_carriers_acm(phone)
@@ -205,7 +215,7 @@ def check_phone(
     if result:
         return result
 
-    if call:
+    if call and not phone.number_type == "mobile":
         return call_phone(phone)
 
     return phone
