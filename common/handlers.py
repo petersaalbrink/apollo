@@ -79,6 +79,14 @@ trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
 DEFAULT_EMAIL = "datateam@matrixiangroup.com"
 
+def remove_adjacent(input):
+    """ Remove adjecent words in a string """
+    if input and isinstance(input, str):
+        list = input.split()
+        return " ".join([elem for i, elem in enumerate(list) if i == 0 or list[i - 1] != elem])
+    else:
+        return input
+
 def chunker(lst: list, n) -> list:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
