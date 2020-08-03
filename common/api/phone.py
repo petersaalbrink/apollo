@@ -187,6 +187,7 @@ def check_phone(
         number: Union[int, str],
         country: str = None,
         call: bool = False,
+        acm: bool = False,
 ) -> PhoneApiResponse:
     """Use Matrixian's Phone Checker API to validate a phone number.
 
@@ -198,6 +199,7 @@ def check_phone(
         :param call: default False; set to True to call Dutch landlines.
             Doesn't call between 22PM and 8AM; the function will be suspended
             instead.
+        :param acm: default False; set to True to scrape Dutch carrier (ACM) data.
     """
 
     if country is None and (
@@ -210,7 +212,8 @@ def check_phone(
             or phone.country_code != 31):
         return phone
 
-    phone = lookup_carriers_acm(phone)
+    if acm:
+        phone = lookup_carriers_acm(phone)
     result = lookup_call_result(phone)
     if result:
         return result
