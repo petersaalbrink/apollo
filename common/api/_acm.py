@@ -12,6 +12,7 @@ from ..requests import get
 
 class ACM:
     def __init__(self):
+        self.n_proxy_errors = 0
         self.TZ = timezone("Europe/Amsterdam")
         self.db = MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
@@ -42,10 +43,15 @@ class ACM:
             "portering": "1",
         }
 
-        try:
-            response = self.acm_get(params=params)
-        except ProxyError:
-            response = self.acm_get_no_proxies(params=params)
+        while True:
+            try:
+                response = self.acm_get(params=params)
+                self.n_proxy_errors = 0
+                break
+            except ProxyError:
+                self.n_proxy_errors += 1
+                if self.n_proxy_errors == 10:
+                    self.acm_get = self.acm_get_no_proxies
 
         soup = BeautifulSoup(response.content, "lxml")
         result = soup.find("ul", {"class": "nummerresultdetails"})
