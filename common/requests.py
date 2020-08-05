@@ -41,6 +41,8 @@ from typing import (Any,
                     List,
                     Optional,
                     Union)
+
+from psutil import net_io_counters
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -122,8 +124,8 @@ def get_session(
         max_retries=retry,
         pool_connections=100,
         pool_maxsize=100)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     return session
 
 
@@ -234,3 +236,20 @@ def thread(function: Callable,
             done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]
+
+
+def calculate_bandwith(function, *args, n: int = 100, **kwargs) -> float:
+    """Returns the minimal bandwith usage of `function`."""
+    def get_bytes():
+        stats = net_io_counters()
+        return stats.bytes_recv + stats.bytes_sent
+
+    n_bytes = []
+    for _ in range(n):
+        old_bytes = get_bytes()
+        function(*args, **kwargs)
+        new_bytes = get_bytes()
+        n_bytes.append(new_bytes - old_bytes)
+    bandwith = min(n_bytes)
+    print(f"Function '{function.__name__}' uses {round(bandwith / 1024, 2)} KB (N={n})")
+    return bandwith
