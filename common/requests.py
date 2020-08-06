@@ -29,10 +29,14 @@ Multithreading:
    Decorator that takes a generator function and makes it thread-safe.
 """
 
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
+from hashlib import sha1
+import hmac
 from itertools import cycle
 from json import loads
 from pathlib import Path
+from shutil import copyfileobj
 from threading import Lock
 from typing import (Any,
                     Callable,
@@ -41,17 +45,13 @@ from typing import (Any,
                     List,
                     Optional,
                     Union)
+import urllib.parse as urlparse
+
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
-
-from hashlib import sha1
 from urllib3.util.retry import Retry
-import urllib.parse as urlparse
-from base64 import urlsafe_b64decode, urlsafe_b64encode
-import hmac
 
-from shutil import copyfileobj
-
+from .exceptions import RequestError
 
 Executor = ThreadPoolExecutor
 
@@ -60,6 +60,7 @@ class ThreadSafeIterator:
     """Takes an iterator/generator and makes it thread-safe
     by serializing call to the `next` method of given iterator/generator.
     """
+
     def __init__(self, it):
         self.it = it
         self.lock = Lock()
@@ -74,8 +75,10 @@ class ThreadSafeIterator:
 
 def threadsafe(f):
     """Decorator that takes a generator function and makes it thread-safe."""
+
     def decorate(*args, **kwargs):
         return ThreadSafeIterator(f(*args, **kwargs))
+
     return decorate
 
 
@@ -108,15 +111,17 @@ def get_proxies() -> Iterator[dict]:
 
 
 def get_session(
-    retries=3,
-    backoff_factor=0.3,
-    status_forcelist=(500, 502, 504),
-    session=None,
+        retries=3,
+        backoff_factor=0.3,
+        status_forcelist=(500, 502, 504),
+        session=None,
 ) -> Session:
     """Get session with predefined options for requests."""
+
     def hook(response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
+
     session = session or Session()
     session.hooks["response"] = [hook]
     retry = Retry(
@@ -243,9 +248,10 @@ def thread(function: Callable,
             if done:
                 _ = [process(f.result()) for f in done]
 
-def google_sign_url(input_url=None, secret=None):
+
+def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, bytes] = None) -> str:
     if not input_url or not secret:
-        raise Exception("Error: input_url or secret can not be empty.")
+        raise RequestError("Error: input_url or secret can not be empty.")
 
     url = urlparse.urlparse(input_url)
     url_to_sign = url.path + "?" + url.query
@@ -255,9 +261,10 @@ def google_sign_url(input_url=None, secret=None):
     original_url = url.scheme + "://" + url.netloc + url.path + "?" + url.query
     return original_url + "&signature=" + encoded_signature.decode()
 
-def download_file(url=None, filepath=None):
+
+def download_file(url: str = None, filepath: Union[Path, str] = None):
     if not url or not filepath:
-        raise Exception("Error: url or filepath can not be empty.")
+        raise RequestError("Error: url or filepath can not be empty.")
 
     response = get(url, stream=True)
     if response.status_code == 200:
