@@ -105,7 +105,7 @@ class ACM:
         phone_obj.country_iso2 = doc["country_iso2"]
         phone_obj.country_iso3 = doc["country_iso3"]
         phone_obj.country_name = doc["country_name"]
-        phone_obj.current_carrier = doc["current_carrier"]
+        phone_obj.current_carrier = doc["current_carrier"] or doc["original_carrier"]
         phone_obj.date_allocation = doc["date_allocation"]
         phone_obj.date_cooldown = doc["date_cooldown"]
         phone_obj.date_mutation = doc["date_mutation"]
