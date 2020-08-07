@@ -7,10 +7,13 @@ from requests.exceptions import HTTPError
 from ..requests import get
 from ..connectors import EmailClient
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
-PARSER = f"http://{LIVE}:5000/parser"
-VALIDATION = f"http://{LIVE}:5000/validation"
+PARSER = f"https://{LIVE}:5000/parser"
+VALIDATION = f"https://{LIVE}:5000/validation"
 
 
 @lru_cache()
@@ -33,10 +36,10 @@ def parse(address: str, country: str = "NL"):
     params = {
         "address": address,
         "country": {
-            "NL": "Netherlands",
-            "UK": "UK",
-            "United Kingdom": "UK"
-        }.get(country, countries.lookup(country).name)
+            "NL": "NLD",
+            "UK": "GBR",
+            "United Kingdom": "GBR"
+        }.get(country, countries.lookup(country).alpha_3)
     }
     while True:
         try:
@@ -44,6 +47,7 @@ def parse(address: str, country: str = "NL"):
                 PARSER,
                 params=params,
                 text_only=True,
+                verify=False
             )
             break
         except HTTPError as e:
@@ -108,7 +112,8 @@ def validate(params: Union[dict, str]) -> dict:
         response = get(
             VALIDATION,
             params=params,
-            text_only=True
+            text_only=True,
+            verify=False
         )["objects"][0]
         return response
     except HTTPError:
