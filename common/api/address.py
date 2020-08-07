@@ -10,8 +10,8 @@ from ..connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
-PARSER = f"https://{LIVE}:5000/parser"
-VALIDATION = f"https://{LIVE}:5000/validation"
+PARSER = f"https://{TEST}:5000/parser"
+VALIDATION = f"https://{TEST}:5000/validation"
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
