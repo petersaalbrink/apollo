@@ -1006,6 +1006,7 @@ class PersonData(_MatchQueries,
         debug("Data = %s", self.data)
         self.result = {}
         self._responses = {}
+        _ids = set()
 
         for _type, q in self._queries:
 
@@ -1015,6 +1016,9 @@ class PersonData(_MatchQueries,
                 responses = self._es_find(q)
 
             for response in responses:
+                if response["_id"] in _ids:
+                    continue
+                _ids.add(response["_id"])
 
                 response = flatten(response)
                 for key in self._requested_fields:
