@@ -17,7 +17,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @lru_cache()
-def parse(address: str, country: str = "NL"):
+def parse(address: str, country: str = None):
     """
     Parses an address in a string format and returns address elements in JSON.
 
@@ -33,13 +33,17 @@ def parse(address: str, country: str = "NL"):
 
     for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
         address = address.replace(s, "")
-    params = {
-        "address": address,
-        "country": {
+    if not country:
+        country = "NLD"
+    elif not (country.isupper() and len(country) == 3):
+        country = {
             "NL": "NLD",
             "UK": "GBR",
             "United Kingdom": "GBR"
         }.get(country, countries.lookup(country).alpha_3)
+    params = {
+        "address": address,
+        "country": country,
     }
     while True:
         try:
