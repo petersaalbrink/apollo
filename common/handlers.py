@@ -63,6 +63,7 @@ from typing import (Any,
                     Callable,
                     ClassVar,
                     Dict,
+                    Iterator,
                     List,
                     MutableMapping,
                     Optional,
@@ -79,10 +80,21 @@ trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
 DEFAULT_EMAIL = "datateam@matrixiangroup.com"
 
-def chunker(lst: list, n) -> list:
+
+def remove_adjacent(sentence: str) -> str:
+    """ Remove adjecent words in a string """
+    if sentence and isinstance(sentence, str):
+        lst = sentence.split()
+        return " ".join([elem for i, elem in enumerate(lst) if i == 0 or lst[i - 1] != elem])
+    else:
+        return sentence
+
+
+def chunker(lst: list, n) -> Iterator[list]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
@@ -200,6 +212,7 @@ class Log:
             filename="my.log",
         )
     """
+
     def __init__(self, level: str = None, filename: str = None):
         """Logger class that by default logs with level debug to stderr."""
         self.level = _logging_levels.get(level.lower(), logging.DEBUG)
@@ -356,6 +369,7 @@ def send_email(function: Callable = None, *,
                     error_message=True
                 )
                 raise
+
         return wrapped
 
     if function:
@@ -365,6 +379,7 @@ def send_email(function: Callable = None, *,
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
+
     def __init__(self,
                  file_path: Union[Path, str],
                  data_as_dicts: bool = True,
@@ -515,6 +530,7 @@ class Timer:
         [i**i for i in range(10000)]
         print(t.end())
     """
+
     def __init__(self):
         self.t = self.now()
 
@@ -656,6 +672,7 @@ def timer(f):
             return [i**i for i in range(10000)]
         my_func()
     """
+
     @wraps(f)
     def timed(*args, **kwargs):
         start_time = perf_counter()
@@ -663,6 +680,7 @@ def timer(f):
         elapsed_time = perf_counter() - start_time
         logging.info("%s:%.8f", f.__name__, elapsed_time)
         return return_value
+
     return timed
 
 
