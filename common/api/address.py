@@ -2,11 +2,9 @@ from functools import lru_cache
 from typing import Union
 
 from pycountry import countries
-from requests.exceptions import HTTPError
 import urllib3
 
 from ..requests import get
-from ..connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
@@ -45,26 +43,12 @@ def parse(address: str, country: str = None):
         "address": address,
         "country": country,
     }
-    while True:
-        try:
-            response = get(
-                PARSER,
-                params=params,
-                verify=False,
-                text_only=True,
-            )
-            break
-        except HTTPError as e:
-            e = f"{e}"
-            if not e.startswith("400 Client Error: BAD REQUEST"):
-                response = {"status": e}
-                break
-    if "status" in response:
-        EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
-                                             "psaalbrink@matrixiangroup.com"],
-                                 subject="Address Parser error",
-                                 message=f"params = {params}\n"
-                                         f"response = {response}")
+    response = get(
+        PARSER,
+        params=params,
+        verify=False,
+        text_only=True,
+    )
     return response
 
 
@@ -112,13 +96,10 @@ def validate(params: Union[dict, str]) -> dict:
         if key not in params:
             params[key] = ""
 
-    try:
-        response = get(
-            VALIDATION,
-            verify=False,
-            params=params,
-            text_only=True,
-        )["objects"][0]
-        return response
-    except HTTPError:
-        return {}
+    response = get(
+        VALIDATION,
+        verify=False,
+        params=params,
+        text_only=True,
+    )["objects"][0]
+    return response

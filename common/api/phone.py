@@ -168,16 +168,24 @@ def call_phone(
                 sleep(60)
                 t = localtime().tm_hour
 
-        while True:
-            with suppress(RetryError, MaxRetryError):
-                response = post(
-                    url=URL,
-                    auth=_SECRET,
-                    data=pickle.dumps(phone),
-                )
-                if response.ok:
-                    phone = pickle.loads(response.content)  # noqa
-                    break
+        response = post(
+            url=URL,
+            auth=_SECRET,
+            data=pickle.dumps(phone),
+        )
+        phone = pickle.loads(response.content)  # noqa
+        if not isinstance(phone, PhoneApiResponse):
+            raise PhoneApiError(type(phone))
+        # while True:
+        #     with suppress(RetryError, MaxRetryError):
+        #         response = post(
+        #             url=URL,
+        #             auth=_SECRET,
+        #             data=pickle.dumps(phone),
+        #         )
+        #         if response.ok:
+        #             phone = pickle.loads(response.content)  # noqa
+        #             break
 
     return phone
 
