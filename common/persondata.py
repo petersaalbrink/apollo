@@ -1021,7 +1021,7 @@ class PersonData(_MatchQueries,
                 _ids.add(response["_id"])
 
                 response = flatten(response)
-                print(response)
+                # print(response)
                 for key in self._requested_fields:
                     if key not in self.result and response.get(key):
                         skip_key = (
