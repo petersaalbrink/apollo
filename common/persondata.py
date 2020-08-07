@@ -714,7 +714,7 @@ class Cleaner:
             if self.data.get(_type):
                 try:
                     parsed = common.api.phone.parse_phone(self.data[_type], "NL")
-                    if parsed.is_valid_number:
+                    if parsed.valid_number:
                         self.data[_type] = parsed.national_number
                         if _type == "telephone":
                             if f"{self.data[_type]}".startswith("6"):
@@ -865,7 +865,6 @@ class PersonData(_MatchQueries,
         common.api.phone.CALL_TO_VALIDATE = kwargs.pop("call_to_validate", False)
         self._check_phone = partial(
             common.api.phone.check_phone,
-            valid=True,
             call=common.api.phone.CALL_TO_VALIDATE,
         )
 
@@ -1022,7 +1021,7 @@ class PersonData(_MatchQueries,
                     if key not in self.result and response.get(key):
                         skip_key = (
                                 (key in PHONE_KEYS
-                                 and not self._check_phone(response[key]))
+                                 and not self._check_phone(response[key]).valid_number)
                                 or (key in DATE_KEYS
                                     and response[key][:10] == DEFAULT_DATE)
                                 or (_type == ADDRESS_KEY

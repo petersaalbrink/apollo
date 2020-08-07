@@ -39,7 +39,7 @@ Result = Union[
 _config = {
     "timeout": 300,
     "retry_on_timeout": True,
-    "http_auth": get_secret("MX_ELASTIC"),
+    "http_auth": (),
 }
 _hosts = {
     "address": "MX_ELASTIC_ADDR_IP",
@@ -134,7 +134,8 @@ class ESClient(Elasticsearch):
             if not self._host:
                 raise ESClientError(f"Make sure a host is configured for variable"
                                     f" name '{envv}' in file '{envfile}'")
-
+            if not _config["http_auth"]:
+                _config["http_auth"] = get_secret("MX_ELASTIC")
         hosts = [{"host": self._host, "port": self._port}]
         super().__init__(hosts, **_config)
         self.es_index = es_index

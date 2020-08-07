@@ -237,7 +237,7 @@ class Log:
 
 
 def get_logger(level: str = None,
-               filename: str = None,
+               filename: Union[Path, str] = None,
                name: str = None,
                **kwargs
                ) -> logging.Logger:

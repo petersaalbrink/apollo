@@ -3,17 +3,17 @@ from typing import Union
 
 from pycountry import countries
 from requests.exceptions import HTTPError
+import urllib3
 
 from ..requests import get
 from ..connectors import EmailClient
-
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
 PARSER = f"https://{LIVE}:5000/parser"
 VALIDATION = f"https://{LIVE}:5000/validation"
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @lru_cache()
@@ -46,8 +46,8 @@ def parse(address: str, country: str = "NL"):
             response = get(
                 PARSER,
                 params=params,
+                verify=False,
                 text_only=True,
-                verify=False
             )
             break
         except HTTPError as e:
@@ -111,9 +111,9 @@ def validate(params: Union[dict, str]) -> dict:
     try:
         response = get(
             VALIDATION,
+            verify=False,
             params=params,
             text_only=True,
-            verify=False
         )["objects"][0]
         return response
     except HTTPError:
