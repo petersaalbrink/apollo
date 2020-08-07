@@ -36,10 +36,10 @@ def parse(address: str, country: str = "NL"):
     params = {
         "address": address,
         "country": {
-            "NL": "Netherlands",
-            "UK": "UK",
-            "United Kingdom": "UK"
-        }.get(country, countries.lookup(country).name)
+            "NL": "NLD",
+            "UK": "GBR",
+            "United Kingdom": "GBR"
+        }.get(country, countries.lookup(country).alpha_3)
     }
     while True:
         try:
@@ -113,7 +113,7 @@ def validate(params: Union[dict, str]) -> dict:
             VALIDATION,
             verify=False,
             params=params,
-            text_only=True
+            text_only=True,
         )["objects"][0]
         return response
     except HTTPError:
