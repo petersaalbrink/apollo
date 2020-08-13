@@ -1,4 +1,3 @@
-from contextlib import suppress
 from dataclasses import astuple, dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -12,8 +11,6 @@ from phonenumbers.carrier import name_for_number, number_type  # noqa
 from phonenumbers.geocoder import country_name_for_number
 from phonenumbers.phonenumberutil import NumberParseException
 from pycountry import countries
-from requests.exceptions import RetryError
-from urllib3.exceptions import MaxRetryError
 
 from ..connectors.mx_elastic import ESClient
 from ..exceptions import PhoneApiError
@@ -94,29 +91,33 @@ def parse_phone(
         country: str = None,
 ) -> Optional[PhoneApiResponse]:
 
-    if not ((isinstance(country, str) and len(country) == 2)
-            or f"{number}".startswith("+")):
-        raise PhoneApiError("Provide two-letter country code or international number.")
+    if not (isinstance(country, str) or f"{number}".startswith("+")):
+        raise PhoneApiError("Provide country code or international number.")
 
     # Clean up
     number = f"{number}"
     for s in _WRONG_CHARS:
         number = number.replace(s, "")
 
+    # Parse the number
     try:
-        # Parse the number
-        phone = PhoneApiResponse.from_parsed(parse(number, country))
-
-        # Set number to invalid for some cases
-        if (not phone.valid_format
-                or (phone.country_code == 31
-                    and f"{phone.national_number}".startswith(_WRONG_NUMS))):
-            phone.valid_number = False
-
-        return phone
-
+        parsed = parse(number, country)
     except NumberParseException:
-        raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
+        try:
+            parsed = parse(number, countries.lookup(country).alpha_2)
+        except NumberParseException:
+            raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
+
+    # Create object
+    phone = PhoneApiResponse.from_parsed(parsed)
+
+    # Set number to invalid for some cases
+    if (not phone.valid_format
+            or (phone.country_code == 31
+                and f"{phone.national_number}".startswith(_WRONG_NUMS))):
+        phone.valid_number = False
+
+    return phone
 
 
 @lru_cache()
@@ -176,16 +177,6 @@ def call_phone(
         phone = pickle.loads(response.content)  # noqa
         if not isinstance(phone, PhoneApiResponse):
             raise PhoneApiError(type(phone))
-        # while True:
-        #     with suppress(RetryError, MaxRetryError):
-        #         response = post(
-        #             url=URL,
-        #             auth=_SECRET,
-        #             data=pickle.dumps(phone),
-        #         )
-        #         if response.ok:
-        #             phone = pickle.loads(response.content)  # noqa
-        #             break
 
     return phone
 
