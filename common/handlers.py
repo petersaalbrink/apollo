@@ -38,6 +38,8 @@ Timing handlers:
 
 Runtime handlers:
 
+.. py:function: common.handlers.keep_trying
+   Keep trying a callable, until optional timeout.
 .. py:function: common.handlers.send_email
    Decorator for sending email notification on success/fail.
 .. py:function: common.handlers.pip_upgrade
@@ -58,21 +60,26 @@ from pathlib import Path
 import pkg_resources
 from subprocess import run
 import sys
-from time import perf_counter
-from typing import (Any,
-                    Callable,
-                    ClassVar,
-                    Dict,
-                    Iterator,
-                    List,
-                    MutableMapping,
-                    Optional,
-                    Tuple,
-                    Union)
+from time import perf_counter, time
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterator,
+    List,
+    MutableMapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 from zipfile import ZipFile
+
 from tqdm import tqdm, trange
+
 from .connectors.mx_email import EmailClient
-from .exceptions import DataError, TimerError, ZipDataError
+from .exceptions import DataError, Timeout, TimerError, ZipDataError
 
 _bar_format = "{l_bar: >16}{bar:20}{r_bar}"
 tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
@@ -682,6 +689,57 @@ def timer(f):
         return return_value
 
     return timed
+
+
+def keep_trying(
+        function: Callable,
+        *args,
+        exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = None,
+        timeout: Union[int, float] = None,
+        **kwargs,
+) -> Any:
+    """Keep trying a callable, until optional timeout.
+
+    :param function: the callable to execute
+    :param args: positional arguments to execute the callable with
+    :param kwargs: keyword arguments to execute the callable with
+    :param exceptions: the exception(s) to suppress
+    :param timeout: the number of seconds to keep retrying
+
+    Example::
+        from common.handlers import keep_trying
+
+        def function_with_bug(i: int):
+            my_list = []
+            return my_list[i]
+
+        # Without any arguments:
+        keep_trying(function_with_bug, 8)
+
+        # With optional arguments:
+        keep_trying(function_with_bug, i=9, exceptions=IndexError, timeout=1)
+    """
+
+    if not exceptions:
+        exceptions = Exception
+    if timeout:
+        start = time()
+
+    def eval_cond():
+        if timeout:
+            return time() < start + timeout
+        return True
+
+    while eval_cond():
+        try:
+            return function(*args, **kwargs)
+        except exceptions as e:
+            error = e
+    else:
+        try:
+            raise Timeout from error  # noqa
+        except NameError:
+            raise Timeout
 
 
 def pip_upgrade():

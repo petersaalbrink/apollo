@@ -53,6 +53,10 @@ class RequestError(CommonError):
     """Exception for requests."""
 
 
+class Timeout(CommonError):
+    """Timout."""
+
+
 class TimerError(CommonError):
     """Exception for Timer."""
 
