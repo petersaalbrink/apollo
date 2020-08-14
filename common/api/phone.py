@@ -172,9 +172,9 @@ def call_phone(
         response = post(
             url=URL,
             auth=_SECRET,
-            data=pickle.dumps(phone),
+            data=f"{phone}".encode(),
         )
-        phone = pickle.loads(response.content)  # noqa
+        phone = eval(response.content)
         if not isinstance(phone, PhoneApiResponse):
             raise PhoneApiError(type(phone))
 
