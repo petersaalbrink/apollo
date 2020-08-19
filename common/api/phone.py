@@ -71,15 +71,17 @@ class PhoneApiResponse:
                 valid_format=is_valid_number(parsed),
             )
         else:
+            carrier = name_for_number(parsed, "en")
             country = countries.lookup(country_name_for_number(parsed, "en"))
             return cls(
                 country_code=parsed.country_code,
                 country_iso2=country.alpha_2,
                 country_iso3=country.alpha_3,
                 country_name=country.name,
+                current_carrier=carrier,
                 national_number=parsed.national_number,
                 number_type=TYPES.get(number_type(parsed)),
-                original_carrier=name_for_number(parsed, "en"),
+                original_carrier=carrier,
                 parsed_number=f"+{parsed.country_code}{parsed.national_number}",
                 valid_format=is_valid_number(parsed),
             )
