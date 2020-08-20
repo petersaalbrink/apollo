@@ -1,7 +1,6 @@
 from dataclasses import astuple, dataclass
 from datetime import datetime
 from functools import lru_cache
-import pickle
 from socket import gethostname
 from time import localtime, sleep
 from typing import Optional, Union
@@ -63,28 +62,26 @@ class PhoneApiResponse:
 
     @classmethod
     def from_parsed(cls, parsed: PhoneNumber):
-        if parsed.country_code == 31:
-            return cls(
-                country_code=parsed.country_code,
-                national_number=parsed.national_number,
-                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
-                valid_format=is_valid_number(parsed),
-            )
-        else:
-            carrier = name_for_number(parsed, "en")
+        carrier = name_for_number(parsed, "en")
+        try:
             country = countries.lookup(country_name_for_number(parsed, "en"))
-            return cls(
-                country_code=parsed.country_code,
-                country_iso2=country.alpha_2,
-                country_iso3=country.alpha_3,
-                country_name=country.name,
-                current_carrier=carrier,
-                national_number=parsed.national_number,
-                number_type=TYPES.get(number_type(parsed)),
-                original_carrier=carrier,
-                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
-                valid_format=is_valid_number(parsed),
-            )
+        except LookupError:
+            if parsed.country_code == 39:
+                country = countries.lookup("Italy")
+            else:
+                raise
+        return cls(
+            country_code=parsed.country_code,
+            country_iso2=country.alpha_2,
+            country_iso3=country.alpha_3,
+            country_name=country.name,
+            current_carrier=carrier,
+            national_number=parsed.national_number,
+            number_type=TYPES.get(number_type(parsed)),
+            original_carrier=carrier,
+            parsed_number=f"+{parsed.country_code}{parsed.national_number}",
+            valid_format=is_valid_number(parsed),
+        )
 
 
 @lru_cache()
