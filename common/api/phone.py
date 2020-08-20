@@ -65,11 +65,11 @@ class PhoneApiResponse:
         carrier = name_for_number(parsed, "en")
         try:
             country = countries.lookup(country_name_for_number(parsed, "en"))
-        except LookupError:
+        except LookupError as e:
             if parsed.country_code == 39:
                 country = countries.lookup("Italy")
             else:
-                raise
+                raise LookupError(parsed) from e
         return cls(
             country_code=parsed.country_code,
             country_iso2=country.alpha_2,
