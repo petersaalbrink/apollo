@@ -20,7 +20,6 @@ from ..secrets import get_secret
 from ._acm import ACM
 
 _SECRET = None
-_WRONG_CHARS = (".0", "%2B")
 _WRONG_NUMS = ("8", "9", "66", "67", "69", "60")
 _vn = None
 _acm = None
@@ -69,7 +68,7 @@ class PhoneApiResponse:
             if parsed.country_code == 39:
                 country = countries.lookup("Italy")
             else:
-                raise LookupError(parsed) from e
+                raise PhoneApiError(f"No country for: {parsed}") from e
         return cls(
             country_code=parsed.country_code,
             country_iso2=country.alpha_2,
@@ -94,9 +93,7 @@ def parse_phone(
         raise PhoneApiError("Provide country code or international number.")
 
     # Clean up
-    number = f"{number}"
-    for s in _WRONG_CHARS:
-        number = number.replace(s, "")
+    number = f"{number}".replace(".0", "").replace(".", "").replace("%2B", "+")
 
     # Parse the number
     try:
