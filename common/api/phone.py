@@ -101,7 +101,7 @@ def parse_phone(
     except NumberParseException:
         try:
             parsed = parse(number, countries.lookup(country).alpha_2)
-        except NumberParseException:
+        except (NumberParseException, LookupError):
             raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
 
     # Create object
