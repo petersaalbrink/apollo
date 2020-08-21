@@ -7,7 +7,10 @@ import numpy as np
 class CdrLogger:
     def __init__(self, filename):
         self.filename = filename
-        self.data = pd.read_csv(self.filename)
+        try:
+            self.data = pd.read_csv(self.filename, low_memory=False)
+        except pd.errors.ParserError:
+            self.data = pd.read_csv(self.filename, delimiter=";", low_memory=False)
 
     def clean(self):
         self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
