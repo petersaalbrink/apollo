@@ -26,11 +26,21 @@ class CdrLogger:
                 .replace(".xlsx", "")
             )
 
-
     def insert_mysql(self):
-        sql = MySQLClient(f"cdr_history.{self.filename}")
-        sql.insert_new(None, self.data)
+        sql = MySQLClient("cdr_history")
+        fields = sql.create_definition(data=self.data)
+        sql.table_name =  self.filename
+        sql.create_table(table=sql.table_name, fields=fields, drop_existing=True, raise_on_error=True)
+        sql.insert(data=self.data)
 
+
+#    def insert_mysql(self):
+#        sql = MySQLClient(f"cdr_history.{self.filename}")
+#        sql.insert_new(None, self.data)
+
+
+
+	
 
 def cdrlog_exe(filename):
     cdl = CdrLogger(filename)
