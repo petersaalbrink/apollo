@@ -8,35 +8,51 @@ from requests.exceptions import ProxyError
 
 from ..connectors import MongoDB
 from ..exceptions import PhoneApiError
-from ..requests import get_session
+from ..requests import get_proxies, get_session
 
 
 class ACM:
+    LUMINATI = "01"
+    PROXIWARE = "10"
+    MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
+    NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
+    URL = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
+    acm_get = acm_get_no_proxies = None
+
     def __init__(self):
-        self.n_proxy_errors = 0
+        self.n_max_reached = {
+            self.LUMINATI: 0,
+            self.PROXIWARE: 0,
+        }
+        self.n_proxy_errors = {
+            self.LUMINATI: 0,
+            self.PROXIWARE: 0,
+        }
+        self.provider = self.LUMINATI
         self.TZ = timezone("Europe/Amsterdam")
         self.db = MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
                 tz_aware=True,
                 tzinfo=self.TZ,
             ))
-        self.MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
-        self.NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
-        self.acm_get = self.acm_get_no_proxies = None
         self.new_session()
 
     def new_session(self):
         headers = {
             "Range": "bytes=0-5504",
         }
-        proxies = {
-            "http": "nl.proxiware.com:12000",
-            "https": "nl.proxiware.com:12000",
-        }
-        url = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
+        if self.provider == self.PROXIWARE:
+            proxies = {
+                "http": "nl.proxiware.com:12000",
+                "https": "nl.proxiware.com:12000",
+            }
+        elif self.provider == self.LUMINATI:
+            proxies = get_proxies()["proxies"]
+        else:
+            raise PhoneApiError(self.provider)
         session = get_session()
-        self.acm_get = partial(session.get, url=url, headers=headers, proxies=proxies)
-        self.acm_get_no_proxies = partial(session.get, url=url, headers=headers)
+        self.acm_get = partial(session.get, url=self.URL, headers=headers, proxies=proxies)
+        self.acm_get_no_proxies = partial(session.get, url=self.URL, headers=headers)
 
     def acm_request(self, number: int) -> dict:
 
@@ -50,18 +66,29 @@ class ACM:
             "portering": "1",
         }
 
-        while True:
+        while not (all(n > 1 for n in self.n_proxy_errors.values())
+                   or all(n > 1 for n in self.n_max_reached.values())):
+
             try:
                 response = self.acm_get(params=params)
+
                 if self.MAX_REACHED in response.text:
+                    self.n_max_reached[self.provider] += 1
+                    self.provider = self.provider[::-1]
                     self.new_session()
                 else:
-                    self.n_proxy_errors = 0
+                    self.n_max_reached[self.provider] = self.n_proxy_errors[self.provider] = 0
                     break
+
             except ProxyError:
-                self.n_proxy_errors += 1
-                if self.n_proxy_errors == 10:
-                    self.acm_get = self.acm_get_no_proxies
+                self.n_proxy_errors[self.provider] += 1
+                self.provider = sorted(self.n_proxy_errors.items(), key=lambda t: t[1])[0][0]
+                self.new_session()
+
+        else:
+            response = self.acm_get_no_proxies(params=params)
+            if self.MAX_REACHED in response.text:
+                raise PhoneApiError(self.MAX_REACHED)
 
         soup = BeautifulSoup(response.content, "lxml")
         result = soup.find("ul", {"class": "nummerresultdetails"})
