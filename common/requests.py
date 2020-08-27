@@ -16,7 +16,7 @@ Making requests:
 .. py:function: common.requests.get_session
    Get session with predefined options for requests.
 .. py:function: common.requests.get_proxies
-   Generator that returns headers with proxies and agents for requests.
+   Returns headers with proxies and agent for requests.
 
 Multithreading:
 
@@ -29,21 +29,28 @@ Multithreading:
    Decorator that takes a generator function and makes it thread-safe.
 """
 
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
-from itertools import cycle
-from json import loads
+from hashlib import sha1
+import hmac
 from pathlib import Path
+from psutil import net_io_counters
+from shutil import copyfileobj
 from threading import Lock
 from typing import (Any,
                     Callable,
                     Iterable,
-                    Iterator,
                     List,
                     Optional,
                     Union)
+import urllib.parse as urlparse
+
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from .exceptions import RequestError
+from .secrets import get_secret
 
 Executor = ThreadPoolExecutor
 
@@ -52,6 +59,7 @@ class ThreadSafeIterator:
     """Takes an iterator/generator and makes it thread-safe
     by serializing call to the `next` method of given iterator/generator.
     """
+
     def __init__(self, it):
         self.it = it
         self.lock = Lock()
@@ -66,49 +74,42 @@ class ThreadSafeIterator:
 
 def threadsafe(f):
     """Decorator that takes a generator function and makes it thread-safe."""
+
     def decorate(*args, **kwargs):
         return ThreadSafeIterator(f(*args, **kwargs))
+
     return decorate
 
 
-@threadsafe
-def get_proxies() -> Iterator[dict]:
-    """Generator that returns headers with proxies and agents for requests."""
-
-    # Get proxies
-    file = Path(__file__).parent / "etc/proxies.txt"
-    with open(file) as f:
-        proxies = [loads(line.strip().replace("'", '"'))
-                   for line in f]
-
-    # Get user agents
-    file = Path(__file__).parent / "etc/agents.txt"
-    with open(file) as f:
-        agents = [line.strip() for line in f]
-
-    # Yield values
-    agents = cycle(agents)
-    proxies = cycle(proxies)
-    while True:
-        kwargs = {
-            "headers": {
-                "User-Agent": next(agents)
-            },
-            "proxies": next(proxies),
-        }
-        yield kwargs
+def get_proxies() -> dict:
+    """Returns headers with proxies and agent for requests."""
+    _, pwd = get_secret("MX_LUMINATI")
+    proxy_url = f"http://lum-customer-consumatrix-zone-zone1:{pwd}@zproxy.lum-superproxy.io:22225"
+    return {
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/84.0.4147.135 Safari/537.36"
+        },
+        "proxies": {
+            "http": proxy_url,
+            "https": proxy_url,
+        },
+    }
 
 
 def get_session(
-    retries=3,
-    backoff_factor=0.3,
-    status_forcelist=(500, 502, 504),
-    session=None,
+        retries=3,
+        backoff_factor=0.3,
+        status_forcelist=(500, 502, 504),
+        session=None,
 ) -> Session:
     """Get session with predefined options for requests."""
+
     def hook(response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
+
     session = session or Session()
     session.hooks["response"] = [hook]
     retry = Retry(
@@ -122,8 +123,8 @@ def get_session(
         max_retries=retry,
         pool_connections=100,
         pool_maxsize=100)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     return session
 
 
@@ -132,7 +133,7 @@ _module_data = {}
 
 def request(method: str,
             url: str,
-            **kwargs
+            **kwargs,
             ) -> Union[dict, Response]:
     """Sends a request. Returns :class:`requests.Response` object.
 
@@ -142,10 +143,14 @@ def request(method: str,
     """
     if kwargs.pop("use_proxies", False):
         try:
-            kwargs.update(next(_module_data["get_kwargs"]))
+            request_kwargs = _module_data["request_kwargs"]
         except KeyError:
-            _module_data["get_kwargs"] = get_proxies()
-            kwargs.update(next(_module_data["get_kwargs"]))
+            request_kwargs = _module_data["request_kwargs"] = get_proxies()
+        kwargs["proxies"] = request_kwargs["proxies"]
+        try:
+            kwargs["headers"].update(request_kwargs["headers"])
+        except KeyError:
+            kwargs["headers"] = request_kwargs["headers"]
     text_only = kwargs.pop("text_only", False)
     try:
         response = _module_data["common_session"].request(method, url, **kwargs)
@@ -160,7 +165,7 @@ def request(method: str,
 def get(url: str,
         text_only: bool = False,
         use_proxies: bool = False,
-        **kwargs
+        **kwargs,
         ) -> Union[dict, Response]:
     """Sends a GET request. Returns :class:`requests.Response` object.
 
@@ -177,7 +182,7 @@ def get(url: str,
 def post(url: str,
          text_only: bool = False,
          use_proxies: bool = False,
-         **kwargs
+         **kwargs,
          ) -> Union[dict, Response]:
     """Sends a POST request. Returns :class:`requests.Response` object.
 
@@ -193,7 +198,7 @@ def post(url: str,
 def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
-           **kwargs
+           **kwargs,
            ) -> Optional[List[Any]]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
@@ -234,3 +239,44 @@ def thread(function: Callable,
             done, futures = wait(futures, return_when="FIRST_EXCEPTION")
             if done:
                 _ = [process(f.result()) for f in done]
+
+
+def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, bytes] = None) -> str:
+    if not input_url or not secret:
+        raise RequestError("Error: input_url or secret can not be empty.")
+
+    url = urlparse.urlparse(input_url)
+    url_to_sign = url.path + "?" + url.query
+    decoded_key = urlsafe_b64decode(secret)
+    signature = hmac.new(decoded_key, str.encode(url_to_sign), sha1)
+    encoded_signature = urlsafe_b64encode(signature.digest())
+    original_url = url.scheme + "://" + url.netloc + url.path + "?" + url.query
+    return original_url + "&signature=" + encoded_signature.decode()
+
+
+def download_file(url: str = None, filepath: Union[Path, str] = None):
+    if not url or not filepath:
+        raise RequestError("Error: url or filepath can not be empty.")
+
+    response = get(url, stream=True)
+    if response.status_code == 200:
+        with open(filepath, 'wb') as f:
+            response.raw.decode_content = True
+            copyfileobj(response.raw, f)
+
+
+def calculate_bandwith(function, *args, n: int = 100, **kwargs) -> float:
+    """Returns the minimal bandwith usage of `function`."""
+    def get_bytes():
+        stats = net_io_counters()
+        return stats.bytes_recv + stats.bytes_sent
+
+    n_bytes = []
+    for _ in range(n):
+        old_bytes = get_bytes()
+        function(*args, **kwargs)
+        new_bytes = get_bytes()
+        n_bytes.append(new_bytes - old_bytes)
+    bandwith = min(n_bytes)
+    print(f"Function '{function.__name__}' uses {round(bandwith / 1024, 2)} KB (N={n})")
+    return bandwith

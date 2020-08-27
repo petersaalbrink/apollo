@@ -38,6 +38,8 @@ Timing handlers:
 
 Runtime handlers:
 
+.. py:function: common.handlers.keep_trying
+   Keep trying a callable, until optional timeout.
 .. py:function: common.handlers.send_email
    Decorator for sending email notification on success/fail.
 .. py:function: common.handlers.pip_upgrade
@@ -58,20 +60,26 @@ from pathlib import Path
 import pkg_resources
 from subprocess import run
 import sys
-from time import perf_counter
-from typing import (Any,
-                    Callable,
-                    ClassVar,
-                    Dict,
-                    List,
-                    MutableMapping,
-                    Optional,
-                    Tuple,
-                    Union)
+from time import perf_counter, time
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterator,
+    List,
+    MutableMapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 from zipfile import ZipFile
+
 from tqdm import tqdm, trange
+
 from .connectors.mx_email import EmailClient
-from .exceptions import DataError, TimerError, ZipDataError
+from .exceptions import DataError, Timeout, TimerError, ZipDataError
 
 _bar_format = "{l_bar: >16}{bar:20}{r_bar}"
 tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
@@ -79,10 +87,21 @@ trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
 DEFAULT_EMAIL = "datateam@matrixiangroup.com"
 
-def chunker(lst: list, n) -> list:
+
+def remove_adjacent(sentence: str) -> str:
+    """ Remove adjecent words in a string """
+    if sentence and isinstance(sentence, str):
+        lst = sentence.split()
+        return " ".join([elem for i, elem in enumerate(lst) if i == 0 or lst[i - 1] != elem])
+    else:
+        return sentence
+
+
+def chunker(lst: list, n) -> Iterator[list]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
 
 def csv_write(data: Union[List[dict], dict],
               filename: Union[Path, str],
@@ -200,6 +219,7 @@ class Log:
             filename="my.log",
         )
     """
+
     def __init__(self, level: str = None, filename: str = None):
         """Logger class that by default logs with level debug to stderr."""
         self.level = _logging_levels.get(level.lower(), logging.DEBUG)
@@ -224,7 +244,7 @@ class Log:
 
 
 def get_logger(level: str = None,
-               filename: str = None,
+               filename: Union[Path, str] = None,
                name: str = None,
                **kwargs
                ) -> logging.Logger:
@@ -356,6 +376,7 @@ def send_email(function: Callable = None, *,
                     error_message=True
                 )
                 raise
+
         return wrapped
 
     if function:
@@ -365,6 +386,7 @@ def send_email(function: Callable = None, *,
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
+
     def __init__(self,
                  file_path: Union[Path, str],
                  data_as_dicts: bool = True,
@@ -515,6 +537,7 @@ class Timer:
         [i**i for i in range(10000)]
         print(t.end())
     """
+
     def __init__(self):
         self.t = self.now()
 
@@ -656,6 +679,7 @@ def timer(f):
             return [i**i for i in range(10000)]
         my_func()
     """
+
     @wraps(f)
     def timed(*args, **kwargs):
         start_time = perf_counter()
@@ -663,7 +687,59 @@ def timer(f):
         elapsed_time = perf_counter() - start_time
         logging.info("%s:%.8f", f.__name__, elapsed_time)
         return return_value
+
     return timed
+
+
+def keep_trying(
+        function: Callable,
+        *args,
+        exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = None,
+        timeout: Union[int, float] = None,
+        **kwargs,
+) -> Any:
+    """Keep trying a callable, until optional timeout.
+
+    :param function: the callable to execute
+    :param args: positional arguments to execute the callable with
+    :param kwargs: keyword arguments to execute the callable with
+    :param exceptions: the exception(s) to suppress
+    :param timeout: the number of seconds to keep retrying
+
+    Example::
+        from common.handlers import keep_trying
+
+        def function_with_bug(i: int):
+            my_list = []
+            return my_list[i]
+
+        # Without any arguments:
+        keep_trying(function_with_bug, 8)
+
+        # With optional arguments:
+        keep_trying(function_with_bug, i=9, exceptions=IndexError, timeout=1)
+    """
+
+    if not exceptions:
+        exceptions = Exception
+    if timeout:
+        start = time()
+
+    def eval_cond():
+        if timeout:
+            return time() < start + timeout
+        return True
+
+    while eval_cond():
+        try:
+            return function(*args, **kwargs)
+        except exceptions as e:
+            error = e
+    else:
+        try:
+            raise Timeout from error  # noqa
+        except NameError:
+            raise Timeout
 
 
 def pip_upgrade():

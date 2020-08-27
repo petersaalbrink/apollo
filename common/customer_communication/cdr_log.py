@@ -3,16 +3,19 @@ import pandas as pd
 from common.connectors import MySQLClient
 import numpy as np
 
+
 class CdrLogger:
     def __init__(self, filename):
         self.filename = filename
-        self.data = pd.read_csv(self.filename)
+        try:
+            self.data = pd.read_csv(self.filename, low_memory=False)
+        except pd.errors.ParserError:
+            self.data = pd.read_csv(self.filename, delimiter=";", low_memory=False)
 
     def clean(self):
         self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
-        self.data = self.data.replace({np.nan : None})
+        self.data = self.data.replace({np.nan: None})
         self.data = self.data.to_dict("records")
-
 
         def hasDate(inputString):
             return all(char.isdigit() for char in inputString)
@@ -46,3 +49,10 @@ def cdrlog_exe(filename):
     cdl = CdrLogger(filename)
     cdl.clean()
     cdl.insert_mysql()
+
+
+def cdr_log(filename: str, data: list) -> int:
+    filename = (dt.now().strftime("%Y%m%d") + "_" + filename)
+    sql = MySQLClient(f"cdr_history.{filename}")
+    result = sql.insert_new(data=data)
+    return result

@@ -3,9 +3,9 @@ from typing import Union
 
 from ..requests import get
 
-from .address import TEST
+from .address import LIVE
 
-URL = f"http://{TEST}:4000/email?email="
+URL = f"http://{LIVE}:4000/email?email="
 
 
 @lru_cache()
