@@ -1,9 +1,11 @@
 from datetime import datetime
 from functools import partial
+from threading import Lock
 
 from bs4 import BeautifulSoup
 from bson.codec_options import CodecOptions
 from pendulum import timezone
+from requests import Response
 from requests.exceptions import ProxyError
 
 from ..connectors import MongoDB
@@ -20,11 +22,8 @@ class ACM:
     acm_get = acm_get_no_proxies = None
 
     def __init__(self):
-        self.n_max_reached = {
-            self.LUMINATI: 0,
-            self.PROXIWARE: 0,
-        }
-        self.n_proxy_errors = {
+        self.lock = Lock()
+        self.n_errors = {
             self.LUMINATI: 0,
             self.PROXIWARE: 0,
         }
@@ -54,6 +53,32 @@ class ACM:
         self.acm_get = partial(session.get, url=self.URL, headers=headers, proxies=proxies)
         self.acm_get_no_proxies = partial(session.get, url=self.URL, headers=headers)
 
+    def _get_response(self, params: dict) -> Response:
+
+        while not all(n > 1 for n in self.n_errors.values()):
+
+            try:
+                response = self.acm_get(params=params)
+
+                if self.MAX_REACHED in response.text:
+                    self.n_errors[self.provider] += 1
+                    self.new_session()
+                else:
+                    self.n_errors[self.provider] = 0
+                    break
+
+            except ProxyError:
+                self.n_errors[self.provider] += 1
+                self.provider = self.provider[::-1]
+                self.new_session()
+
+        else:
+            response = self.acm_get_no_proxies(params=params)
+            if self.MAX_REACHED in response.text:
+                raise PhoneApiError(self.MAX_REACHED)
+
+        return response
+
     def acm_request(self, number: int) -> dict:
 
         params = {
@@ -66,29 +91,8 @@ class ACM:
             "portering": "1",
         }
 
-        while not (all(n > 1 for n in self.n_proxy_errors.values())
-                   or all(n > 1 for n in self.n_max_reached.values())):
-
-            try:
-                response = self.acm_get(params=params)
-
-                if self.MAX_REACHED in response.text:
-                    self.n_max_reached[self.provider] += 1
-                    self.provider = self.provider[::-1]
-                    self.new_session()
-                else:
-                    self.n_max_reached[self.provider] = self.n_proxy_errors[self.provider] = 0
-                    break
-
-            except ProxyError:
-                self.n_proxy_errors[self.provider] += 1
-                self.provider = sorted(self.n_proxy_errors.items(), key=lambda t: t[1])[0][0]
-                self.new_session()
-
-        else:
-            response = self.acm_get_no_proxies(params=params)
-            if self.MAX_REACHED in response.text:
-                raise PhoneApiError(self.MAX_REACHED)
+        with self.lock:
+            response = self._get_response(params)
 
         soup = BeautifulSoup(response.content, "lxml")
         result = soup.find("ul", {"class": "nummerresultdetails"})

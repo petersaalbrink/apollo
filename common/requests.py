@@ -30,7 +30,7 @@ Multithreading:
 """
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from hashlib import sha1
 import hmac
 from pathlib import Path
@@ -224,10 +224,8 @@ def thread(function: Callable,
     max_workers = kwargs.pop("max_workers", None)
     if process is None:
         with Executor(max_workers=max_workers) as executor:
-            # noinspection PyUnresolvedReferences
             return [f.result() for f in
-                    wait({executor.submit(function, row) for row in data},
-                         return_when="FIRST_EXCEPTION").done]
+                    as_completed({executor.submit(function, row) for row in data})]
     else:
         futures = set()
         with Executor(max_workers=max_workers) as executor:
@@ -235,10 +233,11 @@ def thread(function: Callable,
                 futures.add(executor.submit(function, row))
                 if len(futures) == process_chunk_size:
                     done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-                    _ = [process(f.result()) for f in done]
+                    for f in done:
+                        process(f.result())
             done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-            if done:
-                _ = [process(f.result()) for f in done]
+            for f in done:
+                process(f.result())
 
 
 def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, bytes] = None) -> str:
