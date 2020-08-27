@@ -1153,10 +1153,12 @@ class MatchMetrics:
             combinations(_extra_fields, r=r)
         ]
     }
+    count_types = ("fuzzy", "count")
 
     def __init__(self, doc):
         self.doc = doc
         self.counts = {}
+        self.data = {}
         self.response = {}
         self.esl = ESClient(f"{self.collection}_lastname_occurrence")
         self.esl.index_exists = True
@@ -1169,6 +1171,7 @@ class MatchMetrics:
             }
 
     def get_metrics(self) -> dict:
+        self.set_data()
         self.calc_prob()
         self.get_response()
         self.counts = {
@@ -1177,7 +1180,7 @@ class MatchMetrics:
         }
         return self.response
 
-    def get_count_and_type(self, count_type: str) -> Tuple[int, str]:
+    def set_data(self):
         try:
             lastname = self.doc["details"]["lastname"]
         except KeyError:
@@ -1185,10 +1188,10 @@ class MatchMetrics:
         q = {"query": {"bool": {"filter": {"term": {
             "lastname.keyword": lastname
         }}}}}
-        res = self.esl.find(q, size=1, source_only=True)
-        count_ = res[count_type] - 1 if res else 0
-        suffix = "_fuzzy" if count_type == "fuzzy" else ""
-        return count_, suffix
+        self.data = self.esl.find(q, size=1, source_only=True)
+
+    def get_count(self, count_type: str) -> int:
+        return self.data[count_type] - 1 if self.data else 0
 
     def calc_prob(self):
         try:
@@ -1200,16 +1203,17 @@ class MatchMetrics:
             prob = [self.initials[i] for i in initials]
             # Get total probability by muliplying
             result = prod(prob)
-            for count_type in ("fuzzy", "count"):
-                count_, suffix = self.get_count_and_type(count_type)
-                self.counts[f"full{suffix}"] = count_ * result
+            for count_type in self.count_types:
+                count_ = self.get_count(count_type)
+                self.counts[f"full_{count_type}"] = count_ * result
                 # Get first initial probability
-                self.counts[f"first{suffix}"] = count_ * prob[0]
+                self.counts[f"first_{count_type}"] = count_ * prob[0]
         else:
-            for count_type in ("fuzzy", "count"):
-                count_, suffix = self.get_count_and_type(count_type)
+            for count_type in self.count_types:
+                count_ = self.get_count(count_type)
                 for key in ("full", "first"):
-                    self.counts[f"{key}{suffix}"] = count_
+                    self.counts[f"{key}_{count_type}"] = count_
+        self.counts["estimation"] = self.data.get("estimation", 1)
 
     def get_response(self):
         for key, count_ in self.counts.items():
