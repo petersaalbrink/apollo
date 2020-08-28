@@ -30,7 +30,7 @@ Multithreading:
 """
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from hashlib import sha1
 import hmac
 from pathlib import Path
@@ -41,7 +41,6 @@ from typing import (Any,
                     Callable,
                     Iterable,
                     List,
-                    Optional,
                     Union)
 import urllib.parse as urlparse
 
@@ -199,7 +198,7 @@ def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
            **kwargs,
-           ) -> Optional[List[Any]]:
+           ) -> List[Any]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
     Usage:
@@ -220,24 +219,29 @@ def thread(function: Callable,
             data=range(2000),
             process=lambda result: print(result.status_code)
         )"""
+
     process_chunk_size = kwargs.pop("process_chunk_size", 1_000)
     max_workers = kwargs.pop("max_workers", None)
+    futures = set()
+    results = []
+
     if process is None:
-        with Executor(max_workers=max_workers) as executor:
-            return [f.result() for f in
-                    as_completed({executor.submit(function, row) for row in data})]
-    else:
-        futures = set()
-        with Executor(max_workers=max_workers) as executor:
-            for row in data:
-                futures.add(executor.submit(function, row))
-                if len(futures) == process_chunk_size:
-                    done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-                    for f in done:
-                        process(f.result())
-            done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-            for f in done:
-                process(f.result())
+        def process(x):
+            return x
+
+    def wait_and_process():
+        nonlocal futures
+        done, futures = wait(futures, return_when=FIRST_EXCEPTION)
+        results.extend(process(f.result()) for f in done)
+
+    with Executor(max_workers=max_workers) as executor:
+        for d in data:
+            futures.add(executor.submit(function, d))
+            if len(futures) == process_chunk_size:
+                wait_and_process()
+        wait_and_process()
+
+    return results
 
 
 def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, bytes] = None) -> str:
@@ -266,6 +270,7 @@ def download_file(url: str = None, filepath: Union[Path, str] = None):
 
 def calculate_bandwith(function, *args, n: int = 100, **kwargs) -> float:
     """Returns the minimal bandwith usage of `function`."""
+
     def get_bytes():
         stats = net_io_counters()
         return stats.bytes_recv + stats.bytes_sent
