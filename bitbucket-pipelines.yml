@@ -2,7 +2,7 @@ image: python:latest
 
 pipelines:
   pull-requests:
-    master:
+    dev:
       - step:
           name: Setup, Test, Deploy
           caches:
