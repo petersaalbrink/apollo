@@ -27,7 +27,7 @@ class ACM:
             self.LUMINATI: 0,
             self.PROXIWARE: 0,
         }
-        self.provider = self.LUMINATI
+        self.provider = self.PROXIWARE
         self.TZ = timezone("Europe/Amsterdam")
         self.db = MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
