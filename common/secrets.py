@@ -39,6 +39,8 @@ def change_secret(name: str) -> Credentials:
     `usr` and `pwd`.
     """
     names = {
+        "MX_API": "CDQC and Onboarding API",
+        "MX_CONFLUENCE": "Confluence API key",
         "MX_ELASTIC": "Elasticsearch servers",
         "MX_FTP_BK": "BuurtKadoos FTP server",
         "MX_FTP_BSTORAGE": "Matrixian Synaman File Transfer",
@@ -46,6 +48,7 @@ def change_secret(name: str) -> Credentials:
         "MX_FTP_DA": "DigitalAudience FTP server",
         "MX_FTP_NG": "NutsGroep FTP server",
         "MX_FTP_VPS": "VPS11 FTP server",
+        "MX_LUMINATI": "Luminati proxy password",
         "MX_MAIL": "EmailClient account",
         "MX_MONGO_ADDR": "MongoDB addressvalidation server",
         "MX_MONGO_CDQC": "MongoDB CDQC server",

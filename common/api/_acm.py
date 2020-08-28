@@ -1,35 +1,83 @@
 from datetime import datetime
 from functools import partial
+from threading import Lock
 
 from bs4 import BeautifulSoup
 from bson.codec_options import CodecOptions
 from pendulum import timezone
+from requests import Response
 from requests.exceptions import ProxyError
 
 from ..connectors import MongoDB
-from ..requests import get
+from ..exceptions import PhoneApiError
+from ..requests import get_proxies, get_session
 
 
 class ACM:
+    LUMINATI = "01"
+    PROXIWARE = "10"
+    MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
+    NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
+    URL = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
+    acm_get = acm_get_no_proxies = None
+
     def __init__(self):
-        self.n_proxy_errors = 0
+        self.lock = Lock()
+        self.n_errors = {
+            self.LUMINATI: 0,
+            self.PROXIWARE: 0,
+        }
+        self.provider = self.PROXIWARE
         self.TZ = timezone("Europe/Amsterdam")
         self.db = MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
                 tz_aware=True,
                 tzinfo=self.TZ,
             ))
+        self.new_session()
+
+    def new_session(self):
         headers = {
             "Range": "bytes=0-5504",
         }
-        proxies = {
-            "http": "nl.proxiware.com:12000",
-            "https": "nl.proxiware.com:12000",
-        }
-        url = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
-        self.NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
-        self.acm_get = partial(get, url=url, headers=headers, proxies=proxies)
-        self.acm_get_no_proxies = partial(get, url=url, headers=headers)
+        if self.provider == self.PROXIWARE:
+            proxies = {
+                "http": "nl.proxiware.com:12000",
+                "https": "nl.proxiware.com:12000",
+            }
+        elif self.provider == self.LUMINATI:
+            proxies = get_proxies()["proxies"]
+        else:
+            raise PhoneApiError(self.provider)
+        session = get_session()
+        self.acm_get = partial(session.get, url=self.URL, headers=headers, proxies=proxies)
+        self.acm_get_no_proxies = partial(session.get, url=self.URL, headers=headers)
+
+    def _get_response(self, params: dict) -> Response:
+
+        while not all(n > 1 for n in self.n_errors.values()):
+
+            try:
+                response = self.acm_get(params=params)
+
+                if self.MAX_REACHED in response.text:
+                    self.n_errors[self.provider] += 1
+                    self.new_session()
+                else:
+                    self.n_errors[self.provider] = 0
+                    break
+
+            except ProxyError:
+                self.n_errors[self.provider] += 1
+                self.provider = self.provider[::-1]
+                self.new_session()
+
+        else:
+            response = self.acm_get_no_proxies(params=params)
+            if self.MAX_REACHED in response.text:
+                raise PhoneApiError(self.MAX_REACHED)
+
+        return response
 
     def acm_request(self, number: int) -> dict:
 
@@ -43,15 +91,8 @@ class ACM:
             "portering": "1",
         }
 
-        while True:
-            try:
-                response = self.acm_get(params=params)
-                self.n_proxy_errors = 0
-                break
-            except ProxyError:
-                self.n_proxy_errors += 1
-                if self.n_proxy_errors == 10:
-                    self.acm_get = self.acm_get_no_proxies
+        with self.lock:
+            response = self._get_response(params)
 
         soup = BeautifulSoup(response.content, "lxml")
         result = soup.find("ul", {"class": "nummerresultdetails"})
@@ -59,9 +100,12 @@ class ACM:
 
         try:
             data = {item.find("strong").text: item.find("p").text for item in items}
-        except AttributeError:
-            if not items[1].text == self.NOT_PORTED:
-                raise
+        except AttributeError as e:
+            try:
+                if not items[1].text == self.NOT_PORTED:
+                    raise PhoneApiError(result.text) from e
+            except IndexError as e:
+                raise PhoneApiError(result.text) from e
             data = {"Nummerportering": params["query"], "Laatste portering": "", "Huidige aanbieder": ""}
 
         return data
@@ -83,7 +127,7 @@ class ACM:
 
         doc = self.db.find_one({"national_number": phone_obj.national_number})
 
-        if not doc.get("acm_scraped"):
+        if doc and not doc.get("acm_scraped"):
 
             doc = self.enrich_doc(doc)
 
@@ -102,16 +146,22 @@ class ACM:
 
         doc = self.find_doc(phone_obj)
 
-        phone_obj.country_iso2 = doc["country_iso2"]
-        phone_obj.country_iso3 = doc["country_iso3"]
-        phone_obj.country_name = doc["country_name"]
-        phone_obj.current_carrier = doc["current_carrier"] or doc["original_carrier"]
-        phone_obj.date_allocation = doc["date_allocation"]
-        phone_obj.date_cooldown = doc["date_cooldown"]
-        phone_obj.date_mutation = doc["date_mutation"]
-        phone_obj.date_portation = doc["date_portation"]
-        phone_obj.number_status = doc["number_status"]
-        phone_obj.number_type = doc["number_type"]
-        phone_obj.original_carrier = doc["original_carrier"]
+        if doc:
+
+            phone_obj.country_iso2 = doc["country_iso2"]
+            phone_obj.country_iso3 = doc["country_iso3"]
+            phone_obj.country_name = doc["country_name"]
+            phone_obj.current_carrier = doc["current_carrier"] or doc["original_carrier"]
+            phone_obj.date_allocation = doc["date_allocation"]
+            phone_obj.date_cooldown = doc["date_cooldown"]
+            phone_obj.date_mutation = doc["date_mutation"]
+            phone_obj.date_portation = doc["date_portation"]
+            phone_obj.number_status = doc["number_status"]
+            phone_obj.number_type = doc["number_type"]
+            phone_obj.original_carrier = doc["original_carrier"]
+
+        else:
+
+            phone_obj.valid_number = False
 
         return phone_obj

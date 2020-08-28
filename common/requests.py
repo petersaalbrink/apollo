@@ -16,7 +16,7 @@ Making requests:
 .. py:function: common.requests.get_session
    Get session with predefined options for requests.
 .. py:function: common.requests.get_proxies
-   Generator that returns headers with proxies and agents for requests.
+   Returns headers with proxies and agent for requests.
 
 Multithreading:
 
@@ -30,11 +30,9 @@ Multithreading:
 """
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from hashlib import sha1
 import hmac
-from itertools import cycle
-from json import loads
 from pathlib import Path
 from psutil import net_io_counters
 from shutil import copyfileobj
@@ -42,9 +40,7 @@ from threading import Lock
 from typing import (Any,
                     Callable,
                     Iterable,
-                    Iterator,
                     List,
-                    Optional,
                     Union)
 import urllib.parse as urlparse
 
@@ -53,6 +49,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .exceptions import RequestError
+from .secrets import get_secret
 
 Executor = ThreadPoolExecutor
 
@@ -83,32 +80,21 @@ def threadsafe(f):
     return decorate
 
 
-@threadsafe
-def get_proxies() -> Iterator[dict]:
-    """Generator that returns headers with proxies and agents for requests."""
-
-    # Get proxies
-    file = Path(__file__).parent / "etc/proxies.txt"
-    with open(file) as f:
-        proxies = [loads(line.strip().replace("'", '"'))
-                   for line in f]
-
-    # Get user agents
-    file = Path(__file__).parent / "etc/agents.txt"
-    with open(file) as f:
-        agents = [line.strip() for line in f]
-
-    # Yield values
-    agents = cycle(agents)
-    proxies = cycle(proxies)
-    while True:
-        kwargs = {
-            "headers": {
-                "User-Agent": next(agents)
-            },
-            "proxies": next(proxies),
-        }
-        yield kwargs
+def get_proxies() -> dict:
+    """Returns headers with proxies and agent for requests."""
+    _, pwd = get_secret("MX_LUMINATI")
+    proxy_url = f"http://lum-customer-consumatrix-zone-zone1:{pwd}@zproxy.lum-superproxy.io:22225"
+    return {
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/84.0.4147.135 Safari/537.36"
+        },
+        "proxies": {
+            "http": proxy_url,
+            "https": proxy_url,
+        },
+    }
 
 
 def get_session(
@@ -146,7 +132,7 @@ _module_data = {}
 
 def request(method: str,
             url: str,
-            **kwargs
+            **kwargs,
             ) -> Union[dict, Response]:
     """Sends a request. Returns :class:`requests.Response` object.
 
@@ -156,10 +142,14 @@ def request(method: str,
     """
     if kwargs.pop("use_proxies", False):
         try:
-            kwargs.update(next(_module_data["get_kwargs"]))
+            request_kwargs = _module_data["request_kwargs"]
         except KeyError:
-            _module_data["get_kwargs"] = get_proxies()
-            kwargs.update(next(_module_data["get_kwargs"]))
+            request_kwargs = _module_data["request_kwargs"] = get_proxies()
+        kwargs["proxies"] = request_kwargs["proxies"]
+        try:
+            kwargs["headers"].update(request_kwargs["headers"])
+        except KeyError:
+            kwargs["headers"] = request_kwargs["headers"]
     text_only = kwargs.pop("text_only", False)
     try:
         response = _module_data["common_session"].request(method, url, **kwargs)
@@ -174,7 +164,7 @@ def request(method: str,
 def get(url: str,
         text_only: bool = False,
         use_proxies: bool = False,
-        **kwargs
+        **kwargs,
         ) -> Union[dict, Response]:
     """Sends a GET request. Returns :class:`requests.Response` object.
 
@@ -191,7 +181,7 @@ def get(url: str,
 def post(url: str,
          text_only: bool = False,
          use_proxies: bool = False,
-         **kwargs
+         **kwargs,
          ) -> Union[dict, Response]:
     """Sends a POST request. Returns :class:`requests.Response` object.
 
@@ -207,8 +197,8 @@ def post(url: str,
 def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
-           **kwargs
-           ) -> Optional[List[Any]]:
+           **kwargs,
+           ) -> List[Any]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
     Usage:
@@ -229,25 +219,29 @@ def thread(function: Callable,
             data=range(2000),
             process=lambda result: print(result.status_code)
         )"""
+
     process_chunk_size = kwargs.pop("process_chunk_size", 1_000)
     max_workers = kwargs.pop("max_workers", None)
+    futures = set()
+    results = []
+
     if process is None:
-        with Executor(max_workers=max_workers) as executor:
-            # noinspection PyUnresolvedReferences
-            return [f.result() for f in
-                    wait({executor.submit(function, row) for row in data},
-                         return_when="FIRST_EXCEPTION").done]
-    else:
-        futures = set()
-        with Executor(max_workers=max_workers) as executor:
-            for row in data:
-                futures.add(executor.submit(function, row))
-                if len(futures) == process_chunk_size:
-                    done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-                    _ = [process(f.result()) for f in done]
-            done, futures = wait(futures, return_when="FIRST_EXCEPTION")
-            if done:
-                _ = [process(f.result()) for f in done]
+        def process(x):
+            return x
+
+    def wait_and_process():
+        nonlocal futures
+        done, futures = wait(futures, return_when=FIRST_EXCEPTION)
+        results.extend(process(f.result()) for f in done)
+
+    with Executor(max_workers=max_workers) as executor:
+        for d in data:
+            futures.add(executor.submit(function, d))
+            if len(futures) == process_chunk_size:
+                wait_and_process()
+        wait_and_process()
+
+    return results
 
 
 def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, bytes] = None) -> str:
@@ -276,6 +270,7 @@ def download_file(url: str = None, filepath: Union[Path, str] = None):
 
 def calculate_bandwith(function, *args, n: int = 100, **kwargs) -> float:
     """Returns the minimal bandwith usage of `function`."""
+
     def get_bytes():
         stats = net_io_counters()
         return stats.bytes_recv + stats.bytes_sent

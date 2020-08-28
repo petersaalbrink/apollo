@@ -1,7 +1,6 @@
 from dataclasses import astuple, dataclass
 from datetime import datetime
 from functools import lru_cache
-import pickle
 from socket import gethostname
 from time import localtime, sleep
 from typing import Optional, Union
@@ -21,8 +20,7 @@ from ..secrets import get_secret
 from ._acm import ACM
 
 _SECRET = None
-_WRONG_CHARS = (".0", "%2B")
-_WRONG_NUMS = ("8", "9", "66", "67", "69", "60")
+_WRONG_NUMS = ("9", "66", "67", "69", "60")
 _vn = None
 _acm = None
 CALL_TO_VALIDATE = True
@@ -63,28 +61,28 @@ class PhoneApiResponse:
 
     @classmethod
     def from_parsed(cls, parsed: PhoneNumber):
-        if parsed.country_code == 31:
-            return cls(
-                country_code=parsed.country_code,
-                national_number=parsed.national_number,
-                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
-                valid_format=is_valid_number(parsed),
-            )
-        else:
-            carrier = name_for_number(parsed, "en")
+        carrier = name_for_number(parsed, "en") or None
+        try:
             country = countries.lookup(country_name_for_number(parsed, "en"))
-            return cls(
-                country_code=parsed.country_code,
-                country_iso2=country.alpha_2,
-                country_iso3=country.alpha_3,
-                country_name=country.name,
-                current_carrier=carrier,
-                national_number=parsed.national_number,
-                number_type=TYPES.get(number_type(parsed)),
-                original_carrier=carrier,
-                parsed_number=f"+{parsed.country_code}{parsed.national_number}",
-                valid_format=is_valid_number(parsed),
-            )
+        except LookupError as e:
+            if parsed.country_code == 39:
+                country = countries.lookup("Italy")
+            else:
+                raise PhoneApiError(f"No country for: {parsed}") from e
+        valid = is_valid_number(parsed)
+        return cls(
+            country_code=parsed.country_code,
+            country_iso2=country.alpha_2,
+            country_iso3=country.alpha_3,
+            country_name=country.name,
+            current_carrier=carrier,
+            national_number=parsed.national_number,
+            number_type=TYPES.get(number_type(parsed)),
+            original_carrier=carrier,
+            parsed_number=f"+{parsed.country_code}{parsed.national_number}",
+            valid_format=valid,
+            valid_number=valid,
+        )
 
 
 @lru_cache()
@@ -97,9 +95,7 @@ def parse_phone(
         raise PhoneApiError("Provide country code or international number.")
 
     # Clean up
-    number = f"{number}"
-    for s in _WRONG_CHARS:
-        number = number.replace(s, "")
+    number = f"{number}".replace(".0", "").replace(".", "").replace("%2B", "+")
 
     # Parse the number
     try:
@@ -107,16 +103,14 @@ def parse_phone(
     except NumberParseException:
         try:
             parsed = parse(number, countries.lookup(country).alpha_2)
-        except NumberParseException:
+        except (NumberParseException, LookupError):
             raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
 
     # Create object
     phone = PhoneApiResponse.from_parsed(parsed)
 
     # Set number to invalid for some cases
-    if (not phone.valid_format
-            or (phone.country_code == 31
-                and f"{phone.national_number}".startswith(_WRONG_NUMS))):
+    if phone.country_code == 31 and f"{phone.national_number}".startswith(_WRONG_NUMS):
         phone.valid_number = False
 
     return phone

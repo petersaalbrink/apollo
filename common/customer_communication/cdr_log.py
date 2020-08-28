@@ -7,7 +7,10 @@ import numpy as np
 class CdrLogger:
     def __init__(self, filename):
         self.filename = filename
-        self.data = pd.read_csv(self.filename)
+        try:
+            self.data = pd.read_csv(self.filename, low_memory=False)
+        except pd.errors.ParserError:
+            self.data = pd.read_csv(self.filename, delimiter=";", low_memory=False)
 
     def clean(self):
         self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
@@ -27,9 +30,20 @@ class CdrLogger:
             )
 
     def insert_mysql(self):
-        sql = MySQLClient(f"cdr_history.{self.filename}")
-        sql.insert_new(None, self.data)
+        sql = MySQLClient("cdr_history")
+        fields = sql.create_definition(data=self.data)
+        sql.table_name =  self.filename
+        sql.create_table(table=sql.table_name, fields=fields, drop_existing=True, raise_on_error=True)
+        sql.insert(data=self.data)
 
+
+#    def insert_mysql(self):
+#        sql = MySQLClient(f"cdr_history.{self.filename}")
+#        sql.insert_new(None, self.data)
+
+
+
+	
 
 def cdrlog_exe(filename):
     cdl = CdrLogger(filename)
