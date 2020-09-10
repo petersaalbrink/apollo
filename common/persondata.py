@@ -1213,7 +1213,10 @@ class MatchMetrics:
                 count_ = self.get_count(count_type)
                 for key in ("full", "first"):
                     self.counts[f"{key}_{count_type}"] = count_
-        self.counts["estimation"] = self.data.get("estimation", 1)
+        try:
+            self.counts["estimation"] = self.data.get("estimation", 1)
+        except AttributeError:
+            self.counts["estimation"] = 1
 
     def get_response(self):
         for key, count_ in self.counts.items():
