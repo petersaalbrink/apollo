@@ -214,7 +214,8 @@ class _EmailValidator:
         try:
 
             # Searches the cache
-            if cache := self.search_cache():
+            cache = self.search_cache()
+            if cache:
                 return cache
 
             # Parse input and correct email

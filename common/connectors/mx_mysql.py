@@ -457,6 +457,18 @@ class MySQLClient:
         self.disconnect()
         return row
 
+    @staticmethod
+    def _set_session_variables(cursor: MySQLCursor):
+        # We set these session variables to avoid error 2013 (Lost connection)
+        for var, val in (
+            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
+            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
+        ):
+            cursor.execute(f"SET SESSION {var}={val}")
+
     def chunk(self,
               query: Union[Query, str] = None,
               size: int = None,
@@ -494,16 +506,7 @@ class MySQLClient:
         self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
-
-        # We set these session variables to avoid error 2013 (Lost connection)
-        for var, val in (
-            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
-            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
-            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
-            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
-            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
-        ):
-            cursor.execute(f"SET SESSION {var}={val}")
+        self._set_session_variables(cursor)
 
         try:
             cursor.execute(query, *args, **kwargs)
@@ -573,16 +576,11 @@ class MySQLClient:
         cnx = connect(**self.__config)
         cursor = cnx.cursor(buffered=False,
                             dictionary=self.dictionary)
-        cursor.execute(query, *args, **kwargs)
+        self._set_session_variables(cursor)
 
-        while True:
-            try:
-                for row in _tqdm(cursor, total=count):
-                    yield row
-                break
-            except OperationalError as e:
-                info("Attempting reconnect: %s", e)
-                cnx.ping(reconnect=True)
+        cursor.execute(query, *args, **kwargs)
+        for row in _tqdm(cursor, total=count):
+            yield row
 
         cursor.close()
         cnx.close()
