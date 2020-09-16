@@ -983,6 +983,8 @@ class MySQLClient:
                     *_, key = replace_quote(k, v, key)
             elif isinstance(v, Pattern):
                 key = f"""{k} REGEXP "{v.pattern}" """
+            elif v is None:
+                key = rf"{k} IS NULL"
             return key
 
         if not and_or:
