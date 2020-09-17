@@ -488,6 +488,7 @@ class MySQLClient:
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
         fieldnames = kwargs.pop("fieldnames", None)
+        yield_execution = kwargs.pop("yield_execution", False)
         if fieldnames is not None:
             self.dictionary = fieldnames
 
@@ -514,6 +515,9 @@ class MySQLClient:
             count = cursor.row_count
         except AttributeError:
             count = None
+
+        if yield_execution:
+            yield
 
         bar = tqdm_func(total=count)
         while True:
