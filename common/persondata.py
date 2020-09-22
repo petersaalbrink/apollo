@@ -428,6 +428,8 @@ class _MatchQueries:
         "firstname": "details.firstname",
         "date_of_birth": "birth.date",
     }
+    _sort = [{"_score": "desc"}, {"date": "desc"}]
+    _date_sort = list(reversed(_sort))
 
     def __init__(self, **kwargs):
         self._address_query = kwargs.pop("address_query", False)
@@ -544,7 +546,7 @@ class _MatchQueries:
             if self.data.houseNumberExt:
                 must.append({"wildcard": {
                     "address.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}})
-            yield "address", self._base_query(must=must)
+            yield "address", self._base_query(date_sort=True, must=must)
 
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
@@ -557,11 +559,15 @@ class _MatchQueries:
                           {"wildcard": {"details.initials": self.data.initials[0]}},
                       ]}}])
 
-    def _base_query(self, person: bool = False, **kwargs):
+    def _base_query(self, person: bool = False, date_sort: bool = False, **kwargs):
         """Encapsulate clauses in a bool query, with sorting on date."""
+        if date_sort:
+            sort = self._date_sort
+        else:
+            sort = self._sort
         return self._extend_query(query={
             "query": {"bool": kwargs},
-            "sort": [{"_score": "desc"}, {"date": "desc"}]},
+            "sort": sort},
             person=person)
 
     def _extend_query(self, query: dict, person: bool):
