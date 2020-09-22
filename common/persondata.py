@@ -466,6 +466,9 @@ class _MatchQueries:
                 clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}}
             return clause
 
+        if self.data.lastname:
+            lastname = lastname_clause()
+
         if self.data.lastname and self.data.initials and self.data.date_of_birth:
             if self.data.date_of_birth.day <= 12:
                 swapped_dob = datetime(year=self.data.date_of_birth.year,
@@ -477,7 +480,7 @@ class _MatchQueries:
             else:
                 dob = {"term": {"birth.date": self.data.date_of_birth}}
             yield "dob", self._base_query(must=[
-                dob, lastname_clause(),
+                dob, lastname,
                 {"bool": {"should": [
                     {"wildcard": {"details.initials": self.data.initials[0]}},
                     {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 2}}},
@@ -495,7 +498,6 @@ class _MatchQueries:
             person=True)
 
         if self.data.lastname:
-            lastname = lastname_clause()
 
             if self.data.initials:
 
@@ -546,8 +548,14 @@ class _MatchQueries:
 
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
-                must=[{"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}},
-                      {"wildcard": {"details.initials": self.data.initials[0]}}])
+                must=[{"bool": {"minimum_should_match": 1, "should": [
+                    lastname,
+                    {"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}},
+                ]}},
+                      {"bool": {"minimum_should_match": 1, "should": [
+                          {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 5}}},
+                          {"wildcard": {"details.initials": self.data.initials[0]}},
+                      ]}}])
 
     def _base_query(self, person: bool = False, **kwargs):
         """Encapsulate clauses in a bool query, with sorting on date."""
@@ -699,6 +707,8 @@ class Cleaner:
 
     The main entry point is the `.clean()` method.
     """
+    _affixes = (" Van ", " Het ", " De ")
+    _phone_fields = ("number", "telephone", "mobile")
 
     def __init__(self):
         """Make a cleaner.
@@ -707,8 +717,6 @@ class Cleaner:
         been loaded already.
         """
         self.data = {}
-        self._affixes = (" Van ", " Het ", " De ")
-        self._phone_fields = ("number", "telephone", "mobile")
 
     def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
         self.data = data
