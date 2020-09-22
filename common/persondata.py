@@ -1206,7 +1206,7 @@ class MatchMetrics:
                 for key in ("full", "first"):
                     self.counts[f"{key}_{count_type}"] = count_
         try:
-            self.counts["estimation"] = self.data.get("estimation", 1)
+            self.counts["estimation"] = int(self.data.get("estimation", 1))
         except AttributeError:
             self.counts["estimation"] = 1
 
