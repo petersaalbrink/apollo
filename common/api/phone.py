@@ -1,11 +1,12 @@
 from dataclasses import astuple, dataclass
 from datetime import datetime
 from functools import lru_cache
+import re
 from socket import gethostname
 from time import localtime, sleep
 from typing import Optional, Union
 
-from phonenumbers import is_valid_number, parse, PhoneNumber
+from phonenumbers import is_valid_number, parse, PhoneNumber, PhoneNumberMatcher
 from phonenumbers.carrier import name_for_number, number_type  # noqa
 from phonenumbers.geocoder import country_name_for_number
 from phonenumbers.phonenumberutil import NumberParseException
@@ -30,6 +31,8 @@ TYPES = {
     0: "landline",
     1: "mobile",
 }
+abc_pattern = re.compile(r"[a-zA-Z/]")
+num_pattern = re.compile(r"([^0-9+]+)")
 if gethostname() == "matrixian":
     URL = "http://localhost:5000/call/"
 else:
@@ -85,17 +88,21 @@ class PhoneApiResponse:
         )
 
 
-@lru_cache()
-def parse_phone(
-        number: Union[int, str],
+def _parse_number(
+        number: str,
         country: str = None,
-) -> Optional[PhoneApiResponse]:
-
-    if not (isinstance(country, str) or f"{number}".startswith("+")):
-        raise PhoneApiError("Provide country code or international number.")
-
+) -> PhoneNumber:
     # Clean up
-    number = f"{number}".replace(".0", "").replace(".", "").replace("%2B", "+")
+    number = num_pattern.sub("", number)
+    if number.startswith("00"):
+        number = f"+{number[2:]}"
+    elif not country and number.startswith("0316") and len(number) == 12:
+        number = f"+{number[1:]}"
+    elif not country and number.startswith("316") and len(number) == 11:
+        number = f"+{number}"
+
+    if not (isinstance(country, str) or number.startswith("+")):
+        raise PhoneApiError("Provide country code or international number.")
 
     # Parse the number
     try:
@@ -105,6 +112,37 @@ def parse_phone(
             parsed = parse(number, countries.lookup(country).alpha_2)
         except (NumberParseException, LookupError):
             raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
+
+    return parsed
+
+
+def _parse_with_matcher(
+        number: str,
+        country: str,
+) -> PhoneNumber:
+    # Clean up and parse the number
+    number = num_pattern.sub(r" \1 ", number)
+    try:
+        parsed = next(iter(PhoneNumberMatcher(number, country))).number
+    except (StopIteration, NumberParseException):
+        try:
+            parsed = _parse_number(number, country)
+        except NumberParseException:
+            raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
+    return parsed
+
+
+@lru_cache()
+def parse_phone(
+        number: Union[int, str],
+        country: str = None,
+) -> PhoneApiResponse:
+    # Clean up
+    number = f"{number}".replace(".0", "").replace("%2B", "+")
+    if abc_pattern.search(number) and isinstance(country, str):
+        parsed = _parse_with_matcher(number, country)
+    else:
+        parsed = _parse_number(number, country)
 
     # Create object
     phone = PhoneApiResponse.from_parsed(parsed)
@@ -133,7 +171,6 @@ def lookup_carriers_acm(
 def lookup_call_result(
         phone: PhoneApiResponse,
 ) -> Optional[PhoneApiResponse]:
-
     global _vn
 
     if not _vn:
@@ -151,7 +188,6 @@ def lookup_call_result(
 def call_phone(
         phone: PhoneApiResponse,
 ) -> PhoneApiResponse:
-
     global _SECRET
 
     if CALL_TO_VALIDATE:
