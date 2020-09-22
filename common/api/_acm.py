@@ -38,7 +38,7 @@ class ACM:
 
     def new_session(self):
         headers = {
-            "Range": "bytes=0-5504",
+            "Range": "bytes=0-5632",
         }
         if self.provider == self.PROXIWARE:
             proxies = {
