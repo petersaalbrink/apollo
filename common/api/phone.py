@@ -33,7 +33,7 @@ TYPES = {
 if gethostname() == "matrixian":
     URL = "http://localhost:5000/call/"
 else:
-    URL = "http://94.168.87.210:4000/call/"
+    URL = "http://94.168.87.210:5000/call/"
 
 
 @dataclass
