@@ -27,7 +27,7 @@ class ACM:
             self.LUMINATI: 0,
             self.PROXIWARE: 0,
         }
-        self.provider = self.PROXIWARE
+        self.provider = self.LUMINATI
         self.TZ = timezone("Europe/Amsterdam")
         self.db = MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
@@ -38,7 +38,7 @@ class ACM:
 
     def new_session(self):
         headers = {
-            "Range": "bytes=0-5632",
+            "Range": "bytes=0-6144",
         }
         if self.provider == self.PROXIWARE:
             proxies = {
