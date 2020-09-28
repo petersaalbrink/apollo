@@ -14,6 +14,7 @@ from pycountry import countries
 
 from ..connectors.mx_elastic import ESClient
 from ..exceptions import PhoneApiError
+from ..handlers import keep_trying
 from ..persondata import HOST
 from ..requests import post
 from ..secrets import get_secret
@@ -184,6 +185,20 @@ def lookup_call_result(
         return phone
 
 
+def _call_phone(
+        phone: PhoneApiResponse,
+) -> PhoneApiResponse:
+    response = post(
+        url=URL,
+        auth=_SECRET,
+        data=f"{phone}".encode(),
+    )
+    phone = eval(response.content)
+    if not isinstance(phone, PhoneApiResponse):
+        raise PhoneApiError(type(phone))
+    return phone
+
+
 @lru_cache()
 def call_phone(
         phone: PhoneApiResponse,
@@ -201,14 +216,12 @@ def call_phone(
                 sleep(60)
                 t = localtime().tm_hour
 
-        response = post(
-            url=URL,
-            auth=_SECRET,
-            data=f"{phone}".encode(),
+        phone = keep_trying(
+            _call_phone,
+            phone,
+            exceptions=(SyntaxError, PhoneApiError),
+            timeout=60,
         )
-        phone = eval(response.content)
-        if not isinstance(phone, PhoneApiResponse):
-            raise PhoneApiError(type(phone))
 
     return phone
 
