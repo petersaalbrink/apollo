@@ -257,6 +257,7 @@ class MySQLClient:
                 self.cnx = connect(**self.__config)
                 self.cursor = self.cnx.cursor(buffered=self.buffered,
                                               dictionary=self.dictionary)
+                self._set_session_variables(self.cursor)
                 break
         if conn:
             return self.cnx
@@ -504,7 +505,6 @@ class MySQLClient:
         self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
-        self._set_session_variables(cursor)
 
         try:
             cursor.execute(query, *args, **kwargs)
