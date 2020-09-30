@@ -3,6 +3,7 @@ from datetime import datetime
 from functools import lru_cache
 import re
 from socket import gethostname
+from threading import Lock
 from time import localtime, sleep
 from typing import Optional, Union
 
@@ -25,6 +26,7 @@ _SECRET = None
 _WRONG_NUMS = ("9", "66", "67", "69", "60")
 _vn = None
 _acm = None
+_lock = Lock()
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
 VN_INDEX = "cdqc.validated_numbers"
@@ -216,12 +218,13 @@ def call_phone(
                 sleep(60)
                 t = localtime().tm_hour
 
-        phone = keep_trying(
-            _call_phone,
-            phone,
-            exceptions=(SyntaxError, PhoneApiError),
-            timeout=60,
-        )
+        with _lock:
+            phone = keep_trying(
+                _call_phone,
+                phone,
+                exceptions=(SyntaxError, PhoneApiError),
+                timeout=60,
+            )
 
     return phone
 
