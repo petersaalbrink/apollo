@@ -453,19 +453,24 @@ class _MatchQueries:
         name_only: query with must-clause (lastname and initials)
         """
 
-        def lastname_clause(f: int = 1):
+        def lastname_clause(f: Union[int, str] = "AUTO", b: int = 2):
             if "ij" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("ij", "y"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
                 ], "minimum_should_match": 1}}
             elif "y" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("y", "ij"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
                 ], "minimum_should_match": 1}}
             else:
-                clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}}
+                clause = {"bool": {"should": [
+                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
+                ], "minimum_should_match": 1}}
             return clause
 
         if self.data.lastname:
