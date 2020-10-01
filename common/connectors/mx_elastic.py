@@ -340,11 +340,12 @@ class ESClient(Elasticsearch):
             hits_only, source_only = True, False
 
         scroll = kwargs.pop("scroll", "10m")
+        size = kwargs.pop("size", 10_000)
 
         if not index:
             index = self.es_index
 
-        data = self.search(index=index, scroll=scroll, size=10_000, body=query)
+        data = self.search(index=index, scroll=scroll, size=size, body=query)
 
         sid = data["_scroll_id"]
         scroll_size = len(data["hits"]["hits"])
