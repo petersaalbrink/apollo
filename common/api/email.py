@@ -317,7 +317,7 @@ def check_email(
     response = get(
         f"{URL}{email}",
         text_only=True,
-        timeout=10,
+        timeout=30,
     )
     if safe_to_send:
         return response["safe_to_send"]

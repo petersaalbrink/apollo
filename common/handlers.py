@@ -222,7 +222,10 @@ class Log:
 
     def __init__(self, level: str = None, filename: str = None):
         """Logger class that by default logs with level debug to stderr."""
-        self.level = _logging_levels.get(level.lower(), logging.DEBUG)
+        try:
+            self.level = _logging_levels.get(level.lower(), logging.DEBUG)
+        except AttributeError:
+            self.level = logging.DEBUG
         self.kwargs = {
             "level": self.level,
             "format": _log_format,

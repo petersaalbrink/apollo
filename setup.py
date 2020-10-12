@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
 __version__ = None
 exec(open("common/etc/version.py").read())  # noqa
@@ -19,18 +19,14 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
-    packages=[
-        "common",
-        "common.api",
-        "common.connectors",
-        "common.customer_communication",
-    ],
+    packages=find_packages(),
     install_requires=pkgs,
     package_data={"": ["certificates/*.pem", "etc/*", "etc/.env"]},
     include_package_data=True,
     classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Operating System :: OS Independent",
-    ]
+    ],
+    python_requires=">=3.7",
 )

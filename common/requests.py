@@ -31,6 +31,7 @@ Multithreading:
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
+from functools import lru_cache
 from hashlib import sha1
 import hmac
 from pathlib import Path
@@ -42,7 +43,7 @@ from typing import (Any,
                     Iterable,
                     List,
                     Union)
-import urllib.parse as urlparse
+from urllib.parse import urlparse
 
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
@@ -80,6 +81,7 @@ def threadsafe(f):
     return decorate
 
 
+@lru_cache()
 def get_proxies() -> dict:
     """Returns headers with proxies and agent for requests."""
     _, pwd = get_secret("MX_LUMINATI")
@@ -130,6 +132,12 @@ def get_session(
 _module_data = {}
 
 
+@lru_cache()
+def _get_named_session(url: str) -> Session:
+    _module_data[f"common_session_{urlparse(url).netloc}"] = get_session()
+    return _module_data[f"common_session_{urlparse(url).netloc}"]
+
+
 def request(method: str,
             url: str,
             **kwargs,
@@ -141,21 +149,11 @@ def request(method: str,
     :param kwargs: Optional arguments that ``request`` takes.
     """
     if kwargs.pop("use_proxies", False):
-        try:
-            request_kwargs = _module_data["request_kwargs"]
-        except KeyError:
-            request_kwargs = _module_data["request_kwargs"] = get_proxies()
+        request_kwargs = get_proxies()
         kwargs["proxies"] = request_kwargs["proxies"]
-        try:
-            kwargs["headers"].update(request_kwargs["headers"])
-        except KeyError:
-            kwargs["headers"] = request_kwargs["headers"]
+        kwargs.setdefault("headers", request_kwargs["headers"])
     text_only = kwargs.pop("text_only", False)
-    try:
-        response = _module_data["common_session"].request(method, url, **kwargs)
-    except KeyError:
-        _module_data["common_session"] = get_session()
-        response = _module_data["common_session"].request(method, url, **kwargs)
+    response = _get_named_session(url).request(method, url, **kwargs)
     if text_only:
         return response.json()
     return response
@@ -248,7 +246,7 @@ def google_sign_url(input_url: Union[str, bytes] = None, secret: Union[str, byte
     if not input_url or not secret:
         raise RequestError("Error: input_url or secret can not be empty.")
 
-    url = urlparse.urlparse(input_url)
+    url = urlparse(input_url)
     url_to_sign = url.path + "?" + url.query
     decoded_key = urlsafe_b64decode(secret)
     signature = hmac.new(decoded_key, str.encode(url_to_sign), sha1)

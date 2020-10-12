@@ -155,7 +155,6 @@ class MySQLClient:
                  **kwargs):
         """Create client for MySQL, and connect to a specific database.
         You can provide a database and optionally a table name.
-        The default database is `mx_traineeship_peter`.
 
         :param database: Database to connect to. After connecting,
             different databases may be queried simply by overriding the
@@ -184,8 +183,6 @@ class MySQLClient:
             sql = MySQLClient(database="webspider_nl_google",
                               table="pc_data_final")
             sql = MySQLClient("august_2017_google.shop_data_nl_main")
-        Default::
-            sql = MySQLClient("mx_traineeship_peter")
         """
         global commondir  # noqa
 
@@ -260,6 +257,7 @@ class MySQLClient:
                 self.cnx = connect(**self.__config)
                 self.cursor = self.cnx.cursor(buffered=self.buffered,
                                               dictionary=self.dictionary)
+                self._set_session_variables(self.cursor)
                 break
         if conn:
             return self.cnx
@@ -491,6 +489,7 @@ class MySQLClient:
         select_fields = kwargs.pop("select_fields", None)
         order_by = kwargs.pop("order_by", None)
         fieldnames = kwargs.pop("fieldnames", None)
+        yield_execution = kwargs.pop("yield_execution", False)
         if fieldnames is not None:
             self.dictionary = fieldnames
 
@@ -506,7 +505,6 @@ class MySQLClient:
         self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
-        self._set_session_variables(cursor)
 
         try:
             cursor.execute(query, *args, **kwargs)
@@ -517,6 +515,9 @@ class MySQLClient:
             count = cursor.row_count
         except AttributeError:
             count = None
+
+        if yield_execution:
+            yield
 
         bar = tqdm_func(total=count)
         while True:
@@ -1130,7 +1131,7 @@ class MySQLClient:
 
         Examples::
             sql = MySQLClient()
-            table = "mx_traineeship_peter.company_data"
+            table = "real_estate.real_estate"
 
             # Simple WHERE query:
             sql.query(table=table, field="postcode", value="1014AK")  # is the same as:
