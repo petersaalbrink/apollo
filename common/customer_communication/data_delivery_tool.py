@@ -1,5 +1,5 @@
 import os
-from zipfile import ZipFile, ZIP_LZMA
+from zipfile import ZipFile, ZIP_DEFLATED
 import pandas as pd
 
 # modules
@@ -48,7 +48,7 @@ def data_delivery_tool(
     else:
         folder_name = coded_input['folder_name']
 
-    with ZipFile(f'{folder_name}.zip', 'w', compression=ZIP_LZMA) as folder:
+    with ZipFile(f'{folder_name}.zip', 'w', compression=ZIP_DEFLATED) as folder:
 
         # run
         if codebook:
