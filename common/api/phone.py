@@ -16,7 +16,6 @@ from pycountry import countries
 from ..connectors.mx_elastic import ESClient
 from ..exceptions import PhoneApiError
 from ..handlers import keep_trying
-from ..persondata import HOST
 from ..requests import post
 from ..secrets import get_secret
 
@@ -29,7 +28,6 @@ _acm = None
 _lock = Lock()
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
-VN_INDEX = "cdqc.validated_numbers"
 TYPES = {
     0: "landline",
     1: "mobile",
@@ -177,7 +175,7 @@ def lookup_call_result(
     global _vn
 
     if not _vn:
-        _vn = ESClient(VN_INDEX, host=HOST)
+        _vn = ESClient("cdqc.validated_numbers")
         _vn.index_exists = True
 
     query = {"query": {"bool": {"filter": {"term": {"phoneNumber": phone.national_number}}}}}
