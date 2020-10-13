@@ -75,7 +75,6 @@ DATE_KEYS = {"birth", "death"}
 EMAIL_KEY = "email"
 PHONE_KEYS = {"number", "mobile"}
 
-_module_data = {}
 _extra_fields = {
     "birth.date": 1 / 38,
     "phoneNumber.mobile": 1 / 38,
@@ -720,6 +719,7 @@ class Cleaner:
     """
     _affixes = (" Van ", " Het ", " De ")
     _phone_fields = ("number", "telephone", "mobile")
+    _title_data = NamesData().titles()
 
     def __init__(self):
         """Make a cleaner.
@@ -784,13 +784,8 @@ class Cleaner:
             self.data["lastname"] = sub(r"-", " ", self.data["lastname"])
             self.data["lastname"] = sub(r"[^\sA-Za-z\u00C0-\u017F]", "", self.data["lastname"])
             self.data["lastname"] = unidecode(self.data["lastname"].strip())
-            try:
-                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
-                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
-            except KeyError:
-                _module_data["title_data"] = NamesData().titles()
-                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
-                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
+            if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in self._title_data:
+                self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
         if not self.data["lastname"]:
             self.data.pop("lastname")
 
@@ -1068,6 +1063,8 @@ class PersonData(_MatchQueries,
     def _set_score(self, key: str, response: dict):
         """After a result has been found, calculate the score for this match."""
         self.result[key]["match_keys"] = set()
+        if not self.result.get("details"):
+            self.result["details"] = {}
         if not self.result["details"].get("details_common"):
             self.result["details"]["details_common"] = response.get("details_common")
         try:
@@ -1105,7 +1102,11 @@ class PersonData(_MatchQueries,
 
         # Get commonalities
         if not self.result["details"].get("details_common"):
-            mm = MatchMetrics(self._responses["details"])
+            try:
+                doc = self._responses["details"]
+            except KeyError:
+                doc = self._responses.get("number") or self._responses.get("mobile")
+            mm = MatchMetrics(doc)
             mm.get_metrics()
             self.result["details"]["details_common"] = mm.counts
 
@@ -1165,6 +1166,10 @@ class MatchMetrics:
         ]
     }
     count_types = ("fuzzy", "count")
+    initials = {
+        d["initials"]: d["frequency"]
+        for d in MongoDB(f"{collection}_initials_occurrence").find()
+    }
 
     def __init__(self, doc):
         self.doc = doc
@@ -1173,13 +1178,6 @@ class MatchMetrics:
         self.response = {}
         self.esl = ESClient(f"{self.collection}_lastname_occurrence")
         self.esl.index_exists = True
-        try:
-            self.initials = _module_data["initials"]
-        except KeyError:
-            self.initials = _module_data["initials"] = {
-                d["initials"]: d["frequency"]
-                for d in MongoDB(f"{self.collection}_initials_occurrence").find()
-            }
 
     def get_metrics(self) -> dict:
         self.set_data()
