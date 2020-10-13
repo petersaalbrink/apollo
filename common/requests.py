@@ -35,7 +35,6 @@ from functools import lru_cache
 from hashlib import sha1
 import hmac
 from pathlib import Path
-from psutil import net_io_counters
 from shutil import copyfileobj
 from threading import Lock
 from typing import (Any,
@@ -45,6 +44,7 @@ from typing import (Any,
                     Union)
 from urllib.parse import urlparse
 
+from psutil import net_io_counters
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
