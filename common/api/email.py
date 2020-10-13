@@ -11,15 +11,13 @@ import dns.resolver as resolve
 from dns.exception import DNSException
 from pymailcheck import suggest
 
-from .address import LIVE
 from ..connectors import MongoDB
 from ..env import getenv
 from ..requests import get
 
 PATH = Path(__file__).parents[1] / "etc"
+LIVE = "136.144.203.100"
 URL = f"http://{LIVE}:4000/email?email="
-
-_module_data = {}
 
 
 class _EmailValidator:
@@ -27,6 +25,10 @@ class _EmailValidator:
     email_regex = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
     syntax_regex = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6}")
     at_words_regex = re.compile(r"[a-zA-Z]*@[a-zA-Z]*")
+    disposable_providers = [x.rstrip().lower() for x in open(PATH / "disposable_providers.txt")]
+    free_providers = [x.rstrip().lower() for x in open(PATH / "free_providers.txt")]
+    mongo_cache = MongoDB(host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="cache")
+    mongo_mx = MongoDB(host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="mx_records")
 
     def __init__(
             self,
@@ -133,28 +135,13 @@ class _EmailValidator:
         self.OUTPUT_DICT["domain"] = str(split_address[1])
 
     def check_disposable(self):
-        try:
-            if self.OUTPUT_DICT["domain"].lower() in _module_data["disposable_providers"]:
-                self.OUTPUT_DICT["disposable"] = True
-                self.OUTPUT_DICT["safe_to_send"] = False
-        except KeyError:
-            _module_data["disposable_providers"] = [
-                x.rstrip().lower() for x in open(PATH / "disposable_providers.txt")
-            ]
-            if self.OUTPUT_DICT["domain"].lower() in _module_data["disposable_providers"]:
-                self.OUTPUT_DICT["disposable"] = True
-                self.OUTPUT_DICT["safe_to_send"] = False
+        if self.OUTPUT_DICT["domain"].lower() in self.disposable_providers:
+            self.OUTPUT_DICT["disposable"] = True
+            self.OUTPUT_DICT["safe_to_send"] = False
 
     def check_free(self):
-        try:
-            if self.OUTPUT_DICT["domain"].lower() in _module_data["free_providers"]:
-                self.OUTPUT_DICT["free"] = True
-        except KeyError:
-            _module_data["free_providers"] = [
-                x.rstrip().lower() for x in open(PATH / "free_providers.txt")
-            ]
-            if self.OUTPUT_DICT["domain"].lower() in _module_data["free_providers"]:
-                self.OUTPUT_DICT["free"] = True
+        if self.OUTPUT_DICT["domain"].lower() in self.free_providers:
+            self.OUTPUT_DICT["free"] = True
 
     def time_spent(self, ret: bool = False) -> Optional[str]:
         if ret:
@@ -164,13 +151,7 @@ class _EmailValidator:
 
     def search_cache(self) -> Optional[dict]:
         if self.USE_CACHE:
-            try:
-                result = _module_data["mongo_cache"].find_one({"email": self.EMAIL})
-            except KeyError:
-                _module_data["mongo_cache"] = MongoDB(
-                    host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="cache",
-                )
-                result = _module_data["mongo_cache"].find_one({"email": self.EMAIL})
+            result = self.mongo_cache.find_one({"email": self.EMAIL})
 
             if result and "output" in result and result["output"]:
                 result["output"]["time"] = self.time_spent(True)
@@ -178,7 +159,7 @@ class _EmailValidator:
 
     def save_request(self):
         if self.USE_CACHE:
-            _module_data["mongo_cache"].insert_one({
+            self.mongo_cache.insert_one({
                 "email": self.ORIGINAL_EMAIL,
                 "check_accept_all": self.CHECK_ACCEPT_ALL,
                 "output": self.OUTPUT_DICT,
@@ -187,13 +168,7 @@ class _EmailValidator:
 
     def get_mx_records(self):
 
-        try:
-            cached_mx_records = _module_data["mongo_mx"].find_one({"domain": self.OUTPUT_DICT["domain"]})
-        except KeyError:
-            _module_data["mongo_mx"] = MongoDB(
-                host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="mx_records",
-            )
-            cached_mx_records = _module_data["mongo_mx"].find_one({"domain": self.OUTPUT_DICT["domain"]})
+        cached_mx_records = self.mongo_mx.find_one({"domain": self.OUTPUT_DICT["domain"]})
 
         if cached_mx_records:
             self.OUTPUT_DICT["mx_record"] = cached_mx_records["mx_records"][0]
@@ -204,7 +179,7 @@ class _EmailValidator:
             if mx_records:
                 self.OUTPUT_DICT["mx_record"] = mx_records[0]
 
-            _module_data["mongo_mx"].insert_one({
+            self.mongo_mx.insert_one({
                 "domain": self.OUTPUT_DICT["domain"],
                 "mx_records": mx_records,
                 "accept_all": False

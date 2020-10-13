@@ -129,13 +129,9 @@ def get_session(
     return session
 
 
-_module_data = {}
-
-
 @lru_cache()
-def _get_named_session(url: str) -> Session:
-    _module_data[f"common_session_{urlparse(url).netloc}"] = get_session()
-    return _module_data[f"common_session_{urlparse(url).netloc}"]
+def _session() -> Session:
+    return get_session()
 
 
 def request(method: str,
@@ -153,7 +149,7 @@ def request(method: str,
         kwargs["proxies"] = request_kwargs["proxies"]
         kwargs.setdefault("headers", request_kwargs["headers"])
     text_only = kwargs.pop("text_only", False)
-    response = _get_named_session(url).request(method, url, **kwargs)
+    response = _session().request(method, url, **kwargs)
     if text_only:
         return response.json()
     return response
