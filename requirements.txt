@@ -122,7 +122,7 @@ tqdm>=4.43.0
 
 # platform
 cached-property>=1.5.1
-pendulum<2.1.0
+pycryptodome<4.0.0
 pymongo>=3.10.1
 
 # requests
