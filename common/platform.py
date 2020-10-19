@@ -48,6 +48,10 @@ class FileTransfer:
         ft.download(
             ft.list_files().pop()
         )
+
+        # Use as FTP object
+        with ft as ftp:
+            print(ftp.nlst())
     """
 
     def __init__(
@@ -108,6 +112,16 @@ class FileTransfer:
         # Connect to FTP
         self.ftp = FTP()
         self.test_ftp()
+
+    def __enter__(self) -> FTP:
+        self.connect()
+        return self.ftp
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        self.disconnect()
+        if any((exc_type, exc_val, exc_tb)):
+            return False
+        return True
 
     @cached_property
     def ftp_password(self) -> str:
