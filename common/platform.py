@@ -14,7 +14,7 @@ and downloads from the Platform.
 """
 
 import binascii
-from ftplib import FTP, all_errors
+from ftplib import FTP_TLS, all_errors
 try:
     from functools import cached_property
 except ImportError:
@@ -30,6 +30,13 @@ from .connectors.mx_email import EmailClient
 from .connectors.mx_mongo import MongoDB
 from .exceptions import FileTransferError
 from .env import getenv
+
+
+class FTP(FTP_TLS):
+    """FTP_TLS"""
+    def makepasv(self):
+        _, port = super().makepasv()
+        return self.host, port
 
 
 class FileTransfer:
@@ -82,9 +89,9 @@ class FileTransfer:
                 "Missing environment variable 'MX_CRYPT_PASSWORD' (FTP password decrypt key)")
         host = kwargs.pop("host", "prod")
         if host == "prod":
-            self.host = "production_api.user", "platform.matrixiangroup.com"
+            self.host = "production_api.user", "ftp.platform.matrixiangroup.com"
         elif host == "dev":
-            self.host = "dev_api.user", "develop.platform.matrixiangroup.com"
+            self.host = "dev_api.user", "ftp.develop.platform.matrixiangroup.com"
         else:
             raise FileTransferError("Host should be 'prod' or 'dev'.")
 
