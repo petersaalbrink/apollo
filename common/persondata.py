@@ -1201,9 +1201,8 @@ class MatchMetrics:
         }}}}}
         try:
             self.data = self.esl.find(q, size=1, source_only=True)
-        except Exception:
-            print(q)
-            raise
+        except Exception as e:
+            raise MatchError(q) from e
 
     def get_count(self, count_type: str) -> int:
         return self.data[count_type] - 1 if self.data else 0
