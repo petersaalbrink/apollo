@@ -1,7 +1,21 @@
 from datetime import datetime as dt
-import pandas as pd
-from common.connectors import MySQLClient
+
 import numpy as np
+import pandas as pd
+
+from common.connectors import MySQLClient
+
+
+def _get_filename(filename, add_date: bool = True):
+    if add_date:
+        filename = f"{dt.now():%Y%m%d}_{filename}"
+    return (
+        filename
+        .replace(r"(\..*)", "")
+        .replace(".csv", "")
+        .replace(".xls", "")
+        .replace(".xlsx", "")
+    )
 
 
 class CdrLogger:
@@ -17,33 +31,20 @@ class CdrLogger:
         self.data = self.data.replace({np.nan: None})
         self.data = self.data.to_dict("records")
 
-        def hasDate(inputString):
-            return all(char.isdigit() for char in inputString)
+        def has_date(input_string):
+            return all(char.isdigit() for char in input_string)
 
-        if hasDate(self.filename[:8]) == False:
-            self.filename = (
-                (dt.now().strftime("%Y%m%d") + "_" + self.filename)
-                .replace("(\..*)", "")
-                .replace(".csv", "")
-                .replace(".xls", "")
-                .replace(".xlsx", "")
-            )
+        self.filename = _get_filename(self.filename, add_date=not has_date(self.filename[:8]))
+        if "." in self.filename:
+            raise ValueError(f"File name should not contain dot: '{self.filename}'")
 
     def insert_mysql(self):
         sql = MySQLClient("cdr_history")
         fields = sql.create_definition(data=self.data)
-        sql.table_name =  self.filename
+        sql.table_name = self.filename
         sql.create_table(table=sql.table_name, fields=fields, drop_existing=True, raise_on_error=True)
         sql.insert(data=self.data)
 
-
-#    def insert_mysql(self):
-#        sql = MySQLClient(f"cdr_history.{self.filename}")
-#        sql.insert_new(None, self.data)
-
-
-
-	
 
 def cdrlog_exe(filename):
     cdl = CdrLogger(filename)
@@ -52,7 +53,7 @@ def cdrlog_exe(filename):
 
 
 def cdr_log(filename: str, data: list) -> int:
-    filename = (dt.now().strftime("%Y%m%d") + "_" + filename)
-    sql = MySQLClient(f"cdr_history.{filename}")
-    result = sql.insert_new(data=data)
-    return result
+    filename = _get_filename(filename)
+    if "." in filename:
+        raise ValueError(f"File name should not contain dot: '{filename}'")
+    return MySQLClient(f"cdr_history.{filename}").insert_new(data=data)

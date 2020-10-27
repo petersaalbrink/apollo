@@ -1194,10 +1194,15 @@ class MatchMetrics:
             lastname = self.doc["details"]["lastname"]
         except KeyError:
             lastname = self.doc["details_lastname"]
+        if not lastname:
+            raise NoMatch
         q = {"query": {"bool": {"filter": {"term": {
             "lastname.keyword": lastname
         }}}}}
-        self.data = self.esl.find(q, size=1, source_only=True)
+        try:
+            self.data = self.esl.find(q, size=1, source_only=True)
+        except Exception as e:
+            raise MatchError(q) from e
 
     def get_count(self, count_type: str) -> int:
         return self.data[count_type] - 1 if self.data else 0
