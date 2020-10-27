@@ -1195,7 +1195,7 @@ class MatchMetrics:
         except KeyError:
             lastname = self.doc["details_lastname"]
         if not lastname:
-            raise MatchError
+            raise NoMatch
         q = {"query": {"bool": {"filter": {"term": {
             "lastname.keyword": lastname
         }}}}}
