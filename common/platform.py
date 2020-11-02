@@ -147,7 +147,7 @@ class FileTransfer:
     def list_files(self) -> List[str]:
         """List existing files in this user's Platform folder."""
         self._connect()
-        stdout, stderr = self._run_cmd(f"ls {self.filepath}")
+        stdout, _ = self._run_cmd(f"ls {self.filepath}")
         files = [f for f in stdout.read().decode().split("\n") if f]
         self._disconnect()
         return files
@@ -175,10 +175,12 @@ class FileTransfer:
         self._check_filename()
         self._connect()
         with open(self.filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
-            stdout, stderr = self._run_cmd(
+            _, stderr = self._run_cmd(
                 f'cp /dev/stdin "{self.filepath}/{self.filename}"',
                 fileobj=f,
             )
+        self._check_process(stderr)
+        _, stderr = self._run_cmd(f'chmod +r "{self.filepath}/{self.filename}"')
         self._check_process(stderr)
         self._disconnect()
         return self
