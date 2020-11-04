@@ -45,12 +45,7 @@ try:
     from math import prod
 except ImportError:
     from cached_property import cached_property
-
-
-    def prod(iterable, *, start=1):
-        for i in iterable:
-            start *= i
-        return start
+    from .etc.prod import prod
 from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
@@ -60,7 +55,6 @@ from text_unidecode import unidecode
 import common.api.phone
 from .api.email import check_email
 from .connectors.mx_elastic import ESClient
-from .connectors.mx_mongo import MongoDB
 from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
 
@@ -80,15 +74,6 @@ _extra_fields = {
     "phoneNumber.mobile": 1 / 38,
     "phoneNumber.number": 1 / 26,
     "address.address_id": 1 / 26,
-}
-_extra_fields = {
-    field: _extra_fields[field]
-    for field in (
-        "birth.date",
-        "phoneNumber.mobile",
-        "phoneNumber.number",
-        "address.address_id",
-    )
 }
 
 
@@ -1167,8 +1152,9 @@ class MatchMetrics:
     }
     count_types = ("fuzzy", "count")
     initials = {
-        d["initials"]: d["frequency"]
-        for d in MongoDB(f"{collection}_initials_occurrence").find()
+        d["initials"]: d["frequency"] for d in
+        ESClient(f"{collection}_initials_occurrence").find(
+            {"query": {"match_all": {}}}, source_only=True, size=10_000)
     }
 
     def __init__(self, doc):
