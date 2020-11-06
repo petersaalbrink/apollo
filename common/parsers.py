@@ -115,7 +115,7 @@ class Checks:
     def float_or_null(var: Any) -> Optional[float]:
         """Transform to a floating point, if possible."""
         try:
-            return float(var)
+            return float(var) if notna(var) else None
         except (TypeError, ValueError):
             return None
 
