@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import Callable, List, NewType
+from typing import Callable, List, NewType, Union
 from tqdm import tqdm
 
 from pandas import read_sql
@@ -94,12 +94,26 @@ class SQLtoMongo:
                 result = self.coll.delete_many(filter={field: {"$in": chunk}})
                 self.number_of_deletions += result.deleted_count
 
+    @staticmethod
+    def _set_session_variables(connection):
+        # We set these session variables to avoid error 2013 (Lost connection)
+        for var, val in (
+            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
+            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
+        ):
+            connection.execute(f"SET SESSION {var}={val}")
+
     @property
     def generator_df(self):
+        connection = self.engine.connect()
+        self._set_session_variables(connection)
         try:
             return read_sql(
                 sql=self.query,
-                con=self.engine,
+                con=connection,
                 chunksize=self.chunksize,
                 parse_dates=self.date_columns,
                 index_col=self.index_columns
@@ -108,6 +122,8 @@ class SQLtoMongo:
             if not self.query:
                 raise ConnectorError("Use `.set_query()` to set a query first.") from e
             raise
+        finally:
+            connection.close()
 
     def insert(
             self,
@@ -127,7 +143,7 @@ class SQLtoMongo:
             result = self.coll.insert_many(chunk)
             self.number_of_insertions += len(result.inserted_ids)
 
-    def notify(self, to_address: str, title: str = "Update succeeded"):
+    def notify(self, to_address: Union[List[str], str], title: str = "Update succeeded"):
         total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
         EmailClient().send_email(
             to_address=to_address,
