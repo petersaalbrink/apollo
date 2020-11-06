@@ -94,8 +94,7 @@ class SQLtoMongo:
                 result = self.coll.delete_many(filter={field: {"$in": chunk}})
                 self.number_of_deletions += result.deleted_count
 
-    @staticmethod
-    def _set_session_variables(connection):
+    def _set_session_variables(self):
         # We set these session variables to avoid error 2013 (Lost connection)
         for var, val in (
             ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
@@ -104,16 +103,15 @@ class SQLtoMongo:
             ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
             ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
         ):
-            connection.execute(f"SET SESSION {var}={val}")
+            self.engine.execute(f"SET SESSION {var}={val}")
 
     @property
     def generator_df(self):
-        connection = self.engine.connect()
-        self._set_session_variables(connection)
+        self._set_session_variables()
         try:
             return read_sql(
                 sql=self.query,
-                con=connection,
+                con=self.engine,
                 chunksize=self.chunksize,
                 parse_dates=self.date_columns,
                 index_col=self.index_columns
@@ -122,8 +120,6 @@ class SQLtoMongo:
             if not self.query:
                 raise ConnectorError("Use `.set_query()` to set a query first.") from e
             raise
-        finally:
-            connection.close()
 
     def insert(
             self,
