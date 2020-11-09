@@ -140,7 +140,7 @@ class ESClient(Elasticsearch):
         super().__init__(hosts, **_config)
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
-        self.index_exists = None
+        self.index_exists = kwargs.get("index_exists")
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
 
     def __repr__(self) -> str:
