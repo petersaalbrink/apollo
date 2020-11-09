@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import Callable, List, NewType, Union
+from typing import Callable, List, NewType, Union, Type
 from tqdm import tqdm
 
 from pandas import read_sql
-from pymongo import IndexModel
+from pymongo import IndexModel, UpdateMany, UpdateOne
 from pymongo.errors import OperationFailure
 from sqlalchemy import create_engine
 
@@ -186,11 +186,12 @@ class SQLtoMongo:
             update: Callable,
             preprocessing: Callable = None,
             progress_bar: bool = False,
+            update_cls: Union[Type[UpdateMany], Type[UpdateOne]] = UpdateOne,
     ):
         for chunk in tqdm(self.generator_df, disable=not progress_bar):
             if preprocessing:
                 chunk = preprocessing(chunk)
-            chunk = [MongoDB.UpdateOne(
+            chunk = [update_cls(
                 filter(d),
                 update(d),
             )
