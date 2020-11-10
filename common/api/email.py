@@ -44,7 +44,6 @@ class _EmailValidator:
         self.EMAIL = copy(email)
 
         self.START = dt.now()
-        self.CORRECTED = False
 
         self.OUTPUT_DICT = {
             "time": "",

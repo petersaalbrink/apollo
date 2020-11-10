@@ -139,12 +139,15 @@ class SQLtoMongo:
             result = self.coll.insert_many(chunk)
             self.number_of_insertions += len(result.inserted_ids)
 
-    def notify(self, to_address: Union[List[str], str], title: str = "Update succeeded"):
+    def notify(self, to_address: Union[List[str], str], title: str = "Update succeeded", name: str = ""):
+        if name:
+            name = f"{name}\n\n"
         total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
         EmailClient().send_email(
             to_address=to_address,
             subject=title,
             message=f"MongoDB update ran successfully!\n\n"
+                    f"{name}"
                     f"Number of matched documents: {self.matched_count}\n"
                     f"Number of updated documents: {self.number_of_updates}\n"
                     f"Number of deleted documents: {self.number_of_deletions}\n"

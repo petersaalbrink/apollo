@@ -49,6 +49,10 @@ class ParseError(CommonError):
     """Exception for data parsers."""
 
 
+class PersonDataError(CommonError):
+    """Exception for common.persondata"""
+
+
 class RequestError(CommonError):
     """Exception for requests."""
 
