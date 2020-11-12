@@ -105,5 +105,9 @@ def validate(params: Union[dict, str]) -> dict:
         verify=False,
         params=params,
         text_only=True,
-    )["objects"][0]
-    return response
+    )
+    try:
+        return response["objects"][0]
+    except KeyError:
+        logging.warning("%s", response)
+        return {}
