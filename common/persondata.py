@@ -1091,9 +1091,12 @@ class PersonData(_MatchQueries,
                 doc = self._responses["details"]
             except KeyError:
                 doc = self._responses.get("number") or self._responses.get("mobile")
-            mm = MatchMetrics(doc)
-            mm.get_metrics()
-            self.result["details"]["details_common"] = mm.counts
+            try:
+                mm = MatchMetrics(doc)
+                mm.get_metrics()
+                self.result["details"]["details_common"] = mm.counts
+            except KeyError:
+                self.result["details"]["details_common"] = {}
 
         # Fix dates
         for field in self.result:
