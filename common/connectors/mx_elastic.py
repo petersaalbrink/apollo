@@ -193,9 +193,9 @@ class ESClient(Elasticsearch):
         if with_id:
             debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
-        try:
+        if "size" in query[0]:
             size = query[0].pop("size")
-        except KeyError:
+        else:
             size = kwargs.pop("size", self.size)
         results = []
         for q in query:

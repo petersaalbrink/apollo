@@ -1,4 +1,5 @@
 from functools import lru_cache
+import logging
 from typing import Union
 
 from pycountry import countries
@@ -49,6 +50,9 @@ def parse(address: str, country: str = None):
         verify=False,
         text_only=True,
     )
+    if isinstance(response, list):
+        logging.warning("%s", response)
+        response = {}
     return response
 
 
