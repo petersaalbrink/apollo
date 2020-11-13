@@ -25,7 +25,7 @@ setup(
     url="https://bitbucket.org/matrixiangroup_dev/common_classes_mx",
     packages=find_packages(),
     extras_require=extras,
-    package_data={"": ["certificates/*.pem", "etc/*", "etc/.env"]},
+    package_data={"": ["customer_communication/*", "etc/*", "etc/.env"]},
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3.7",
