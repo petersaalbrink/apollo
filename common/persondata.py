@@ -1097,6 +1097,7 @@ class PersonData(_MatchQueries,
                 self.result["details"]["details_common"] = mm.counts
             except KeyError:
                 self.result["details"]["details_common"] = {}
+                raise
 
         # Fix dates
         for field in self.result:
@@ -1153,9 +1154,9 @@ class MatchMetrics:
             combinations(_extra_fields, r=r)
         ]
     }
-    count_types = ("fuzzy", "count")
+    count_types = ("fuzzy", "regular")
     initials = {
-        d["initials"]: d["frequency"] for d in
+        d["initials"]: d["proportion"] for d in
         ESClient(f"{collection}_initials_occurrence").find(
             {"query": {"match_all": {}}}, source_only=True, size=10_000)
     }
@@ -1194,7 +1195,7 @@ class MatchMetrics:
             raise MatchError(q) from e
 
     def get_count(self, count_type: str) -> int:
-        return self.data[count_type] - 1 if self.data else 0
+        return self.data[count_type]["count"] - 1 if self.data else 0
 
     def calc_prob(self):
         try:
@@ -1217,8 +1218,8 @@ class MatchMetrics:
                 for key in ("full", "first"):
                     self.counts[f"{key}_{count_type}"] = count_
         try:
-            self.counts["estimation"] = int(self.data.get("estimation", 1))
-        except AttributeError:
+            self.counts["estimation"] = int(self.data["regular"]["proportion"] * 17_461_543)
+        except (KeyError, TypeError):
             self.counts["estimation"] = 1
 
     def get_response(self):
