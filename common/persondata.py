@@ -1156,9 +1156,10 @@ class MatchMetrics:
     }
     count_types = ("fuzzy", "regular")
     initials = {
-        d["initials"]: d["proportion"] for d in
-        ESClient(f"{collection}_initials_occurrence").find(
-            {"query": {"match_all": {}}}, source_only=True, size=10_000)
+        d["initials"]: d["proportion"] for c in
+        ESClient(f"{collection}_initials_occurrence").scrollall(
+            {"query": {"match_all": {}}}, source_only=True, as_chunks=True)
+        for d in c
     }
 
     def __init__(self, doc):
