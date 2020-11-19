@@ -755,21 +755,21 @@ def pip_upgrade():
     run(["pip", "install", "--upgrade", *packages])
 
 
-def read_txt(filename: Union[Path, str], use_tqdm: bool = False):
+def read_txt(filename: Union[Path, str], use_tqdm: bool = False, encoding: str = "utf-8", **kwargs):
     """Reads any text file per line and yields stripped"""
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
         for line in tqdm(f, disable=False if use_tqdm else True):
             yield line.strip()
 
-def read_json(filename: Union[Path, str], use_tqdm: bool = False):
+def read_json(filename: Union[Path, str], use_tqdm: bool = False, encoding: str = "utf-8", **kwargs):
     """Reads and loads any JSON file and yields per object in list"""
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
         json_data = load(f)
     for line in tqdm(json_data, disable=False if use_tqdm else True):
         yield line
 
-def read_json_line(filename: Union[Path, str], use_tqdm: bool = False):
+def read_json_line(filename: Union[Path, str], use_tqdm: bool = False, encoding: str = "utf-8", **kwargs):
     """Reads and loads any JSON file that is delimited per line and yields per line"""
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
         for line in tqdm(f, disable=False if use_tqdm else True):
             yield loads(line)
