@@ -61,6 +61,7 @@ import pkg_resources
 from subprocess import run
 import sys
 from time import perf_counter, time
+from json import load, loads
 from typing import (
     Any,
     Callable,
@@ -752,3 +753,23 @@ def pip_upgrade():
         if not dist.project_name.startswith("-")
     ]
     run(["pip", "install", "--upgrade", *packages])
+
+
+def read_txt(filename: Union[Path, str], use_tqdm: bool = True):
+    """Reads any text file per line and yields stripped"""
+    with open(filename, "r", encoding="utf-8") as f:
+        for line in tqdm(f, disable=False if use_tqdm else True):
+            yield line.strip()
+
+def read_json(filename: Union[Path, str], use_tqdm: bool = False):
+    """Reads and loads any JSON file and yields per object in list"""
+    with open(filename, "r", encoding="utf-8") as f:
+        json_data = load(f)
+    for line in tqdm(json_data, disable=False if use_tqdm else True):
+        yield line
+
+def read_json_line(filename: Union[Path, str], use_tqdm: bool = False):
+    """Reads and loads any JSON file that is delimited per line and yields per line"""
+    with open(filename, "r", encoding="utf-8") as f:
+        for line in tqdm(f, disable=False if use_tqdm else True):
+            yield loads(line)

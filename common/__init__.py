@@ -65,6 +65,9 @@ __mapping__ = {
         "timer",
         "tqdm",
         "trange",
+        "read_txt",
+        "read_json",
+        "read_json_line"
     ],
     "parsers": [
         "Checks",
