@@ -755,7 +755,7 @@ def pip_upgrade():
     run(["pip", "install", "--upgrade", *packages])
 
 
-def read_txt(filename: Union[Path, str], use_tqdm: bool = True):
+def read_txt(filename: Union[Path, str], use_tqdm: bool = False):
     """Reads any text file per line and yields stripped"""
     with open(filename, "r", encoding="utf-8") as f:
         for line in tqdm(f, disable=False if use_tqdm else True):
