@@ -2,11 +2,6 @@ from functools import lru_cache, partial
 from itertools import combinations
 from typing import Any, Dict, Tuple
 
-try:
-    from math import prod
-except ImportError:
-    from .etc.prod import prod
-
 from .connectors.mx_elastic import ESClient
 from .exceptions import PersonsError
 

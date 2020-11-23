@@ -23,16 +23,14 @@ Exceptions::
 
 from collections import deque
 from datetime import datetime
+from math import ceil
 import re
 from typing import Any, Deque, Dict, List, Optional, Set, Union
 
 try:  # python3.8
     from functools import cached_property
-    from math import ceil, prod
 except ImportError:  # python3.7
     from cached_property import cached_property
-    from math import ceil
-    from .etc.prod import prod
 
 from dateutil.parser import parse as dateparse
 from text_unidecode import unidecode
