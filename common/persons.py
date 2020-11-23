@@ -211,7 +211,10 @@ class Person:
 
     def as_dict(self) -> Dict[str, Any]:
         """Create a dictionary from all attributes (similar to __dict__)."""
-        return {attr: getattr(self, attr) for attr in self.__slots__}
+        return {
+            **{attr: getattr(self, attr) for attr in self.__slots__},
+            **self.address.as_dict(),
+        }
 
     @classmethod
     def from_address(cls, address: "Address") -> "Person":
@@ -318,6 +321,10 @@ class Address:
     @property
     def address_id(self) -> str:
         return f"{self.postcode or ''} {self.housenumber or ''} {self.housenumber_ext or ''}".strip()
+
+    def as_dict(self) -> Dict[str, Any]:
+        """Create a dictionary from all attributes (similar to __dict__)."""
+        return {attr: getattr(self, attr) for attr in self.__slots__}
 
     def upgrade(self) -> Person:
         """Upgrade an `Address` to a `Person`."""
