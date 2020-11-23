@@ -49,7 +49,7 @@ class ParseError(CommonError):
     """Exception for data parsers."""
 
 
-class PersonDataError(CommonError):
+class PersonsError(CommonError):
     """Exception for common.persondata"""
 
 
