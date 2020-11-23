@@ -228,30 +228,6 @@ class Person:
         )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Person":
-        """Create a `Person` from a dictionary.
-
-        Assuming all keys match with attributes.
-        """
-        return cls(
-            lastname=d.get("lastname"),
-            initials=d.get("initials"),
-            gender=d.get("gender"),
-            postcode=d.get("postcode"),
-            housenumber=d.get("housenumber"),
-            housenumber_ext=d.get("housenumber_ext"),
-            street=d.get("street"),
-            city=d.get("city"),
-            country=d.get("country", "NLD"),
-            mobile=d.get("mobile"),
-            number=d.get("number"),
-            date_of_birth=d.get("date_of_birth"),
-            email_address=d.get("email_address"),
-            date=d.get("date"),
-            source=d.get("source"),
-        )
-
-    @classmethod
     def from_doc(cls, doc: dict) -> "Person":
         """Create a `Person` from an Elasticsearch response."""
         if "hits" in doc:
