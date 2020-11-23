@@ -130,7 +130,7 @@ class Person:
         self.date = date
         self.source = source
 
-        Cleaner().clean(self)
+        Cleaner(self)
         self.match: Optional[Match] = None
         self.statistics = Statistics(self)
 
@@ -419,8 +419,11 @@ class Cleaner:
     re_ln1 = re.compile(r"-")
     re_ln2 = re.compile(r"[^\sA-Za-z\u00C0-\u017F]")
 
-    def clean(self, person: Person):
+    def __init__(self, person: Person):
         self.person = person
+        self.clean()
+
+    def clean(self):
         self.check_country()
         self.clean_dates()
         if Constant.CLEAN_EMAIL:
