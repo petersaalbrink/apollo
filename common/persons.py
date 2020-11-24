@@ -22,6 +22,20 @@ Exceptions::
     PersonsError
 """
 
+__all__ = (
+    "Address",
+    "Match",
+    "Names",
+    "Person",
+    "Query",
+    "Statistics",
+    "set_alpha",
+    "set_clean_email",
+    "set_population_size",
+    "set_search_size",
+    "set_years_ago",
+)
+
 from collections import deque
 from datetime import datetime, timedelta
 from math import ceil
