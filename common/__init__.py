@@ -94,6 +94,7 @@ __mapping__ = {
         "set_clean_email",
         "set_population_size",
         "set_search_size",
+        "set_years_ago",
     ],
     "platform": [
         "FileTransfer",

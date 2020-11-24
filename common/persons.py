@@ -14,6 +14,7 @@ Modifiers (with defaults)::
     set_clean_email(clean_email=True)
     set_population_size(oldest_client_record_in_years=20)
     set_search_size(size=10)
+    set_years_ago(years_ago=3)
 
 Exceptions::
     MatchError
@@ -22,7 +23,7 @@ Exceptions::
 """
 
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import ceil
 import re
 from typing import Any, Deque, Dict, List, Optional, Set, Union
@@ -60,13 +61,20 @@ def set_search_size(size: int = 10) -> bool:
     return True
 
 
+def set_years_ago(years_ago: int = 3) -> bool:
+    Constant.YEARS_AGO = Constant.TODAY - timedelta(days=365.25 * years_ago)
+    return True
+
+
 class Constant:
     CLEAN_EMAIL = True
     SEARCH_SIZE = 10
     HIGH_SCORE = 1
     LOW_SCORE = 4
     YEAR_STEP = 3
-    CURR_YEAR = datetime.now().year
+    TODAY = datetime.now()
+    CURR_YEAR = TODAY.year
+    YEARS_AGO = TODAY - timedelta(days=365.25 * 3)
     ND_INDEX = "cdqc.names_data"
     PD_INDEX = "cdqc.person_data"
     DATE_FORMAT = "%Y-%m-%d"
@@ -184,7 +192,8 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
-        if self.date and other.date and self.date < other.date:
+        if ((self.date and self.date < other.date)
+                or (not self.date and Constant.YEARS_AGO < other.date)):
             # Overwrite if other is more recent
             for attr in other.__slots__:
                 if getattr(other, attr):
