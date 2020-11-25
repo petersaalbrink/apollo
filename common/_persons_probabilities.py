@@ -86,9 +86,8 @@ def proportion_lastname(lastname: str) -> Dict[str, float]:
 
 @lru_cache()
 def proportion_initial(initial: str) -> float:
-    count = es_initials({"query": {"term": {"initials.keyword": initial}}})
     try:
-        return count["proportion"]
+        return es_initials({"query": {"term": {"initials.keyword": initial}}})["proportion"]
     except TypeError:
         return Constant.max_proportion_initials
 
@@ -97,9 +96,10 @@ def proportion_initial(initial: str) -> float:
 def get_proportions_lastname(lastname: str) -> Dict[str, Dict[str, float]]:
     """Get counts for all parts of the lastname."""
     if lastname:
-        names = set(lastname.split())
-        names.add(lastname)
-        return {name: proportion_lastname(name) for name in names}
+        return {
+            name: proportion_lastname(name) for name in
+            sorted({lastname, *lastname.split()}, key=len, reverse=True)
+        }
     else:
         return {"": {"": Constant.max_proportion_lastname}}
 
@@ -119,13 +119,14 @@ def estimated_people_with_lastname(lastname: str):
 
 @lru_cache()
 def base_calculations(lastname: str, initials: str) -> Dict[Tuple[str, ...], float]:
-    lastname_proportions = get_proportions_lastname(lastname)
-    initials_proportions = get_proportions_initials(initials)
     return {
         (name, initial, situation): Constant.population_size * l_proportion * i_proportion
-        for name, l_proportions in lastname_proportions.items()
+        for name, l_proportions in get_proportions_lastname(lastname).items()
         for situation, l_proportion in l_proportions.items()
-        for initial, i_proportion in initials_proportions.items()
+        for initial, i_proportion in {
+            **get_proportions_initials(initials),
+            **get_proportions_initials(""),
+        }.items()
     }
 
 
@@ -161,9 +162,8 @@ def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> Dic
     # add all possible combinations as OR statements.
 
     Example:
-    print(extra_fields_calculation("Saalbrink", "PP", mobile=True, date_of_birth=True, address=True))
+    extra_fields = extra_fields_calculation("Saalbrink", "PP", mobile=True, date_of_birth=True, address=True)
     """
-    lastname = lastname or None
     initials = initials or ""
     try:
         bases = base_calculations(lastname, initials)
