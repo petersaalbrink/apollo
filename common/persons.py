@@ -666,16 +666,16 @@ class Query:
     def get_lastname_clause(lastname: str, fuzzy: str) -> Optional[dict]:
         if lastname:
             fuzzy = "AUTO" if fuzzy == "fuzzy" else 0
-            clause = [
-                {"query": lastname, "fuzziness": fuzzy},
-            ]
-            if "ij" in lastname:
-                clause.append({"query": lastname.replace("ij", "y"), "fuzziness": fuzzy})
-            elif "y" in lastname:
-                clause.append({"query": lastname.replace("y", "ij"), "fuzziness": fuzzy})
-            clause = [{"match": {"details.lastname": q}} for q in clause]
-            clause.append({"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}})
-            return {"bool": {"should": clause, "minimum_should_match": 1}}
+            return {"bool": {"should": [
+                *[{"match": {"details.lastname.keyword": q}} for q in (
+                    {"query": lastname, "fuzziness": fuzzy},
+                    {"query": lastname.replace("ij", "y"), "fuzziness": fuzzy}
+                    if "ij" in lastname else None,
+                    {"query": lastname.replace("y", "ij"), "fuzziness": fuzzy}
+                    if "y" in lastname else None,
+                ) if q],
+                {"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}},
+            ], "minimum_should_match": 1}}
 
     @lru_cache()
     def get_initials_clause(self, initials: str) -> Optional[dict]:
