@@ -22,11 +22,16 @@ Exceptions::
     PersonsError
 """
 
+from __future__ import annotations
+
 __all__ = (
     "Address",
     "Match",
+    "MatchError",
     "Names",
+    "NoMatch",
     "Person",
+    "PersonsError",
     "Query",
     "Statistics",
     "set_alpha",
@@ -37,10 +42,12 @@ __all__ = (
 )
 
 from collections import deque
+from collections.abc import Iterator
 from datetime import datetime, timedelta
+from functools import lru_cache
 from math import ceil
 import re
-from typing import Any, Deque, Dict, List, Optional, Set, Union
+from typing import Any, Optional, Union
 
 try:  # python3.8
     from functools import cached_property
@@ -114,6 +121,10 @@ class Person:
 
     def __init__(
             self,
+            ln: str = None,
+            it: str = None,
+            ad: "Address" = None,
+            *,
             lastname: str = None,
             initials: str = None,
             gender: str = None,
@@ -152,12 +163,26 @@ class Person:
         self.date = date
         self.source = source
 
+        if ln:
+            self.lastname = ln
+            self.initials = it
+            self.address = ad
+
         Cleaner(self)
         self.match: Optional[Match] = None
         self.statistics = Statistics(self)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.lastname!r}, {self.initials!r}, {self.address!r})"
+
+    def __iter__(self) -> Iterator[tuple[str, Any]]:
+        for attr in (
+                *Constant.NAME,
+                *Constant.OTHER,
+                *Constant.META,
+        ):
+            yield attr, getattr(self, attr)
+        yield from self.address
 
     def __eq__(self, other: "Person") -> set:
         """Compare two `Person` objects.
@@ -232,7 +257,7 @@ class Person:
                 setattr(self, attr, getattr(other, attr))
         return self
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         """Create a dictionary from all attributes (similar to __dict__)."""
         return {
             **{attr: getattr(self, attr) for attr in self.__slots__},
@@ -321,7 +346,7 @@ class Address:
     def address_id(self) -> str:
         return f"{self.postcode or ''} {self.housenumber or ''} {self.housenumber_ext or ''}".strip()
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         """Create a dictionary from all attributes (similar to __dict__)."""
         return {attr: getattr(self, attr) for attr in self.__slots__}
 
@@ -380,7 +405,7 @@ class Names:
         self.es = ESClient(Constant.ND_INDEX, index_exists=True)
 
     @cached_property
-    def affixes(self) -> Set[str]:
+    def affixes(self) -> set[str]:
         """Load a set with affixes.
 
         The output can be used to clean last name data.
@@ -390,7 +415,7 @@ class Names:
         )}
 
     @cached_property
-    def first_names(self) -> Dict[str, str]:
+    def first_names(self) -> dict[str, str]:
         """Load a dictionary with first names and gender occurrence.
 
         This function returns if any given Dutch first name has more
@@ -404,7 +429,7 @@ class Names:
                     {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
 
     @cached_property
-    def titles(self) -> Set[str]:
+    def titles(self) -> set[str]:
         """Load a set with titles.
 
         The output can be used to clean last name data.
@@ -414,7 +439,7 @@ class Names:
                        {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
 
     @cached_property
-    def surnames(self) -> Dict[str, int]:
+    def surnames(self) -> dict[str, int]:
         """Load a dictionary with surnames and their numbers.
 
         The output can be used for data and matching quality calculations.
@@ -456,7 +481,7 @@ class Cleaner:
         self.clean_hne()
         self.clean_initials()
         self.clean_lastname()
-        self.clean_pc()
+        self.clean_postcode()
         self.clean_phones()
 
     def check_country(self):
@@ -538,7 +563,7 @@ class Cleaner:
             if self.person.lastname and self.person.lastname.split()[-1].lower() in Constant.NAMES.titles:
                 self.person.lastname = " ".join(self.person.lastname.split()[:-1])
 
-    def clean_pc(self):
+    def clean_postcode(self):
         """Clean postal code."""
         if isinstance(self.person.address.postcode, str):
             self.person.address.postcode = self.person.address.postcode.replace(" ", "").upper()
@@ -729,11 +754,11 @@ class Match:
 
     def __init__(self, matchable: Matchable, query_type: str = "person_query"):
         self._composite: Optional[Person] = None
-        self._matches: Optional[Deque[Person]] = None
-        self._match_keys: Set[str] = set()
+        self._matches: Optional[deque[Person]] = None
+        self._match_keys: set[str] = set()
         self._match_score: Optional[str] = None
         self._query_type = query_type
-        self._search_response: Optional[List[dict]] = None
+        self._search_response: Optional[list[dict]] = None
         if isinstance(matchable, Person):
             self.person = matchable
         elif isinstance(matchable, Address):
@@ -741,7 +766,7 @@ class Match:
         self.query = Query(matchable)
 
     @property
-    def search_response(self) -> List[dict]:
+    def search_response(self) -> list[dict]:
         if not self._search_response:
             self._search_response = ESClient(
                 Constant.PD_INDEX,
@@ -756,7 +781,7 @@ class Match:
         return self._search_response
 
     @property
-    def matches(self) -> Deque[Person]:
+    def matches(self) -> deque[Person]:
         if not self._matches:
             self._matches = deque(
                 Person.from_doc(doc)
@@ -765,7 +790,7 @@ class Match:
         return self._matches
 
     @property
-    def match_keys(self) -> Set[str]:
+    def match_keys(self) -> set[str]:
         if not self._match_keys:
             self._match_keys |= self.person == self.composite
             if not self._match_keys:
