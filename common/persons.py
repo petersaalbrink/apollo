@@ -600,6 +600,19 @@ class Cleaner:
 
 class Query:
     __slots__ = (
+        "_address",
+        "_address_query",
+        "_date_of_birth",
+        "_email_address",
+        "_gender",
+        "_initials",
+        "_lastname",
+        "_mobile",
+        "_number",
+        "_person_query",
+        "_postcode",
+        "_query",
+        "_repr",
         "person",
     )
     clauses = (
@@ -616,6 +629,9 @@ class Query:
     sort = [{"date": "desc"}, {"_score": "desc"}]
 
     def __init__(self, matchable: Matchable):
+        self._address = self._address_query = self._date_of_birth = self._email_address \
+            = self._gender = self._initials = self._lastname = self._mobile = self._number \
+            = self._person_query = self._postcode = self._query = self._repr = None
         if isinstance(matchable, Person):
             self.person = matchable
         elif isinstance(matchable, Address):
@@ -623,25 +639,30 @@ class Query:
 
     @property
     def lastname_clause(self) -> dict:
-        clause = [
-            {"query": self.person.lastname, "fuzziness": "AUTO"},
-        ]
-        if "ij" in self.person.lastname:
-            clause.append({"query": self.person.lastname.replace("ij", "y"), "fuzziness": "AUTO"})
-        elif "y" in self.person.lastname:
-            clause.append({"query": self.person.lastname.replace("y", "ij"), "fuzziness": "AUTO"})
-        clause = [{"match": {"details.lastname": q}} for q in clause]
-        clause.append({"match": {"details.lastname.keyword": {"query": self.person.lastname, "boost": 2}}})
-        return {"bool": {"should": clause, "minimum_should_match": 1}}
+        if not self._lastname:
+            clause = [
+                {"query": self.person.lastname, "fuzziness": "AUTO"},
+            ]
+            if "ij" in self.person.lastname:
+                clause.append({"query": self.person.lastname.replace("ij", "y"), "fuzziness": "AUTO"})
+            elif "y" in self.person.lastname:
+                clause.append({"query": self.person.lastname.replace("y", "ij"), "fuzziness": "AUTO"})
+            clause = [{"match": {"details.lastname": q}} for q in clause]
+            clause.append({"match": {"details.lastname.keyword": {"query": self.person.lastname, "boost": 2}}})
+            self._lastname = {"bool": {"should": clause, "minimum_should_match": 1}}
+        return self._lastname
 
     @property
     def initials_clause(self) -> dict:
-        return {"bool": {"should": [
-            {"term": {"details.initials.keyword": self.person.initials[:i]}}
-            for i in range(1, len(self.person.initials) + 1)
-        ], "minimum_should_match": 1, "boost": 2}}
+        if not self._initials:
+            self._initials = {"bool": {"should": [
+                {"term": {"details.initials.keyword": self.person.initials[:i]}}
+                for i in range(1, len(self.person.initials) + 1)
+            ], "minimum_should_match": 1, "boost": 2}}
+        return self._initials
 
     @staticmethod
+    @lru_cache()
     def get_lastname_clause(lastname: str, fuzzy: str) -> Optional[dict]:
         if lastname:
             fuzzy = "AUTO" if fuzzy == "fuzzy" else 0
@@ -656,6 +677,7 @@ class Query:
             clause.append({"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}})
             return {"bool": {"should": clause, "minimum_should_match": 1}}
 
+    @lru_cache()
     def get_initials_clause(self, initials: str) -> Optional[dict]:
         if initials:
             if len(initials) == len(self.person.initials):
@@ -671,78 +693,100 @@ class Query:
 
     @property
     def gender_clause(self) -> dict:
-        return {"bool": {"must_not": {"term": {
-            "details.gender.keyword": "M" if self.person.gender == "V" else "V"
-        }}}}
+        if not self._gender:
+            self._gender = {"bool": {"must_not": {"term": {
+                "details.gender.keyword": "M" if self.person.gender == "V" else "V"
+            }}}}
+        return self._gender
 
     @property
     def date_of_birth_clause(self) -> dict:
-        return {"bool": {"should": [
-            {"term": {"birth.date": self.person.date_of_birth}},
-            {"term": {"birth.date": Constant.DEFAULT_DATE}},
-        ], "minimum_should_match": 1}}
+        if not self._date_of_birth:
+            self._date_of_birth = {"bool": {"should": [
+                {"term": {"birth.date": self.person.date_of_birth}},
+                {"term": {"birth.date": Constant.DEFAULT_DATE}},
+            ], "minimum_should_match": 1}}
+        return self._date_of_birth
 
     @property
     def address_clause(self) -> dict:
-        return {"bool": {"should": [
-            {"match": {"address.address_id.keyword": {
-                "query": self.person.address.address_id,
-                "boost": 2}}},
-            {"bool": {"must": [
-                {"term": {"address.postalCode.keyword": self.person.address.postcode}},
-                {"term": {"address.houseNumber": self.person.address.housenumber}},
-            ]}},
-        ], "minimum_should_match": 1}}
+        if not self._address:
+            self._address = {"bool": {"should": [
+                {"match": {"address.address_id.keyword": {
+                    "query": self.person.address.address_id,
+                    "boost": 2}}},
+                {"bool": {"must": [
+                    {"term": {"address.postalCode.keyword": self.person.address.postcode}},
+                    {"term": {"address.houseNumber": self.person.address.housenumber}},
+                ]}},
+            ], "minimum_should_match": 1}}
+        return self._address
 
     @property
     def postcode_clause(self) -> dict:
-        return {"term": {"address.postalCode.keyword": self.person.address.postcode}}
+        if not self._postcode:
+            self._postcode = {"term": {"address.postalCode.keyword": self.person.address.postcode}}
+        return self._postcode
 
     @property
     def email_address_clause(self) -> dict:
-        return {"term": {"contact.email": self.person.email_address}}
+        if not self._email_address:
+            self._email_address = {"term": {"contact.email": self.person.email_address}}
+        return self._email_address
 
     @property
     def mobile_clause(self) -> dict:
-        return {"term": {"phoneNumber.mobile": self.person.mobile.replace("+31", "")}}
+        if not self._mobile:
+            self._mobile = {"term": {"phoneNumber.mobile": self.person.mobile.replace("+31", "")}}
+        return self._mobile
 
     @property
     def number_clause(self) -> dict:
-        return {"term": {"phoneNumber.number": self.person.number.replace("+31", "")}}
+        if not self._number:
+            self._number = {"term": {"phoneNumber.number": self.person.number.replace("+31", "")}}
+        return self._number
 
     @property
     def address_query(self) -> dict:
-        return {"query": {"match": {
-            "address.address_id.keyword": self.person.address.address_id,
-        }}, "sort": self.sort}
+        if not self._address_query:
+            self._address_query = {"query": {"match": {
+                "address.address_id.keyword": self.person.address.address_id,
+            }}, "sort": self.sort}
+        return self._address_query
 
     @property
     def person_query(self) -> dict:
-        return {"query": {"bool": {"should": [
-            {"bool": {"must": [
-                clause for clause in (
-                    self.get_lastname_clause(lastname, situation),
-                    self.get_initials_clause(initials),
-                    *(getattr(self, f"{clause}_clause")
-                      for clause in extra_fields),
-                ) if clause
-            ]}}
-            for lastname, initials, situation, *extra_fields in self.person.statistics.extra_fields
-        ]}}, "sort": self.sort}
+        if not self._person_query:
+            self._person_query = {"query": {"bool": {"should": [
+                {"bool": {"must": [
+                    clause for clause in (
+                        self.get_lastname_clause(lastname, situation),
+                        self.get_initials_clause(initials),
+                        *(getattr(self, f"{clause}_clause")
+                          for clause in extra_fields),
+                    ) if clause
+                ]}}
+                for lastname, initials, situation, *extra_fields in self.person.statistics.extra_fields
+            ]}}, "sort": self.sort}
+        return self._person_query
 
     @property
     def query(self) -> dict:
-        return {"query": {"bool": {"should": [
-            getattr(self, f"{clause}_clause")
-            for clause in self.clauses
-            if getattr(self.person, clause)
-        ]}}, "sort": self.sort}
+        if not self._query:
+            self._query = {"query": {"bool": {"should": [
+                getattr(self, f"{clause}_clause")
+                for clause in self.clauses
+                if getattr(self.person, clause)
+            ]}}, "sort": self.sort}
+        return self._query
 
     def __repr__(self) -> str:
-        if self.person.lastname or self.person.initials:
-            return f"{self.person_query}"
-        else:
-            return f"{self.address_query}"
+        if not self._repr:
+            if self.person.lastname or self.person.initials:
+                self._repr = f"{self.person_query}"
+            else:
+                self._repr = f"{self.address_query}"
+        return self._repr
 
 
 def score(year: int) -> str:
