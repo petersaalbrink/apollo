@@ -465,7 +465,7 @@ Constant.NAMES = Names()
 
 class Cleaner:
     """Cleaner for Data objects."""
-    affixes = ("Van ", "Het ", "De ")
+    affixes = ("Van ", "Het ", "De ", "Der ", "Den ", "Op ", "'t ", "Vd ")
     countries = {"nederland", "netherlands", "nl", "nld"}
     genders = {"MAN": "M", "VROUW": "V"}
     date_fields = ("date", "date_of_birth")
@@ -550,8 +550,8 @@ class Cleaner:
     def clean_hne(self):
         """Clean house number extension."""
         if isinstance(self.person.address.housenumber_ext, str):
-            self.person.address.housenumber_ext = self.re_hne1.sub("", self.person.address.housenumber_ext.upper())
-            self.person.address.housenumber_ext = self.re_hne2.sub("", self.person.address.housenumber_ext)
+            self.person.address.housenumber_ext = self.re_hne2.sub(
+                "", self.re_hne1.sub("", self.person.address.housenumber_ext.upper()))
 
     def clean_initials(self):
         """Clean initials."""
@@ -564,15 +564,15 @@ class Cleaner:
         Keep only letters; hyphens become spaces.
         Remove all special characters and titles.
         """
-        if isinstance(self.person.lastname, str):
-            self.person.lastname = self.person.lastname.title()
+        value = self.person.lastname
+        if isinstance(value, str):
+            value = value.title()
             for o in self.affixes:
-                self.person.lastname = self.person.lastname.replace(o, "")
-            self.person.lastname = self.re_ln1.sub(" ", self.person.lastname)
-            self.person.lastname = self.re_ln2.sub("", self.person.lastname)
-            self.person.lastname = unidecode(self.person.lastname.strip())
-            if self.person.lastname and self.person.lastname.split()[-1].lower() in Constant.NAMES.titles:
-                self.person.lastname = " ".join(self.person.lastname.split()[:-1])
+                value = value.replace(o, "")
+            value = unidecode(self.re_ln2.sub("", self.re_ln1.sub(" ", value)).strip())
+            if value and value.split()[-1].lower() in Constant.NAMES.titles:
+                value = " ".join(value.split()[:-1])
+            self.person.lastname = value
 
     def clean_postcode(self):
         """Clean postal code."""
