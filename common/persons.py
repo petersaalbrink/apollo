@@ -89,7 +89,7 @@ def set_years_ago(years_ago: int = 3) -> bool:
 
 class Constant:
     CLEAN_EMAIL = True
-    SEARCH_SIZE = 10
+    SEARCH_SIZE = 10_000
     HIGH_SCORE = 1
     LOW_SCORE = 4
     YEAR_STEP = 3
@@ -774,7 +774,7 @@ class Match:
             ).search(
                 index=Constant.PD_INDEX,
                 body=getattr(self.query, self._query_type),
-                size=Constant.SEARCH_SIZE if self._query_type == "person_query" else 1,
+                size=Constant.SEARCH_SIZE,
             )["hits"]["hits"]
             if not self._search_response:
                 raise NoMatch
