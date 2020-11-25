@@ -231,10 +231,17 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
+        if not other.date:
+            other.date = Constant.YEARS_AGO
         if ((self.date and self.date < other.date)
                 or (not self.date and Constant.YEARS_AGO < other.date)):
             # Overwrite if other is more recent
-            for attr in other.__slots__:
+            for attr in (
+                    *Constant.NAME,
+                    *Constant.OTHER,
+                    *Constant.META,
+                    "address",
+            ):
                 if getattr(other, attr):
                     setattr(self, attr, getattr(other, attr))
         else:
@@ -341,6 +348,10 @@ class Address:
             return f"{type(self).__name__}({self.postcode!r}, {self.housenumber!r}, {self.housenumber_ext!r})"
         else:
             return f"{type(self).__name__}({self.postcode!r}, {self.housenumber!r})"
+
+    def __iter__(self) -> Iterator[tuple[str, Any]]:
+        for attr in Constant.ADDRESS:
+            yield attr, getattr(self, attr)
 
     @property
     def address_id(self) -> str:
