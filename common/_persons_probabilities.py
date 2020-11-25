@@ -79,7 +79,10 @@ def proportion_lastname(lastname: str) -> Dict[str, float]:
         return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
     count = es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
     try:
-        return {"regular": count["regular"]["proportion"], "fuzzy": count["fuzzy"]["proportion"]}
+        return {
+            "regular": count["regular"]["proportion"] or Constant.mean_proportion_lastname,
+            "fuzzy": count["fuzzy"]["proportion"] or Constant.mean_proportion_lastname,
+        }
     except TypeError:
         return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
 
@@ -87,7 +90,10 @@ def proportion_lastname(lastname: str) -> Dict[str, float]:
 @lru_cache()
 def proportion_initial(initial: str) -> float:
     try:
-        return es_initials({"query": {"term": {"initials.keyword": initial}}})["proportion"]
+        return (
+            es_initials({"query": {"term": {"initials.keyword": initial}}})["proportion"]
+            or Constant.max_proportion_initials
+        )
     except TypeError:
         return Constant.max_proportion_initials
 

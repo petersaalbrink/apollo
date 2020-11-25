@@ -189,7 +189,7 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
-        if self.lastname and self.initials:
+        if self.lastname and self.initials and other.lastname and other.initials:
             name = (
                     f"{self.initials} {self.lastname}" == f"{other.initials} {other.lastname}"
                     or ((self.initials in other.initials or other.initials in self.initials)
