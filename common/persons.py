@@ -33,6 +33,7 @@ __all__ = (
     "NoMatch",
     "Person",
     "PersonsError",
+    "Re",
     "Query",
     "Statistics",
     "set_alpha",
@@ -462,20 +463,26 @@ class Names:
 Constant.NAMES = Names()
 
 
+class Re:
+    initials = re.compile(r"[^A-Za-z\u00C0-\u017F]")
+    hn = re.compile(r"[^0-9]")
+    hne1 = re.compile(r"[^A-Za-z0-9\u00C0-\u017F]")
+    hne2 = re.compile(r"\D+(?=\d)")
+    name = re.compile(r"[^\sA-Za-z\u00C0-\u017F]")
+    single_char = re.compile(r"(?<!\S)\S(?!\S)")
+    hyphen = re.compile(r"-")
+    firstname = re.compile(r"(^[A-Za-z\u00C0-\u017F-]+)")
+    whitespace = re.compile(r"\s{2,}")
+
+
 class Cleaner:
     """Cleaner for Data objects."""
-    affixes = ("Van ", "Het ", "De ", "Der ", "Den ", "Op ", "'t ", "Vd ")
+    affixes = [f"{aff.title()} " for aff in Constant.NAMES.affixes | Constant.NAMES.titles]
     countries = {"nederland", "netherlands", "nl", "nld"}
     genders = {"MAN": "M", "VROUW": "V"}
     date_fields = ("date", "date_of_birth")
     phone_fields = ("number", "mobile")
     person: Optional[Person] = None
-    re_hn = re.compile(r"[^0-9]")
-    re_hne1 = re.compile(r"[^A-Za-z0-9\u00C0-\u017F]")
-    re_hne2 = re.compile(r"\D+(?=\d)")
-    re_initials = re.compile(r"[^A-Za-z\u00C0-\u017F]")
-    re_ln1 = re.compile(r"-")
-    re_ln2 = re.compile(r"[^\sA-Za-z\u00C0-\u017F]")
 
     def __init__(self, person: Person):
         self.person = person
@@ -540,7 +547,7 @@ class Cleaner:
             for d in ("/", "-"):
                 if d in self.person.address.housenumber:
                     self.person.address.housenumber = self.person.address.housenumber.split(d)[0]
-            self.person.address.housenumber = self.re_hn.sub("", self.person.address.housenumber)
+            self.person.address.housenumber = Re.hn.sub("", self.person.address.housenumber)
         try:
             self.person.address.housenumber = int(float(self.person.address.housenumber))
         except (TypeError, ValueError):
@@ -549,13 +556,13 @@ class Cleaner:
     def clean_hne(self):
         """Clean house number extension."""
         if isinstance(self.person.address.housenumber_ext, str):
-            self.person.address.housenumber_ext = self.re_hne2.sub(
-                "", self.re_hne1.sub("", self.person.address.housenumber_ext.upper()))
+            self.person.address.housenumber_ext = Re.hne2.sub(
+                "", Re.hne1.sub("", self.person.address.housenumber_ext.upper()))
 
     def clean_initials(self):
         """Clean initials."""
         if isinstance(self.person.initials, str):
-            self.person.initials = self.re_initials.sub("", self.person.initials.upper())
+            self.person.initials = Re.initials.sub("", self.person.initials.upper())
 
     def clean_lastname(self):
         """Clean last name.
@@ -563,15 +570,16 @@ class Cleaner:
         Keep only letters; hyphens become spaces.
         Remove all special characters and titles.
         """
-        value = self.person.lastname
-        if isinstance(value, str):
-            value = value.title()
+        lastname = self.person.lastname
+        if isinstance(lastname, str):
+            lastname = lastname.title()
             for o in self.affixes:
-                value = value.replace(o, "")
-            value = unidecode(self.re_ln2.sub("", self.re_ln1.sub(" ", value)).strip())
-            if value and value.split()[-1].lower() in Constant.NAMES.titles:
-                value = " ".join(value.split()[:-1])
-            self.person.lastname = value
+                lastname = lastname.replace(o, "")
+                if " " not in lastname:
+                    break
+            self.person.lastname = unidecode(Re.single_char.sub(
+                "", Re.whitespace.sub(" ", Re.name.sub("", Re.hyphen.sub(" ", lastname)))
+            ).strip())
 
     def clean_postcode(self):
         """Clean postal code."""
