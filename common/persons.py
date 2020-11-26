@@ -41,7 +41,6 @@ __all__ = (
     "set_years_ago",
 )
 
-from collections import deque
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -106,6 +105,9 @@ class Constant:
     OTHER = ("mobile", "number", "date_of_birth", "email_address")
     META = ("date", "source")
     MATCH_KEYS = ("name", "address", "gender", "mobile", "number", "date_of_birth", "email_address")
+    PERSON_META = (*NAME, *OTHER, *META)
+    COPY_FAMILY = ("address", "number", "lastname", "middlename")
+    COPY_PERSON = (*COPY_FAMILY, "initials", "gender", "firstname", "mobile", "date_of_birth", "email_address")
 
 
 class Person:
@@ -176,11 +178,7 @@ class Person:
         return f"{type(self).__name__}({self.lastname!r}, {self.initials!r}, {self.address!r})"
 
     def __iter__(self) -> Iterator[tuple[str, Any]]:
-        for attr in (
-                *Constant.NAME,
-                *Constant.OTHER,
-                *Constant.META,
-        ):
+        for attr in Constant.PERSON_META:
             yield attr, getattr(self, attr)
         yield from self.address
 
@@ -191,8 +189,8 @@ class Person:
         """
         if self.lastname and self.initials and other.lastname and other.initials:
             name = (
-                    f"{self.initials} {self.lastname}" == f"{other.initials} {other.lastname}"
-                    or ((self.initials in other.initials or other.initials in self.initials)
+                    (self.initials, self.lastname) == (other.initials, other.lastname)
+                    or ((self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
                         and (self.lastname in other.lastname or other.lastname in self.lastname))
             )
         elif self.lastname:
@@ -204,12 +202,12 @@ class Person:
 
         if self.address.postcode and self.address.housenumber and self.address.housenumber_ext:
             address = (
-                    f"{self.address.postcode} {self.address.housenumber} {self.address.housenumber_ext}"
-                    == f"{other.address.postcode} {other.address.housenumber} {other.address.housenumber_ext}"
+                    (self.address.postcode, self.address.housenumber, self.address.housenumber_ext)
+                    == (other.address.postcode, other.address.housenumber, other.address.housenumber_ext)
             )
         elif self.address.postcode and self.address.housenumber:
-            address = (f"{self.address.postcode} {self.address.housenumber}"
-                       == f"{other.address.postcode} {other.address.housenumber}")
+            address = ((self.address.postcode, self.address.housenumber)
+                       == (other.address.postcode, other.address.housenumber))
         elif self.address.postcode:
             address = self.address.postcode == other.address.postcode
         elif self.address.housenumber:
@@ -231,37 +229,38 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
-        if not other.date:
-            other.date = Constant.YEARS_AGO
-        if ((self.date and self.date < other.date)
-                or (not self.date and Constant.YEARS_AGO < other.date)):
-            # Overwrite if other is more recent
-            for attr in (
-                    *Constant.NAME,
-                    *Constant.OTHER,
-                    *Constant.META,
-                    "address",
-            ):
+
+        # Because of our probability calculation, we will only make two types of matches
+        # The difference between the two is similarity of initials
+        # This is enough to distinguish a person match from a family match
+        person_match = (
+                self.initials == other.initials
+                or self.initials.startswith(other.initials)
+                or other.initials.startswith(self.initials)
+        )
+        # Based on this, we only copy certain fields if there's a family match
+        copy = Constant.COPY_PERSON if person_match else Constant.COPY_FAMILY
+
+        if ((self.date and self.date < (other.date or Constant.YEARS_AGO))
+                or (not self.date and Constant.YEARS_AGO < (other.date or Constant.YEARS_AGO))):
+
+            # Overwrite all if other is more recent
+            for attr in copy:
                 if getattr(other, attr):
                     setattr(self, attr, getattr(other, attr))
+
         else:
-            for attr in (*Constant.NAME, *Constant.OTHER):
-                # Only overwrite empty attributes
+
+            # Only overwrite empty attributes
+            for attr in copy:
                 if not getattr(self, attr):
                     setattr(self, attr, getattr(other, attr))
-            if not self.address.postcode or not self.address.housenumber:
-                # Overwrite complete address
-                self.address = other.address
-            elif (self.address.postcode == other.address.postcode
-                  and self.address.housenumber == other.address.housenumber):
-                # Only overwrite empty attributes
-                for attr in Constant.ADDRESS:
-                    if not getattr(self.address, attr):
-                        setattr(self.address, attr, getattr(other.address, attr))
+
+        # Only overwrite empty attributes
         for attr in Constant.META:
-            # Only overwrite empty attributes
             if not getattr(self, attr):
                 setattr(self, attr, getattr(other, attr))
+
         return self
 
     def as_dict(self) -> dict[str, Any]:
@@ -320,9 +319,7 @@ class Person:
 
 class Address:
     """Data class for addresses."""
-    __slots__ = (
-        *Constant.ADDRESS,
-    )
+    __slots__ = Constant.ADDRESS
 
     def __init__(
             self,
@@ -683,7 +680,7 @@ class Query:
             if len(initials) == len(self.person.initials):
                 return {"bool": {"should": [
                     {"bool": {"must": {"term": {"details.initials.keyword": initials}}, "boost": 2}},
-                    {"wildcard": {"details.initials": f"{initials.lower()}*"}},
+                    {"wildcard": {"details.initials": initials.lower() + "*"}},
                 ], "minimum_should_match": 1, "boost": 2}}
             else:
                 return {"bool": {"should": [
@@ -748,6 +745,7 @@ class Query:
 
     @property
     def address_query(self) -> dict:
+        """This is a query that will match only on Address."""
         if not self._address_query:
             self._address_query = {"query": {"match": {
                 "address.address_id.keyword": self.person.address.address_id,
@@ -756,13 +754,14 @@ class Query:
 
     @property
     def person_query(self) -> dict:
+        """This is a calculated query that will match only this Person."""
         if not self._person_query:
             self._person_query = {"query": {"bool": {"should": [
                 {"bool": {"must": [
                     clause for clause in (
                         self.get_lastname_clause(lastname, situation),
                         self.get_initials_clause(initials),
-                        *(getattr(self, f"{clause}_clause")
+                        *(getattr(self, clause + "_clause")
                           for clause in extra_fields),
                     ) if clause
                 ]}}
@@ -772,9 +771,10 @@ class Query:
 
     @property
     def query(self) -> dict:
+        """This is a complete query that matches everything, no probability calculations."""
         if not self._query:
             self._query = {"query": {"bool": {"should": [
-                getattr(self, f"{clause}_clause")
+                getattr(self, clause + "_clause")
                 for clause in self.clauses
                 if getattr(self.person, clause)
             ]}}, "sort": self.sort}
@@ -809,7 +809,7 @@ class Match:
 
     def __init__(self, matchable: Matchable, query_type: str = "person_query"):
         self._composite: Optional[Person] = None
-        self._matches: Optional[deque[Person]] = None
+        self._matches: Optional[list[Person]] = None
         self._match_keys: set[str] = set()
         self._match_score: Optional[str] = None
         self._query_type = query_type
@@ -822,6 +822,7 @@ class Match:
 
     @property
     def search_response(self) -> list[dict]:
+        """Elastic response for this Match."""
         if not self._search_response:
             self._search_response = ESClient(
                 Constant.PD_INDEX,
@@ -836,12 +837,12 @@ class Match:
         return self._search_response
 
     @property
-    def matches(self) -> deque[Person]:
+    def matches(self) -> list[Person]:
         if not self._matches:
-            self._matches = deque(
+            self._matches = [
                 Person.from_doc(doc)
                 for doc in self.search_response
-            )
+            ]
         return self._matches
 
     @property
@@ -873,8 +874,8 @@ class Match:
     def composite(self) -> Person:
         """Create a composite output `Person`."""
         if not self._composite:
-            self._composite = self.matches.popleft()
-            for person in self.matches:
+            self._composite = self.matches[0]
+            for person in self.matches[1:]:
                 self._composite |= person
             _ = self.match_keys
         return self._composite
