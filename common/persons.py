@@ -26,6 +26,7 @@ from __future__ import annotations
 
 __all__ = (
     "Address",
+    "Constant",
     "Match",
     "MatchError",
     "Names",
@@ -100,6 +101,7 @@ class Constant:
     DATE_FORMAT = "%Y-%m-%d"
     DEFAULT_DATE = "1900-01-01"
     EMPTY = {(): 0.}
+    NAMES: Optional[Names] = None
     NAME = ("lastname", "initials", "gender", "firstname", "middlename")
     ADDRESS = ("postcode", "housenumber", "housenumber_ext", "street", "city", "country")
     OTHER = ("mobile", "number", "date_of_birth", "email_address")
@@ -125,7 +127,7 @@ class Person:
             self,
             ln: str = None,
             it: str = None,
-            ad: "Address" = None,
+            ad: Address = None,
             *,
             lastname: str = None,
             initials: str = None,
@@ -182,7 +184,7 @@ class Person:
             yield attr, getattr(self, attr)
         yield from self.address
 
-    def __eq__(self, other: "Person") -> set:
+    def __eq__(self, other: Person) -> set:
         """Compare two `Person` objects.
 
         This method assumes left (`self`) as input and right (`other`) as output.
@@ -224,7 +226,7 @@ class Person:
         local_vars = locals()
         return {k for k in Constant.MATCH_KEYS if local_vars[k]}
 
-    def __or__(self, other: "Person") -> "Person":
+    def __or__(self, other: Person) -> Person:
         """Update `self` with date from `other`.
 
         This method assumes left (`self`) as input and right (`other`) as output.
@@ -271,7 +273,7 @@ class Person:
         }
 
     @classmethod
-    def from_address(cls, address: "Address") -> "Person":
+    def from_address(cls, address: Address) -> Person:
         return cls(
             postcode=address.postcode,
             housenumber=address.housenumber,
@@ -282,7 +284,7 @@ class Person:
         )
 
     @classmethod
-    def from_doc(cls, doc: dict) -> "Person":
+    def from_doc(cls, doc: dict) -> Person:
         """Create a `Person` from an Elasticsearch response."""
         if "hits" in doc:
             doc = doc["hits"]["hits"][0]
@@ -306,7 +308,7 @@ class Person:
             source=doc["source"],
         )
 
-    def update(self) -> "Person":
+    def update(self) -> Person:
         """Update a `Person` with `Match`.
 
         After updating, access the `Match` object through `Person.match`.
