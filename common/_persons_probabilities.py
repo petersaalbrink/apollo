@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from functools import lru_cache, partial
 from itertools import combinations
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from .connectors.mx_elastic import ESClient
 from .exceptions import PersonsError
@@ -11,7 +13,7 @@ es_initials = partial(
 )
 es_lastnames = partial(
     ESClient("cdqc.person_data_lastname_occurrence", index_exists=True).find,
-    size=1, source_only=True, _source=["regular.proportion", "fuzzy.proportion"],
+    size=1, source_only=True, _source=["regular", "fuzzy"],
 )
 
 
@@ -74,10 +76,15 @@ def set_number_of_postcodes() -> bool:
 
 
 @lru_cache()
-def proportion_lastname(lastname: str) -> Dict[str, float]:
+def get_es_lastname(lastname: str) -> dict[str, dict[str, float]]:
+    return es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
+
+
+@lru_cache()
+def proportion_lastname(lastname: str) -> dict[str, float]:
     if not lastname:
         return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
-    count = es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
+    count = get_es_lastname(lastname)
     try:
         return {
             "regular": count["regular"]["proportion"] or Constant.mean_proportion_lastname,
@@ -85,6 +92,17 @@ def proportion_lastname(lastname: str) -> Dict[str, float]:
         }
     except TypeError:
         return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
+
+
+@lru_cache()
+def proportions_lastnames(lastnames: tuple[str, ...]) -> dict[str, float]:
+    return {
+        count: sum(
+            get_es_lastname(name)[count]["count"]
+            for name in lastnames
+        ) / Constant.db_count
+        for count in ("regular", "fuzzy")
+    }
 
 
 @lru_cache()
@@ -99,19 +117,23 @@ def proportion_initial(initial: str) -> float:
 
 
 @lru_cache()
-def get_proportions_lastname(lastname: str) -> Dict[str, Dict[str, float]]:
+def get_proportions_lastname(lastname: str) -> dict[str, dict[str, float]]:
     """Get counts for all parts of the lastname."""
     if lastname:
-        return {
-            name: proportion_lastname(name) for name in
-            sorted({lastname, *lastname.split()}, key=len, reverse=True)
-        }
+        if " " in lastname:
+            split = tuple(lastname.split())
+            return {
+                lastname: proportion_lastname(lastname),
+                split: proportions_lastnames(split),
+            }
+        else:
+            return {lastname: proportion_lastname(lastname)}
     else:
         return {"": {"": Constant.max_proportion_lastname}}
 
 
 @lru_cache()
-def get_proportions_initials(initials: str) -> Dict[str, float]:
+def get_proportions_initials(initials: str) -> dict[str, float]:
     if initials:
         return {initial: proportion_initial(initial) for initial in {initials[0], initials}}
     else:
@@ -124,7 +146,7 @@ def estimated_people_with_lastname(lastname: str):
 
 
 @lru_cache()
-def base_calculations(lastname: str, initials: str) -> Dict[Tuple[str, ...], float]:
+def base_calculations(lastname: str, initials: str) -> dict[tuple[str, ...], float]:
     return {
         (name, initial, situation): Constant.population_size * l_proportion * i_proportion
         for name, l_proportions in get_proportions_lastname(lastname).items()
@@ -145,7 +167,7 @@ def full_calculation_fp(
         postcode: bool = None,
         mobile: bool = None,
         number: bool = None,
-) -> Dict[Tuple[str, ...], float]:
+) -> dict[tuple[str, ...], float]:
     if postcode and address:
         raise PersonsError("Choose postcode or full address.")
     return {
@@ -159,7 +181,7 @@ def full_calculation_fp(
 
 
 @lru_cache()
-def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> Dict[Tuple[str, ...], float]:
+def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> dict[tuple[str, ...], float]:
     """Calculate which combinations of extra fields are valid.
 
     Comments:

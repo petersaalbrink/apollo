@@ -670,18 +670,27 @@ class Query:
 
     @staticmethod
     @lru_cache()
-    def get_lastname_clause(lastname: str, fuzzy: str) -> Optional[dict]:
-        if lastname:
-            fuzzy = "AUTO" if fuzzy == "fuzzy" else 0
+    def _get_lastname_clause(lastname: str, fuzzy: str):
+        return {"bool": {"should": [
+            *[{"match": {"details.lastname.keyword": q}} for q in (
+                {"query": lastname, "fuzziness": fuzzy},
+                {"query": lastname.replace("ij", "y"), "fuzziness": fuzzy}
+                if "ij" in lastname else None,
+                {"query": lastname.replace("y", "ij"), "fuzziness": fuzzy}
+                if "y" in lastname else None,
+            ) if q],
+            {"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}},
+        ], "minimum_should_match": 1}}
+
+    @lru_cache()
+    def get_lastname_clause(self, lastname: str, fuzzy: str) -> Optional[dict]:
+        fuzzy = "AUTO" if fuzzy == "fuzzy" else 0
+        if isinstance(lastname, str):
+            return self._get_lastname_clause(lastname, fuzzy)
+        elif isinstance(lastname, tuple):
             return {"bool": {"should": [
-                *[{"match": {"details.lastname.keyword": q}} for q in (
-                    {"query": lastname, "fuzziness": fuzzy},
-                    {"query": lastname.replace("ij", "y"), "fuzziness": fuzzy}
-                    if "ij" in lastname else None,
-                    {"query": lastname.replace("y", "ij"), "fuzziness": fuzzy}
-                    if "y" in lastname else None,
-                ) if q],
-                {"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}},
+                self._get_lastname_clause(name, fuzzy)
+                for name in lastname
             ], "minimum_should_match": 1}}
 
     @lru_cache()
