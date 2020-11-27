@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache, partial
 from itertools import combinations
-from typing import Any
+from typing import Any, Union
 
 from .connectors.mx_elastic import ESClient
 from .exceptions import PersonsError
@@ -81,9 +81,17 @@ def get_es_lastname(lastname: str) -> dict[str, dict[str, float]]:
 
 
 @lru_cache()
+def default_proportion_lastname() -> dict[str, float]:
+    return {
+        "regular": Constant.mean_proportion_lastname,
+        "fuzzy": Constant.mean_proportion_lastname,
+    }
+
+
+@lru_cache()
 def proportion_lastname(lastname: str) -> dict[str, float]:
     if not lastname:
-        return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
+        return default_proportion_lastname()
     count = get_es_lastname(lastname)
     try:
         return {
@@ -91,7 +99,7 @@ def proportion_lastname(lastname: str) -> dict[str, float]:
             "fuzzy": count["fuzzy"]["proportion"] or Constant.mean_proportion_lastname,
         }
     except TypeError:
-        return {"regular": Constant.mean_proportion_lastname, "fuzzy": Constant.mean_proportion_lastname}
+        return default_proportion_lastname()
 
 
 @lru_cache()
@@ -117,7 +125,7 @@ def proportion_initial(initial: str) -> float:
 
 
 @lru_cache()
-def get_proportions_lastname(lastname: str) -> dict[str, dict[str, float]]:
+def get_proportions_lastname(lastname: str) -> dict[Union[str, tuple[str, ...]], dict[str, float]]:
     """Get counts for all parts of the lastname."""
     if lastname:
         if " " in lastname:
@@ -125,6 +133,7 @@ def get_proportions_lastname(lastname: str) -> dict[str, dict[str, float]]:
             return {
                 lastname: proportion_lastname(lastname),
                 split: proportions_lastnames(split),
+                **{name: proportion_lastname(name) for name in split},
             }
         else:
             return {lastname: proportion_lastname(lastname)}
@@ -146,9 +155,17 @@ def estimated_people_with_lastname(lastname: str):
 
 
 @lru_cache()
-def base_calculations(lastname: str, initials: str) -> dict[tuple[str, ...], float]:
+def base_calculations(
+        lastname: str,
+        initials: str,
+) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
+    @lru_cache()
+    def is_partial(part: Union[str, tuple]) -> bool:
+        return " " in lastname and isinstance(part, str) and " " not in part
+
     return {
-        (name, initial, situation): Constant.population_size * l_proportion * i_proportion
+        (name, ("" if is_partial(name) else initial), situation):
+            Constant.population_size * l_proportion * (1 if is_partial(name) else i_proportion)
         for name, l_proportions in get_proportions_lastname(lastname).items()
         for situation, l_proportion in l_proportions.items()
         for initial, i_proportion in {
@@ -167,30 +184,44 @@ def full_calculation_fp(
         postcode: bool = None,
         mobile: bool = None,
         number: bool = None,
-) -> dict[tuple[str, ...], float]:
+) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
     if postcode and address:
         raise PersonsError("Choose postcode or full address.")
+
+    @lru_cache()
+    def not_partial(part: Union[str, tuple], *_) -> bool:
+        return not (" " in lastname and isinstance(part, str) and " " not in part)
+
     return {
-        base: p * (Constant.dob_fp if date_of_birth else 1)
+        base: p * (Constant.dob_fp if (date_of_birth and not_partial(*base)) else 1)
                 * (Constant.address_fp if address else 1)
                 * (Constant.postcode_fp if postcode else 1)
-                * (Constant.mobile_fp if mobile else 1)
+                * (Constant.mobile_fp if (mobile and not_partial(*base)) else 1)
                 * (Constant.landline_fp if number else 1)
         for base, p in base_calculations(lastname, initials).items()
     }
 
 
 @lru_cache()
-def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> dict[tuple[str, ...], float]:
+def extra_fields_calculation(
+        lastname: str,
+        initials: str,
+        **kwargs: Any,
+) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
     """Calculate which combinations of extra fields are valid.
 
-    Comments:
-    # query_builder should check if the base_calculation_fp < .05,
-    # if not check which combination of extra fields will do so.
-    # add all possible combinations as OR statements.
+    Query builder should check if the base_calculation_fp < Constant.alpha,
+    if not check which combination of extra fields will do so;
+    add all possible combinations as OR statements in query.
 
-    Example:
-    extra_fields = extra_fields_calculation("Saalbrink", "PP", mobile=True, date_of_birth=True, address=True)
+    Example::
+        extra_fields = extra_fields_calculation(
+            "Saalbrink",
+            "PP",
+            mobile=True,
+            date_of_birth=True,
+            address=True,
+        )
     """
     initials = initials or ""
     try:
@@ -208,6 +239,10 @@ def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> dic
         for kw_combi in combinations(kws, i)
     ]
 
+    @lru_cache()
+    def is_partial(part: Union[str, tuple], *_) -> bool:
+        return " " in lastname and isinstance(part, str) and " " not in part
+
     calculations = {}
     valid_combinations = set()
     for kws in kws_combinations:
@@ -223,6 +258,9 @@ def extra_fields_calculation(lastname: str, initials: str, **kwargs: Any) -> dic
                         for i in range(1, len(kws) + 1)
                         for v in combinations(kws, i)
                 )):
+                    if is_partial(*base):
+                        kws.pop("mobile", None)
+                        kws.pop("date_of_birth", None)
                     # We haven't seen an easier valid option
                     valid = (*base, *kws)
                     valid_combinations.add(valid)
