@@ -114,7 +114,22 @@ class Constant:
 
 
 class Person:
-    """Data class for persons."""
+    """Data class for persons.
+
+    Example::
+        from datetime import datetime
+        from common.persons import Person
+
+        person = Person(
+            lastname="Saalbrink",
+            initials="P",
+            postcode="1071XB",
+            housenumber=71,
+            mobile="0649978891",
+            date=datetime(2016, 1, 1),
+        )
+        person.update()
+    """
     __slots__ = (
         *Constant.NAME,
         "address",
