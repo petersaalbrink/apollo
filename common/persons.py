@@ -192,9 +192,9 @@ class Person:
         """
         if self.lastname and self.initials and other.lastname and other.initials:
             name = (
-                    (self.initials, self.lastname) == (other.initials, other.lastname)
-                    or ((self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
-                        and (self.lastname in other.lastname or other.lastname in self.lastname))
+                (self.initials, self.lastname) == (other.initials, other.lastname)
+                or ((self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
+                    and (self.lastname in other.lastname or other.lastname in self.lastname))
             )
         elif self.lastname:
             name = self.lastname == other.lastname
@@ -205,8 +205,8 @@ class Person:
 
         if self.address.postcode and self.address.housenumber and self.address.housenumber_ext:
             address = (
-                    (self.address.postcode, self.address.housenumber, self.address.housenumber_ext)
-                    == (other.address.postcode, other.address.housenumber, other.address.housenumber_ext)
+                (self.address.postcode, self.address.housenumber, self.address.housenumber_ext)
+                == (other.address.postcode, other.address.housenumber, other.address.housenumber_ext)
             )
         elif self.address.postcode and self.address.housenumber:
             address = ((self.address.postcode, self.address.housenumber)
@@ -237,9 +237,10 @@ class Person:
         # The difference between the two is similarity of initials
         # This is enough to distinguish a person match from a family match
         person_match = (
-                self.initials == other.initials
-                or self.initials.startswith(other.initials)
-                or other.initials.startswith(self.initials)
+            self.initials and other.initials and
+            (self.initials == other.initials
+             or self.initials.startswith(other.initials)
+             or other.initials.startswith(self.initials))
         )
         # Based on this, we only copy certain fields if there's a family match
         copy = Constant.COPY_PERSON if person_match else Constant.COPY_FAMILY
