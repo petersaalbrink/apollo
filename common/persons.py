@@ -44,6 +44,7 @@ __all__ = (
 )
 
 from collections.abc import Iterator
+from copy import deepcopy
 from datetime import datetime, timedelta
 from functools import lru_cache
 from math import ceil
@@ -849,6 +850,7 @@ class Match:
         self._match_score: Optional[str] = None
         self._query_type = query_type
         self._search_response: Optional[list[dict]] = None
+        matchable = deepcopy(matchable)
         if isinstance(matchable, Person):
             self.person = matchable
         elif isinstance(matchable, Address):
@@ -912,5 +914,4 @@ class Match:
             self._composite = self.matches[0]
             for person in self.matches[1:]:
                 self._composite |= person
-            _ = self.match_keys
         return self._composite
