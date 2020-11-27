@@ -234,6 +234,9 @@ class Person:
         else:
             address = False
 
+        if not name and not address:
+            name = self.lastname == other.lastname and self.address.postcode == self.address.postcode
+
         gender = self.gender and self.gender == other.gender
         date_of_birth = self.date_of_birth and self.date_of_birth == other.date_of_birth
         mobile = self.mobile and self.mobile == other.mobile
