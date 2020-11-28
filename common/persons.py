@@ -730,18 +730,13 @@ class Query:
     @property
     def gender_clause(self) -> dict:
         if not self._gender:
-            self._gender = {"bool": {"must_not": {"term": {
-                "details.gender.keyword": "M" if self.person.gender == "V" else "V"
-            }}}}
+            self._gender = {"term": {"details.gender.keyword": self.person.gender}}
         return self._gender
 
     @property
     def date_of_birth_clause(self) -> dict:
         if not self._date_of_birth:
-            self._date_of_birth = {"bool": {"should": [
-                {"term": {"birth.date": self.person.date_of_birth}},
-                {"term": {"birth.date": Constant.DEFAULT_DATE}},
-            ], "minimum_should_match": 1}}
+            self._date_of_birth = {"term": {"birth.date": self.person.date_of_birth}}
         return self._date_of_birth
 
     @property
