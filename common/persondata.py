@@ -1205,7 +1205,10 @@ class MatchMetrics:
             initials = self.doc["details_initials"]
         if initials:
             # Get all the probabilities
-            prob = [self.initials[i] for i in initials]
+            try:
+                prob = [self.initials[i] for i in initials]
+            except KeyError:
+                prob = [0]
             # Get total probability by muliplying
             result = prod(prob)
             for count_type in self.count_types:
