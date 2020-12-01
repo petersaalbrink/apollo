@@ -896,7 +896,10 @@ class Match:
     def match_score(self) -> str:
         if not self._match_score:
             n_match_keys = len(self.match_keys)
-            date_score = score(self.composite.date.year)
+            try:
+                date_score = score(self.composite.date.year)
+            except AttributeError:
+                date_score = "4"
             if n_match_keys >= 4:
                 self._match_score = "A" + date_score
             elif n_match_keys == 3:
