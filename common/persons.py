@@ -616,7 +616,10 @@ class Cleaner:
                 try:
                     parsed = phone.check_phone(number, self.person.address.country, call=True)
                     if parsed.valid_number:
-                        parsed.number_type = parsed.number_type.replace("landline", "number")
+                        try:
+                            parsed.number_type = parsed.number_type.replace("landline", "number")
+                        except AttributeError:
+                            parsed.number_type = input_type
                         setattr(self.person, parsed.number_type, parsed.parsed_number)
                         if input_type != parsed.number_type:
                             setattr(self.person, input_type, None)
