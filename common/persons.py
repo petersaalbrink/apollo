@@ -611,18 +611,19 @@ class Cleaner:
     def clean_phones(self):
         """Clean and parse phone and mobile numbers."""
         for input_type in self.phone_fields:
-            number = getattr(self.person, input_type, None)
-            try:
-                parsed = phone.check_phone(number, self.person.address.country, call=True)
-                if parsed.valid_number:
-                    parsed.number_type = parsed.number_type.replace("landline", "number")
-                    setattr(self.person, parsed.number_type, parsed.parsed_number)
-                    if input_type != parsed.number_type:
+            number = getattr(self.person, input_type)
+            if number:
+                try:
+                    parsed = phone.check_phone(number, self.person.address.country, call=True)
+                    if parsed.valid_number:
+                        parsed.number_type = parsed.number_type.replace("landline", "number")
+                        setattr(self.person, parsed.number_type, parsed.parsed_number)
+                        if input_type != parsed.number_type:
+                            setattr(self.person, input_type, None)
+                    else:
                         setattr(self.person, input_type, None)
-                else:
+                except phone.PhoneApiError:
                     setattr(self.person, input_type, None)
-            except phone.PhoneApiError:
-                setattr(self.person, input_type, None)
 
 
 class Query:
