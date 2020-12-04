@@ -418,6 +418,9 @@ class Statistics:
     def __bool__(self) -> bool:
         return self._bool
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
+
 
 class Names:
     """Access data on several names statistics.
@@ -434,6 +437,9 @@ class Names:
 
     def __init__(self):
         self.es = ESClient(Constant.ND_INDEX, index_exists=True)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
 
     @cached_property
     def affixes(self) -> set[str]:
@@ -507,6 +513,9 @@ class Cleaner:
     def __init__(self, person: Person):
         self.person = person
         self.clean()
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
 
     def clean(self):
         self.check_country()
@@ -858,6 +867,9 @@ class Match:
         elif isinstance(matchable, Address):
             self.person = Person.from_address(matchable)
         self.query = Query(matchable)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
 
     @property
     def search_response(self) -> list[dict]:
