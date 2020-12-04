@@ -18,6 +18,7 @@ def data_delivery_tool(
         to_zip: bool = True,
         coded_input: dict = None,
         encoding: str = None,
+        delimiter: str = None,
 ):
     """Create Customer Communication files.
 
@@ -35,10 +36,7 @@ def data_delivery_tool(
         ddt("some_file.csv", coded_input=coded_input, documentation=True)
     """
     if filename[-3:] == 'csv':
-        try:
-            df = pd.read_csv(filename, encoding=encoding, low_memory=False)
-        except pd.errors.ParserError:
-            df = pd.read_csv(filename, encoding=encoding, delimiter=";", low_memory=False)
+        df = pd.read_csv(filename, encoding=encoding, delimiter=delimiter, low_memory=False)
     else:
         df = pd.read_excel(filename, low_memory=False)
 
@@ -65,7 +63,7 @@ def data_delivery_tool(
             readme_exe(df, folder, filename, cb_name, doc_name, coded_input, to_zip)
             
         if log_cdr:
-            cdrlog_exe(filename)
+            cdrlog_exe(filename, delimiter=delimiter, encoding=encoding)
 
         # Writing
         folder.write(f'{filename}')

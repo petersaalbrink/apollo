@@ -19,12 +19,9 @@ def _get_filename(filename, add_date: bool = True):
 
 
 class CdrLogger:
-    def __init__(self, filename):
+    def __init__(self, filename, delimiter=None, encoding=None):
         self.filename = filename
-        try:
-            self.data = pd.read_csv(self.filename, low_memory=False)
-        except pd.errors.ParserError:
-            self.data = pd.read_csv(self.filename, delimiter=";", low_memory=False)
+        self.data = pd.read_csv(self.filename, delimiter=delimiter, encoding=encoding, low_memory=False)
 
     def clean(self):
         self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
@@ -46,8 +43,8 @@ class CdrLogger:
         sql.insert(data=self.data)
 
 
-def cdrlog_exe(filename):
-    cdl = CdrLogger(filename)
+def cdrlog_exe(filename, delimiter=None, encoding=None):
+    cdl = CdrLogger(filename, delimiter=delimiter, encoding=encoding)
     cdl.clean()
     cdl.insert_mysql()
 
