@@ -113,6 +113,8 @@ def _parse_number(
             parsed = parse(number, countries.lookup(country).alpha_2)
         except (NumberParseException, LookupError):
             raise PhoneApiError(f"Incorrect number for country '{country}': {number}")
+    except AttributeError as e:
+        raise PhoneApiError(f"{number, country}")
 
     return parsed
 
