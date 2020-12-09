@@ -47,7 +47,7 @@ from functools import lru_cache
 from typing import Any, List, MutableMapping, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
-from pandas import isna, notna
+from pandas import notna
 from text_unidecode import unidecode
 from .exceptions import ParseError
 
@@ -258,15 +258,16 @@ def drop_empty_columns(data: List[dict]) -> List[dict]:
         from common.parsers import drop_empty_columns
         data = drop_empty_columns(data)
     """
-    fieldnames = set(data[0].keys())
+    fieldnames = {field for doc in data for field in doc}
     for doc in data:
         for field in tuple(fieldnames):
-            if not isna(doc[field]):
+            if doc.get(field):
                 fieldnames.remove(field)
         if not fieldnames:
             break
     else:
         for doc in data:
             for field in fieldnames:
-                del doc[field]
+                if field in doc:
+                    del doc[field]
     return data
