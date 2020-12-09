@@ -174,13 +174,15 @@ class FileTransfer:
         """Upload a file to the Platform host."""
         self._check_filename()
         self._connect()
-        with open(self.filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
+        local_filename = Path(self.filename)
+        remote_filename = local_filename.name
+        with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
             _, stderr = self._run_cmd(
-                f'cp /dev/stdin "{self.filepath}/{self.filename}"',
+                f'cp /dev/stdin "{self.filepath}/{remote_filename}"',
                 fileobj=f,
             )
         self._check_process(stderr)
-        _, stderr = self._run_cmd(f'chmod +r "{self.filepath}/{self.filename}"')
+        _, stderr = self._run_cmd(f'chmod +r "{self.filepath}/{remote_filename}"')
         self._check_process(stderr)
         self._disconnect()
         return self
