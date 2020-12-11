@@ -7,8 +7,21 @@ import pandas as pd
 from common.connectors import MySQLClient
 
 
-def _add_date_to_filename(filename):
+def _add_date_to_filename(filename: str) -> str:
     return f"{dt.now():%Y%m%d}_{filename}"
+
+
+def _has_date(input_string: str) -> bool:
+    return all(char.isdigit() for char in input_string)
+
+
+def _clean_filename(filename: str) -> str:
+    if not _has_date(filename[:8]):
+        filename = _add_date_to_filename(filename)
+    filename = Path(filename).stem
+    if "." in filename:
+        raise ValueError(f"File name should not contain dot: '{filename}'")
+    return filename
 
 
 class CdrLogger:
@@ -20,14 +33,7 @@ class CdrLogger:
         self.data.columns = self.data.columns = [x.strip(" ") for x in self.data.columns]
         self.data = self.data.replace({np.nan: None})
         self.data = self.data.to_dict("records")
-
-        def has_date(input_string):
-            return all(char.isdigit() for char in input_string)
-
-        if not has_date(self.filename[:8]):
-            self.filename = _add_date_to_filename(self.filename)
-        if "." in self.filename:
-            raise ValueError(f"File name should not contain dot: '{self.filename}'")
+        self.filename = _clean_filename(self.filename)
 
     def insert_mysql(self):
         sql = MySQLClient("cdr_history")
@@ -44,7 +50,4 @@ def cdrlog_exe(filename, delimiter=None, encoding=None):
 
 
 def cdr_log(filename: str, data: list) -> int:
-    filename = Path(_add_date_to_filename(filename)).stem
-    if "." in filename:
-        raise ValueError(f"File name should not contain dot: '{filename}'")
-    return MySQLClient(f"cdr_history.{filename}").insert_new(data=data)
+    return MySQLClient(f"cdr_history.{_clean_filename(filename)}").insert_new(data=data)
