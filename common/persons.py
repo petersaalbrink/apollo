@@ -855,7 +855,9 @@ class Query:
             self._query = {"query": {"bool": {"should": [
                 getattr(self, clause + "_clause")
                 for clause in self.clauses
-                if getattr(self.person, clause)
+                if (getattr(self.person.address, clause)
+                    if clause == "postcode"
+                    else getattr(self.person, clause))
             ]}}, "sort": self.sort}
         return self._query
 
