@@ -108,7 +108,7 @@ class Constant:
     ADDRESS = ("postcode", "housenumber", "housenumber_ext", "street", "city", "country")
     OTHER = ("mobile", "number", "date_of_birth", "email_address")
     META = ("date", "source")
-    MATCH_KEYS = ("name", "address", "gender", "mobile", "number", "date_of_birth", "email_address")
+    MATCH_KEYS = ("name", "address", "gender", "mobile", "number", "date_of_birth", "email_address", "family")
     PERSON_META = (*NAME, *OTHER, *META)
     COPY_FAMILY = ("address", "number", "lastname", "middlename")
     COPY_PERSON = (*COPY_FAMILY, "initials", "gender", "firstname", "mobile", "date_of_birth", "email_address")
@@ -233,8 +233,11 @@ class Person:
         else:
             address = False
 
-        if not name and not address:
-            name = self.lastname == other.lastname and self.address.postcode == self.address.postcode
+        family = (
+            (self.lastname == other.lastname
+             or (self.lastname in other.lastname or other.lastname in self.lastname))
+            and self.address.postcode == self.address.postcode
+        )
 
         gender = self.gender and self.gender == other.gender
         date_of_birth = self.date_of_birth and self.date_of_birth == other.date_of_birth
