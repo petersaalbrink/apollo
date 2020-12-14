@@ -36,7 +36,9 @@ class Constant:
     average_lifespan = 82
     inhabitants_nl = 17_461_543
     addresses_per_person = ((yearly_movements * average_lifespan) / inhabitants_nl) + 2
+    fuzzy_addresses_per_person = addresses_per_person * 44
     address_fp = (addresses_per_person ** 2) / number_of_residential_addresses
+    fuzzy_address_fp = (fuzzy_addresses_per_person ** 2) / number_of_residential_addresses
     postcode_fp = (addresses_per_person ** 2) / number_of_postcodes
     mobile_total_distributed = 55_000_000
     mobile_yearly_reused = 100_000
@@ -180,6 +182,7 @@ def full_calculation_fp(
         lastname: str,
         initials: str,
         date_of_birth: bool = None,
+        fuzzy_address: bool = None,
         address: bool = None,
         postcode: bool = None,
         mobile: bool = None,
@@ -194,6 +197,7 @@ def full_calculation_fp(
 
     return {
         base: p * (Constant.dob_fp if (date_of_birth and not_partial(*base)) else 1)
+                * (Constant.fuzzy_address_fp if fuzzy_address else 1)
                 * (Constant.address_fp if address else 1)
                 * (Constant.postcode_fp if postcode else 1)
                 * (Constant.mobile_fp if (mobile and not_partial(*base)) else 1)

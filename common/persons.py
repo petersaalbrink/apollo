@@ -420,6 +420,7 @@ class Statistics:
             self.extra_fields = extra_fields_calculation(
                 lastname=person.lastname,
                 initials=person.initials,
+                fuzzy_address=person.address,
                 address=person.address,
                 postcode=None if person.address else person.address.postcode,
                 date_of_birth=person.date_of_birth,
@@ -664,6 +665,7 @@ class Query:
         "_address_query",
         "_date_of_birth",
         "_email_address",
+        "_fuzzy_address",
         "_gender",
         "_initials",
         "_lastname",
@@ -681,6 +683,7 @@ class Query:
         "gender",
         "date_of_birth",
         "address",
+        "fuzzy_address",
         "postcode",
         "email_address",
         "mobile",
@@ -690,8 +693,8 @@ class Query:
 
     def __init__(self, matchable: Matchable):
         self._address = self._address_query = self._date_of_birth = self._email_address \
-            = self._gender = self._initials = self._lastname = self._mobile = self._number \
-            = self._person_query = self._postcode = self._query = self._repr = None
+            = self._fuzzy_address = self._gender = self._initials = self._lastname = self._mobile \
+            = self._number = self._person_query = self._postcode = self._query = self._repr = None
         if isinstance(matchable, Person):
             self.person = matchable
         elif isinstance(matchable, Address):
@@ -790,13 +793,23 @@ class Query:
             self._address = {"bool": {"should": [
                 {"match": {"address.address_id.keyword": {
                     "query": self.person.address.address_id,
-                    "boost": 2}}},
+                    "boost": 2,
+                }}},
                 {"bool": {"must": [
                     {"term": {"address.postalCode.keyword": self.person.address.postcode}},
                     {"term": {"address.houseNumber": self.person.address.housenumber}},
                 ]}},
             ], "minimum_should_match": 1}}
         return self._address
+
+    @property
+    def fuzzy_address_clause(self) -> dict:
+        if not self._fuzzy_address:
+            self._fuzzy_address = {"match": {"address.address_id.keyword": {
+                    "query": self.person.address.address_id,
+                    "fuzziness": 1,
+                }}}
+        return self._fuzzy_address
 
     @property
     def postcode_clause(self) -> dict:
