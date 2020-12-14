@@ -1196,7 +1196,10 @@ class MatchMetrics:
             raise MatchError(q) from e
 
     def get_count(self, count_type: str) -> int:
-        return self.data[count_type]["count"] - 1 if self.data else 0
+        try:
+            return self.data[count_type]["count"] - 1
+        except TypeError:
+            return 0
 
     def calc_prob(self):
         try:

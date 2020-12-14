@@ -165,16 +165,19 @@ class Checks:
         return int(lev * 100)
 
 
+DISTANCE = "distance"
+PERCENTAGE = "percentage"
+
+
 @lru_cache()
-def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
+def levenshtein(seq1: str, seq2: str, measure: str = PERCENTAGE) -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
 
     By default, returns the percentage score.
     Set :param measure: to "distance" to return the Levenshtein distance.
     """
-    measures = {"distance", "percentage"}
-    if measure not in measures:
-        raise ParseError(f"measure should be one of {measures}")
+    if measure != DISTANCE and measure != PERCENTAGE:
+        raise ParseError(f"wrong measure: {measure}")
 
     size_1, size_2 = len(seq1), len(seq2)
     size_1p, size_2p = size_1 + 1, size_2 + 1
@@ -203,7 +206,7 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[floa
                 else:
                     distances[t1][t2] = c + 1
 
-    if measure == "percentage":
+    if measure == PERCENTAGE:
         return 1 - (distances[size_1, size_2]) / max(size_1, size_2)
     else:
         return int(distances[size_1][size_2])
