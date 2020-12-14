@@ -134,6 +134,7 @@ def get_proportions_lastname(lastname: str) -> dict[Union[str, tuple[str, ...]],
             split = tuple(lastname.split())
             return {
                 lastname: proportion_lastname(lastname),
+                " ".join(reversed(split)): proportion_lastname(lastname),
                 split: proportions_lastnames(split),
                 **{name: proportion_lastname(name) for name in split},
             }

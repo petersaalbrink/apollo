@@ -213,9 +213,12 @@ class Person:
             return self.initials.startswith(other.initials) or other.initials.startswith(self.initials)
 
         def partial_lastname_match():
+            self_lastname = self.lastname.replace("ij", "y")
+            other_lastname = other.lastname.replace("ij", "y")
             return (
-                self.lastname in other.lastname or other.lastname in self.lastname
-                or levenshtein(self.lastname, other.lastname, DISTANCE) <= distance
+                self_lastname in other_lastname or other_lastname in self_lastname
+                or levenshtein(self_lastname, other_lastname, DISTANCE) <= distance
+                or self_lastname == " ".join(reversed(other_lastname.split()))
             )
 
         if self.lastname and self.initials and other.lastname and other.initials:
@@ -246,8 +249,8 @@ class Person:
             address = False
 
         family = (
-            (self.lastname == other.lastname or partial_lastname_match())
-            and self.address.postcode == self.address.postcode
+            (self.lastname == other.lastname and self.address.postcode == self.address.postcode)
+            or (partial_lastname_match() and address)
         )
 
         gender = self.gender and self.gender == other.gender
