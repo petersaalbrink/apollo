@@ -3,12 +3,123 @@
 Read the documentation on Confluence:
 https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+classes+mx
 """
+
+from __future__ import annotations
+
+__all__ = (
+    "Address",
+    "ApiError",
+    "Checks",
+    "Cleaner",
+    "CommonError",
+    "ConnectorError",
+    "Credentials",
+    "Data",
+    "DataError",
+    "DistributionPlot",
+    "ESClient",
+    "ESClientError",
+    "EmailClient",
+    "FileTransfer",
+    "FileTransferError",
+    "FunctionTimer",
+    "Log",
+    "Match",
+    "MatchError",
+    "MatchMetrics",
+    "MongoDB",
+    "MongoDBError",
+    "MySQLClient",
+    "MySQLClientError",
+    "Names",
+    "NamesData",
+    "NoMatch",
+    "NoMatch",
+    "PandasSQL",
+    "ParseError",
+    "Person",
+    "PersonData",
+    "PersonsError",
+    "PhoneApiError",
+    "PlotMx",
+    "Query",
+    "RadarPlot",
+    "RequestError",
+    "SQLClient",
+    "SQLtoMongo",
+    "Statistics",
+    "ThreadSafeIterator",
+    "TicToc",
+    "Timeout",
+    "Timer",
+    "TimerError",
+    "ZipData",
+    "ZipDataError",
+    "api",
+    "calculate_bandwith",
+    "change_secret",
+    "check_email",
+    "check_phone",
+    "chunker",
+    "connectors",
+    "csv_read",
+    "csv_write",
+    "customer_communication",
+    "data_delivery_tool",
+    "dateformat",
+    "download_file",
+    "drop_empty_columns",
+    "env",
+    "exceptions",
+    "expand",
+    "flatten",
+    "get",
+    "get_logger",
+    "get_proxies",
+    "get_secret",
+    "get_session",
+    "get_token",
+    "getenv",
+    "google_sign_url",
+    "handlers",
+    "keep_trying",
+    "levenshtein",
+    "parse",
+    "parsers",
+    "persondata",
+    "persons",
+    "pip_upgrade",
+    "platform",
+    "plot_stacked_bar",
+    "post",
+    "read_json",
+    "read_json_line",
+    "read_txt",
+    "remove_adjacent",
+    "request",
+    "requests",
+    "secrets",
+    "send_email",
+    "set_alpha",
+    "set_clean_email",
+    "set_population_size",
+    "set_search_size",
+    "set_years_ago",
+    "thread",
+    "threadsafe",
+    "timer",
+    "tqdm",
+    "trange",
+    "validate",
+    "visualizations",
+)
+
 from importlib import import_module
 from .etc.version import (
     __version__,
 )
 
-__mapping__ = {
+_module_mapping = {
     "api": [
         "check_email",
         "check_phone",
@@ -42,6 +153,7 @@ __mapping__ = {
         "MySQLClientError",
         "NoMatch",
         "ParseError",
+        "PersonsError",
         "PhoneApiError",
         "RequestError",
         "Timeout",
@@ -85,6 +197,19 @@ __mapping__ = {
         "NoMatch",
         "PersonData",
     ],
+    "persons": [
+        "Address",
+        "Match",
+        "Names",
+        "Person",
+        "Query",
+        "Statistics",
+        "set_alpha",
+        "set_clean_email",
+        "set_population_size",
+        "set_search_size",
+        "set_years_ago",
+    ],
     "platform": [
         "FileTransfer",
     ],
@@ -114,18 +239,16 @@ __mapping__ = {
         "plot_stacked_bar",
     ],
 }
-__modules__ = list(__mapping__)
-__all__ = [symbol for symbols in __mapping__.values() for symbol in symbols] + __modules__
 
 
 def __getattr__(name):
-    if name in __modules__:
+    if name in _module_mapping:
         return import_module(f".{name}", __name__)
-    for module, symbols in __mapping__.items():
+    for module, symbols in _module_mapping.items():
         if name in symbols:
             return getattr(import_module(f".{module}", __name__), name)
     raise ImportError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def __dir__():
+def __dir__() -> list[str]:
     return sorted(__all__)

@@ -49,7 +49,6 @@ _MYSQL_TYPES = {
     NaT: "DATETIME",
     datetime: "DATETIME",
     date: "DATE",
-    datetime.date: "DATE"
 }
 
 
@@ -636,7 +635,7 @@ class MySQLClient:
         type_dict: dict = {field: type_dict[field] for field in data[0]}
 
         # Get the field lenghts for each type
-        date_types: set = {timedelta, datetime, Timedelta, Timestamp, NaT}
+        date_types: set = {timedelta, datetime, Timedelta, Timestamp, NaT, date}
         float_types: set = {float, Decimal}
         union: set = date_types.union(float_types)
         dates: dict = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
@@ -671,7 +670,7 @@ class MySQLClient:
     @staticmethod
     def _fields(fields: Mapping[str, Tuple[Type, Union[int, float]]]) -> str:
         fields = [f"`{name}` {_MYSQL_TYPES[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in {date, datetime.date} else f"`{name}` {_MYSQL_TYPES[type_]}"
+                  if type_ not in {date, datetime} else f"`{name}` {_MYSQL_TYPES[type_]}"
                   for name, (type_, length) in fields.items()]
         return ", ".join(fields)
 
