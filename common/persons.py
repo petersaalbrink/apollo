@@ -69,6 +69,7 @@ from ._persons_probabilities import (
 )
 from .connectors.mx_elastic import ESClient
 from .exceptions import MatchError, NoMatch, PersonsError
+from .parsers import levenshtein, DISTANCE
 
 set_alpha = set_alpha
 set_population_size = set_population_size
@@ -205,16 +206,27 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
+        distance = min(len(self.lastname), len(other.lastname))
+        distance = 2 if distance > 5 else (1 if distance > 2 else 0)
+
+        def partial_initials_match():
+            return self.initials.startswith(other.initials) or other.initials.startswith(self.initials)
+
+        def partial_lastname_match():
+            return (
+                self.lastname in other.lastname or other.lastname in self.lastname
+                or levenshtein(self.lastname, other.lastname, DISTANCE) <= distance
+            )
+
         if self.lastname and self.initials and other.lastname and other.initials:
             name = (
                 (self.initials, self.lastname) == (other.initials, other.lastname)
-                or ((self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
-                    and (self.lastname in other.lastname or other.lastname in self.lastname))
+                or (partial_initials_match() and partial_lastname_match())
             )
         elif self.lastname:
-            name = self.lastname == other.lastname
+            name = self.lastname == other.lastname or partial_lastname_match()
         elif self.initials:
-            name = self.initials == other.initials
+            name = self.initials == other.initials or partial_initials_match()
         else:
             name = False
 
@@ -234,8 +246,7 @@ class Person:
             address = False
 
         family = (
-            (self.lastname == other.lastname
-             or (self.lastname in other.lastname or other.lastname in self.lastname))
+            (self.lastname == other.lastname or partial_lastname_match())
             and self.address.postcode == self.address.postcode
         )
 
