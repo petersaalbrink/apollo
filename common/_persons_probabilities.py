@@ -241,6 +241,7 @@ def extra_fields_calculation(
         {kw: True for kw in kw_combi}
         for i in range(1, len(kws) + 1)
         for kw_combi in combinations(kws, i)
+        if not ("address" in kw_combi and "fuzzy_address" in kw_combi)
     ]
 
     @lru_cache()
@@ -257,18 +258,22 @@ def extra_fields_calculation(
                 calculations[base] = bases[base]
             elif p_fp < Constant.alpha:
                 # The extra fields made the probability significant
+                if "fuzzy_address" in kws:
+                    tmp = kws.copy()
+                    tmp["address"] = tmp.pop("fuzzy_address")
+                else:
+                    tmp = kws
                 if not any((
                         (*base, *v) in valid_combinations
-                        for i in range(1, len(kws) + 1)
-                        for v in combinations(kws, i)
+                        for i in range(1, len(tmp) + 1)
+                        for v in combinations(tmp, i)
                 )):
                     if is_partial(*base):
                         kws.pop("mobile", None)
                         kws.pop("date_of_birth", None)
                     # We haven't seen an easier valid option
-                    valid = (*base, *kws)
-                    valid_combinations.add(valid)
-                    calculations[valid] = p_fp
+                    valid_combinations.add((*base, *tmp))
+                    calculations[(*base, *kws)] = p_fp
 
     if not calculations:
         raise PersonsError("No valid combinations")

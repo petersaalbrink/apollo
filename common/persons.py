@@ -870,7 +870,9 @@ class Query:
                 for clause in self.clauses
                 if (getattr(self.person.address, clause)
                     if clause == "postcode"
-                    else getattr(self.person, clause))
+                    else (self.person.address
+                          if clause == "fuzzy_address"
+                          else getattr(self.person, clause)))
             ]}}, "sort": self.sort}
         return self._query
 
