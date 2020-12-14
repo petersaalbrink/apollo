@@ -118,7 +118,6 @@ class Person:
     """Data class for persons.
 
     Example::
-        from datetime import datetime
         from common.persons import Person
 
         person = Person(
@@ -127,7 +126,7 @@ class Person:
             postcode="1071XB",
             housenumber=71,
             mobile="0649978891",
-            date=datetime(2016, 1, 1),
+            date="2016-01-01",
         )
         person.update()
     """
@@ -288,10 +287,13 @@ class Person:
 
     def as_dict(self) -> dict[str, Any]:
         """Create a dictionary from all attributes (similar to __dict__)."""
-        return {
-            **{attr: getattr(self, attr) for attr in self.__slots__},
-            **self.address.as_dict(),
-        }
+        d = {}
+        for attr in self.__slots__:
+            value = getattr(self, attr)
+            if hasattr(value, "as_dict"):
+                value = value.as_dict()
+            d[attr] = value
+        return d
 
     @classmethod
     def from_address(cls, address: Address) -> Person:
@@ -420,6 +422,10 @@ class Statistics:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}"
+
+    def as_dict(self) -> dict[str, Any]:
+        """Create a dictionary from all attributes (similar to __dict__)."""
+        return {attr: getattr(self, attr) for attr in self.__slots__}
 
 
 class Names:
@@ -677,6 +683,18 @@ class Query:
         elif isinstance(matchable, Address):
             self.person = Person.from_address(matchable)
 
+    def __repr__(self) -> str:
+        if not self._repr:
+            if self.person.lastname or self.person.initials:
+                self._repr = f"{self.person_query}"
+            else:
+                self._repr = f"{self.address_query}"
+        return self._repr
+
+    def as_dict(self) -> dict[str, Any]:
+        """Create a dictionary from all attributes (similar to __dict__)."""
+        return {attr: getattr(self, attr) for attr in self.__slots__}
+
     @property
     def lastname_clause(self) -> dict:
         if not self._lastname:
@@ -827,14 +845,6 @@ class Query:
             ]}}, "sort": self.sort}
         return self._query
 
-    def __repr__(self) -> str:
-        if not self._repr:
-            if self.person.lastname or self.person.initials:
-                self._repr = f"{self.person_query}"
-            else:
-                self._repr = f"{self.address_query}"
-        return self._repr
-
 
 def score(year: int) -> str:
     """Gives a score (1: best, 4: worst) based on the date."""
@@ -870,6 +880,10 @@ class Match:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}"
+
+    def as_dict(self) -> dict[str, Any]:
+        """Create a dictionary from all attributes (similar to __dict__)."""
+        return {attr: getattr(self, attr) for attr in self.__slots__}
 
     @property
     def search_response(self) -> list[dict]:
