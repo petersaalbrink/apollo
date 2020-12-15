@@ -251,8 +251,8 @@ class Person:
         else:
             address = False
 
-        family = (
-            (self.lastname == other.lastname and self.address.postcode == self.address.postcode)
+        family = self.lastname and other.lastname and self.address.postcode and (
+            (self.lastname == other.lastname and self.address.postcode == other.address.postcode)
             or (partial_lastname_match() and address)
         )
 
