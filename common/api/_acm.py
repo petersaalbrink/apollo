@@ -1,6 +1,11 @@
 from datetime import datetime
-from functools import partial
+from functools import lru_cache, partial
 from threading import Lock
+
+try:  # python3.8
+    from functools import cached_property
+except ImportError:  # python3.7
+    from cached_property import cached_property
 
 from bs4 import BeautifulSoup
 from bson.codec_options import CodecOptions
@@ -8,7 +13,7 @@ from pendulum import timezone
 from requests import Response
 from requests.exceptions import ProxyError
 
-from ..connectors import MongoDB
+from ..connectors.mx_mongo import MongoDB
 from ..exceptions import PhoneApiError
 from ..requests import get_proxies, get_session
 
@@ -19,27 +24,27 @@ class ACM:
     MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
     NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
     URL = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
-    acm_get = acm_get_no_proxies = None
+    lock = Lock()
+    TZ = timezone("Europe/Amsterdam")
 
     def __init__(self):
-        self.lock = Lock()
         self.n_errors = {
             self.LUMINATI: 0,
             self.PROXIWARE: 0,
         }
         self.provider = self.LUMINATI
-        self.TZ = timezone("Europe/Amsterdam")
-        self.db = MongoDB("cdqc.phonenumbers").with_options(
+
+    @cached_property
+    def db(self):
+        return MongoDB("cdqc.phonenumbers").with_options(
             codec_options=CodecOptions(
                 tz_aware=True,
                 tzinfo=self.TZ,
             ))
-        self.new_session()
 
-    def new_session(self):
-        headers = {
-            "Range": "bytes=0-6144",
-        }
+    @property
+    @lru_cache()
+    def acm_get(self):
         if self.provider == self.PROXIWARE:
             proxies = {
                 "http": "nl.proxiware.com:12000",
@@ -49,9 +54,16 @@ class ACM:
             proxies = get_proxies()["proxies"]
         else:
             raise PhoneApiError(self.provider)
-        session = get_session()
-        self.acm_get = partial(session.get, url=self.URL, headers=headers, proxies=proxies)
-        self.acm_get_no_proxies = partial(session.get, url=self.URL, headers=headers)
+        return partial(get_session().get, url=self.URL, headers={
+            "Range": "bytes=0-6144",
+        }, proxies=proxies)
+
+    @property
+    @lru_cache()
+    def acm_get_no_proxies(self):
+        return partial(get_session().get, url=self.URL, headers={
+            "Range": "bytes=0-6144",
+        })
 
     def _get_response(self, params: dict) -> Response:
 
@@ -62,7 +74,7 @@ class ACM:
 
                 if self.MAX_REACHED in response.text:
                     self.n_errors[self.provider] += 1
-                    self.new_session()
+                    ACM.acm_get.fget.cache_clear()  # noqa
                 else:
                     self.n_errors[self.provider] = 0
                     break
@@ -70,7 +82,7 @@ class ACM:
             except ProxyError:
                 self.n_errors[self.provider] += 1
                 self.provider = self.provider[::-1]
-                self.new_session()
+                ACM.acm_get.fget.cache_clear()  # noqa
 
         else:
             response = self.acm_get_no_proxies(params=params)

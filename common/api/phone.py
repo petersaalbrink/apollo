@@ -23,8 +23,7 @@ from ._acm import ACM
 
 _SECRET = None
 _WRONG_NUMS = ("9", "66", "67", "69", "60")
-_vn = None
-_acm = None
+_acm = ACM()
 _lock = Lock()
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
@@ -161,27 +160,19 @@ def parse_phone(
 def lookup_carriers_acm(
         phone: PhoneApiResponse,
 ) -> PhoneApiResponse:
-    global _acm
-    try:
-        phone = _acm.get_acm_data(phone)
-    except AttributeError:
-        _acm = ACM()
-        phone = _acm.get_acm_data(phone)
-    return phone
+    return _acm.get_acm_data(phone)
 
 
 @lru_cache()
 def lookup_call_result(
         phone: PhoneApiResponse,
 ) -> Optional[PhoneApiResponse]:
-    global _vn
-
-    if not _vn:
-        _vn = ESClient("cdqc.validated_numbers")
-        _vn.index_exists = True
-
-    query = {"query": {"bool": {"filter": {"term": {"phoneNumber": phone.national_number}}}}}
-    result = _vn.find(query, size=1, source_only=True)
+    result = ESClient(
+        "cdqc.validated_numbers", index_exists=True,
+    ).find(
+        {"query": {"bool": {"filter": {"term": {"phoneNumber": phone.national_number}}}}},
+        size=1, source_only=True,
+    )
     if result:
         phone.valid_number = result["valid"]
         return phone
@@ -261,12 +252,15 @@ def check_phone(
 
     if acm:
         phone = lookup_carriers_acm(phone)
-    result = lookup_call_result(phone)
-    if result:
-        return result
 
-    if call and not phone.number_type == "mobile":
-        return call_phone(phone)
+    if phone.number_type != "mobile":
+
+        result = lookup_call_result(phone)
+        if result:
+            return result
+
+        if call:
+            return call_phone(phone)
 
     return phone
 
