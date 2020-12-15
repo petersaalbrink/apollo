@@ -206,8 +206,11 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
-        distance = min(len(self.lastname), len(other.lastname))
-        distance = 2 if distance > 5 else (1 if distance > 2 else 0)
+        if self.lastname and other.lastname:
+            distance = min(len(self.lastname), len(other.lastname))
+            distance = 2 if distance > 5 else (1 if distance > 2 else 0)
+        else:
+            distance = 0
 
         def partial_initials_match():
             return self.initials.startswith(other.initials) or other.initials.startswith(self.initials)
@@ -226,9 +229,9 @@ class Person:
                 (self.initials, self.lastname) == (other.initials, other.lastname)
                 or (partial_initials_match() and partial_lastname_match())
             )
-        elif self.lastname:
+        elif self.lastname and other.lastname:
             name = self.lastname == other.lastname or partial_lastname_match()
-        elif self.initials:
+        elif self.initials and other.initials:
             name = self.initials == other.initials or partial_initials_match()
         else:
             name = False
