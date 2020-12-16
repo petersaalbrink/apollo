@@ -979,7 +979,7 @@ class Match:
     def composite(self) -> Person:
         """Create a composite output `Person`."""
         if not self._composite:
-            self._composite = self.matches[0]
+            self._composite = deepcopy(self.matches[0])
             for person in self.matches[1:]:
                 self._composite |= person
         return self._composite
