@@ -76,16 +76,22 @@ class MxCollection(Collection):
     def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None):
         if not documents:
             raise MongoDBError("Provide non-empty documents.")
-        elif isinstance(documents, list):
+        elif isinstance(documents, list) and isinstance(documents[0], dict):
             # If `documents` is a list, we have to do the type and key checking only once
-            if isinstance(documents[0], dict) and documents[0].get("geometry"):
-                documents = [self.correct_geoshape(doc) for doc in documents]
+            if documents[0].get("geometry"):
+                documents = [self.correct_geoshape(doc, "geometry") for doc in documents]
+            elif documents[0].get("location"):
+                documents = [self.correct_geoshape(doc, "location") for doc in documents]
         elif isinstance(documents, Iterable):
             # Otherwise do it doc-wise but lazily
             documents = (
-                self.correct_geoshape(doc)
+                self.correct_geoshape(doc, "geometry")
                 if (isinstance(doc, dict) and doc.get("geometry"))
-                else doc for doc in documents
+                else (
+                    self.correct_geoshape(doc, "location")
+                    if (isinstance(doc, dict) and doc.get("location"))
+                    else doc
+                ) for doc in documents
             )
         super().insert_many(documents, ordered, bypass_document_validation, session)
 
@@ -95,21 +101,24 @@ class MxCollection(Collection):
         super().insert_many(document, bypass_document_validation, session)
 
     @staticmethod
-    def correct_geoshape(doc: dict) -> dict:
+    def correct_geoshape(doc: dict, key: str = "geometry") -> dict:
+
+        # TODO: add to InsertOne and InsertMany
+        # TODO: add to update_one, update_many, UpdateOne, UpdateMany (in the future)
+
         import shapely.geometry
 
-        geom_cls = getattr(shapely.geometry, doc["geometry"]["type"])
+        geom_cls = getattr(shapely.geometry, doc[key]["type"])
 
         if geom_cls is shapely.geometry.MultiPolygon:
-            geom_doc = geom_cls([
-                shapely.geometry.Polygon(x[0]) for x in doc["geometry"]["coordinates"]])
+            geom_doc = geom_cls([shapely.geometry.Polygon(x[0]) for x in doc[key]["coordinates"]])
         elif geom_cls is shapely.geometry.Polygon:
-            geom_doc = geom_cls(doc["geometry"]["coordinates"][0])
+            geom_doc = geom_cls(doc[key]["coordinates"][0])
         else:
             return doc
 
         if not geom_doc.is_valid:
-            doc["geometry"] = shapely.geometry.mapping(geom_doc.buffer(0))
+            doc[key] = shapely.geometry.mapping(geom_doc.buffer(0))
 
         return doc
 
