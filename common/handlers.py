@@ -70,6 +70,7 @@ from typing import (
     Iterator,
     List,
     MutableMapping,
+    NoReturn,
     Optional,
     Tuple,
     Type,
@@ -790,3 +791,11 @@ def read_json_line(
     with open(filename, "r", encoding=encoding, **kwargs) as f:
         for line in tqdm(f, disable=False if use_tqdm else True):
             yield loads(line)
+
+
+def assert_never(x: NoReturn) -> NoReturn:
+    """Utility for exhaustiveness checking.
+
+    See https://github.com/python/typing/issues/735
+    """
+    raise AssertionError(f"Invalid value: {x!r}")
