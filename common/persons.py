@@ -213,6 +213,7 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
+
         if self.lastname and other.lastname:
             distance = min(len(self.lastname), len(other.lastname))
             distance = 2 if distance > 5 else (1 if distance > 2 else 0)
@@ -281,12 +282,10 @@ class Person:
         # Because of our probability calculation, we will only make two types of matches
         # The difference between the two is similarity of initials
         # This is enough to distinguish a person match from a family match
-        person_match = (
-            self.initials and other.initials and
-            (self.initials == other.initials
-             or self.initials.startswith(other.initials)
-             or other.initials.startswith(self.initials))
-        )
+        person_match = not self.initials or (self.initials == other.initials or (
+            other.initials and (
+                self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
+        ))
         # Based on this, we only copy certain fields if there's a family match
         copy = Constant.COPY_PERSON if person_match else Constant.COPY_FAMILY
 
@@ -295,8 +294,9 @@ class Person:
 
             # Overwrite all if other is more recent
             for attr in copy:
-                if getattr(other, attr):
-                    setattr(self, attr, getattr(other, attr))
+                value = getattr(other, attr)
+                if value:
+                    setattr(self, attr, value)
 
         else:
 
