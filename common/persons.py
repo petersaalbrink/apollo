@@ -143,8 +143,8 @@ class Person:
         "address",
         *Constant.OTHER,
         *Constant.META,
-        "match",
-        "statistics",
+        "_match",
+        "_statistics",
     )
 
     def __init__(
@@ -197,8 +197,8 @@ class Person:
             self.address = ad
 
         Cleaner(self)
-        self.match: Optional[Match] = None
-        self.statistics = Statistics(self)
+        self._match: Optional[Match] = None
+        self._statistics: Optional[Statistics] = None
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.lastname!r}, {self.initials!r}, {self.address!r})"
@@ -358,6 +358,21 @@ class Person:
             source=doc["source"],
         )
 
+    @property
+    def match(self) -> Match:
+        if not self._match:
+            if any(getattr(self, attr) for attr in Constant.PERSON_META):
+                self._match = Match(self, query_type="person_query")
+            else:
+                self._match = Match(self, query_type="address_query")
+        return self._match
+
+    @property
+    def statistics(self) -> Statistics:
+        if not self._statistics:
+            self._statistics = Statistics(self)
+        return self._statistics
+
     def update(self) -> Person:
         """Update a `Person` with `Match`.
 
@@ -365,7 +380,6 @@ class Person:
         """
         if not self.statistics:
             raise PersonsError("Too few fields to reliably update this Person.")
-        self.match = Match(self)
         return self | self.match.composite
 
 
@@ -413,7 +427,6 @@ class Address:
     def upgrade(self) -> Person:
         """Upgrade an `Address` to a `Person`."""
         person = Person.from_address(self)
-        person.match = Match(person, query_type="address_query")
         return person | person.match.composite
 
 
