@@ -38,6 +38,7 @@ __all__ = (
     "Statistics",
     "set_alpha",
     "set_clean_email",
+    "set_must_have_address",
     "set_population_size",
     "set_search_size",
     "set_years_ago",
@@ -80,6 +81,11 @@ def set_clean_email(clean_email: bool = True) -> bool:
     return True
 
 
+def set_must_have_address(must_have_address: bool = False) -> bool:
+    Constant.MUST_HAVE_ADDRESS = must_have_address
+    return True
+
+
 def set_search_size(size: int = 10) -> bool:
     Constant.SEARCH_SIZE = size
     return True
@@ -92,6 +98,7 @@ def set_years_ago(years_ago: int = 3) -> bool:
 
 class Constant:
     CLEAN_EMAIL = True
+    MUST_HAVE_ADDRESS = False
     SEARCH_SIZE = 10_000
     HIGH_SCORE = 1
     LOW_SCORE = 4
@@ -426,6 +433,7 @@ class Statistics:
             self.extra_fields = extra_fields_calculation(
                 lastname=person.lastname,
                 initials=person.initials,
+                must_have_address=Constant.MUST_HAVE_ADDRESS,
                 fuzzy_address=person.address,
                 address=person.address,
                 postcode=None if person.address else person.address.postcode,

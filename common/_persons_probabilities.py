@@ -211,6 +211,7 @@ def full_calculation_fp(
 def extra_fields_calculation(
         lastname: str,
         initials: str,
+        must_have_address: bool = False,
         **kwargs: Any,
 ) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
     """Calculate which combinations of extra fields are valid.
@@ -238,12 +239,18 @@ def extra_fields_calculation(
         return bases
 
     kws = [kw for kw, arg in kwargs.items() if arg]
-    kws_combinations = [
+    kws_combinations = (
         {kw: True for kw in kw_combi}
         for i in range(1, len(kws) + 1)
         for kw_combi in combinations(kws, i)
         if not ("address" in kw_combi and "fuzzy_address" in kw_combi)
-    ]
+    )
+    if must_have_address:
+        kws_combinations = (
+            kw_combi for kw_combi in kws_combinations
+            if "address" in kw_combi or "fuzzy_address" in kw_combi
+        )
+    print(must_have_address)
 
     @lru_cache()
     def is_partial(part: Union[str, tuple], *_) -> bool:
@@ -253,7 +260,7 @@ def extra_fields_calculation(
     valid_combinations = set()
     for kws in kws_combinations:
         for base, p_fp in full_calculation_fp(lastname, initials, **kws).items():
-            if bases[base] < Constant.alpha:
+            if not must_have_address and bases[base] < Constant.alpha:
                 # The chance from the base calculation is already valid
                 valid_combinations.add(base)
                 calculations[base] = bases[base]
