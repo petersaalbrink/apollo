@@ -38,6 +38,7 @@ __all__ = (
     "Statistics",
     "set_alpha",
     "set_clean_email",
+    "set_must_have_address",
     "set_population_size",
     "set_search_size",
     "set_years_ago",
@@ -80,6 +81,11 @@ def set_clean_email(clean_email: bool = True) -> bool:
     return True
 
 
+def set_must_have_address(must_have_address: bool = False) -> bool:
+    Constant.MUST_HAVE_ADDRESS = must_have_address
+    return True
+
+
 def set_search_size(size: int = 10) -> bool:
     Constant.SEARCH_SIZE = size
     return True
@@ -92,6 +98,7 @@ def set_years_ago(years_ago: int = 3) -> bool:
 
 class Constant:
     CLEAN_EMAIL = True
+    MUST_HAVE_ADDRESS = False
     SEARCH_SIZE = 10_000
     HIGH_SCORE = 1
     LOW_SCORE = 4
@@ -136,8 +143,8 @@ class Person:
         "address",
         *Constant.OTHER,
         *Constant.META,
-        "match",
-        "statistics",
+        "_match",
+        "_statistics",
     )
 
     def __init__(
@@ -190,8 +197,8 @@ class Person:
             self.address = ad
 
         Cleaner(self)
-        self.match: Optional[Match] = None
-        self.statistics = Statistics(self)
+        self._match: Optional[Match] = None
+        self._statistics: Optional[Statistics] = None
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.lastname!r}, {self.initials!r}, {self.address!r})"
@@ -206,6 +213,7 @@ class Person:
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
+
         if self.lastname and other.lastname:
             distance = min(len(self.lastname), len(other.lastname))
             distance = 2 if distance > 5 else (1 if distance > 2 else 0)
@@ -274,12 +282,10 @@ class Person:
         # Because of our probability calculation, we will only make two types of matches
         # The difference between the two is similarity of initials
         # This is enough to distinguish a person match from a family match
-        person_match = (
-            self.initials and other.initials and
-            (self.initials == other.initials
-             or self.initials.startswith(other.initials)
-             or other.initials.startswith(self.initials))
-        )
+        person_match = not self.initials or (self.initials == other.initials or (
+            other.initials and (
+                self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
+        ))
         # Based on this, we only copy certain fields if there's a family match
         copy = Constant.COPY_PERSON if person_match else Constant.COPY_FAMILY
 
@@ -288,8 +294,9 @@ class Person:
 
             # Overwrite all if other is more recent
             for attr in copy:
-                if getattr(other, attr):
-                    setattr(self, attr, getattr(other, attr))
+                value = getattr(other, attr)
+                if value:
+                    setattr(self, attr, value)
 
         else:
 
@@ -351,6 +358,21 @@ class Person:
             source=doc["source"],
         )
 
+    @property
+    def match(self) -> Match:
+        if not self._match:
+            if any(getattr(self, attr) for attr in Constant.PERSON_META):
+                self._match = Match(self, query_type="person_query")
+            else:
+                self._match = Match(self, query_type="address_query")
+        return self._match
+
+    @property
+    def statistics(self) -> Statistics:
+        if not self._statistics:
+            self._statistics = Statistics(self)
+        return self._statistics
+
     def update(self) -> Person:
         """Update a `Person` with `Match`.
 
@@ -358,7 +380,6 @@ class Person:
         """
         if not self.statistics:
             raise PersonsError("Too few fields to reliably update this Person.")
-        self.match = Match(self)
         return self | self.match.composite
 
 
@@ -406,7 +427,6 @@ class Address:
     def upgrade(self) -> Person:
         """Upgrade an `Address` to a `Person`."""
         person = Person.from_address(self)
-        person.match = Match(person, query_type="address_query")
         return person | person.match.composite
 
 
@@ -426,6 +446,7 @@ class Statistics:
             self.extra_fields = extra_fields_calculation(
                 lastname=person.lastname,
                 initials=person.initials,
+                must_have_address=Constant.MUST_HAVE_ADDRESS,
                 fuzzy_address=person.address,
                 address=person.address,
                 postcode=None if person.address else person.address.postcode,
@@ -979,7 +1000,7 @@ class Match:
     def composite(self) -> Person:
         """Create a composite output `Person`."""
         if not self._composite:
-            self._composite = self.matches[0]
+            self._composite = deepcopy(self.matches[0])
             for person in self.matches[1:]:
                 self._composite |= person
         return self._composite
