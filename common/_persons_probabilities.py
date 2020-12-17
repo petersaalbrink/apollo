@@ -250,7 +250,6 @@ def extra_fields_calculation(
             kw_combi for kw_combi in kws_combinations
             if "address" in kw_combi or "fuzzy_address" in kw_combi
         )
-    print(must_have_address)
 
     @lru_cache()
     def is_partial(part: Union[str, tuple], *_) -> bool:
