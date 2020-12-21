@@ -8,7 +8,7 @@ __all__ = (
 
 from contextlib import suppress
 from logging import debug
-from typing import Any, Iterator, Union
+from typing import Any, Dict, Iterator, List, Union
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import (ElasticsearchException,
@@ -23,17 +23,17 @@ from ..secrets import get_secret
 
 # Types
 Location = Union[
-    list[Union[str, float]],
-    dict[str, Union[str, float]]
+    List[Union[str, float]],
+    Dict[str, Union[str, float]]
 ]
-Nesteddict = dict[str, dict[str, Any]]
+NestedDict = Dict[str, Dict[str, Any]]
 Query = Union[
-    Nesteddict,
-    list[Nesteddict]
+    NestedDict,
+    List[NestedDict]
 ]
 Result = Union[
-    list[Nesteddict],
-    Nesteddict,
+    List[NestedDict],
+    NestedDict,
 ]
 
 # Globals
