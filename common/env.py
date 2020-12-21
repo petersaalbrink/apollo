@@ -8,6 +8,7 @@ system's environment variables outside of common.
 """
 
 __all__ = (
+    "commondir",
     "envfile",
     "getenv",
 )

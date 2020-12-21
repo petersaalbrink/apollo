@@ -1,5 +1,7 @@
 """Connect to Matrixian's Elasticsearch databases."""
 
+from __future__ import annotations
+
 __all__ = (
     "ESClient",
 )
