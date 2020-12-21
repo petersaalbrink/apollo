@@ -1,13 +1,12 @@
 """Connect to Matrixian's Elasticsearch databases."""
+
+__all__ = (
+    "ESClient",
+)
+
 from contextlib import suppress
 from logging import debug
-from typing import (Any,
-                    Dict,
-                    Iterator,
-                    List,
-                    MutableMapping,
-                    Sequence,
-                    Union)
+from typing import Any, Iterator, Union
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import (ElasticsearchException,
@@ -22,17 +21,17 @@ from ..secrets import get_secret
 
 # Types
 Location = Union[
-    Sequence[Union[str, float]],
-    Dict[str, Union[str, float]]
+    list[Union[str, float]],
+    dict[str, Union[str, float]]
 ]
-NestedDict = Dict[str, Dict[str, Any]]
+Nesteddict = dict[str, dict[str, Any]]
 Query = Union[
-    NestedDict,
-    Sequence[NestedDict]
+    Nesteddict,
+    list[Nesteddict]
 ]
 Result = Union[
-    List[NestedDict],
-    NestedDict,
+    list[Nesteddict],
+    Nesteddict,
 ]
 
 # Globals
@@ -135,7 +134,7 @@ class ESClient(Elasticsearch):
                 raise ESClientError(f"Make sure a host is configured for variable"
                                     f" name '{envv}' in file '{envfile}'")
             if not _config["http_auth"]:
-                _config["http_auth"] = get_secret("MX_ELASTIC")
+                _config["http_auth"] = get_secret("MX_ELASTIC")  # noqa
         hosts = [{"host": self._host, "port": self._port}]
         super().__init__(hosts, **_config)
         self.es_index = es_index
@@ -156,18 +155,18 @@ class ESClient(Elasticsearch):
         """Perform an Elasticsearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
-        Accepts a single query (dict) or multiple (List[dict]).
+        Accepts a single query (dict) or multiple (list[dict]).
         Returns:
             query: dict and
                 not hits_only -> dict
-                hits_only -> List[dict]
-                source_only -> List[dict]
+                hits_only -> list[dict]
+                source_only -> list[dict]
                 first_only -> dict
-            query: List[dict] and
-                not hits_only -> List[dict]
-                hits_only -> List[List[dict]]
-                source_only -> List[List[dict]]
-                first_only -> List[dict]
+            query: list[dict] and
+                not hits_only -> list[dict]
+                hits_only -> list[list[dict]]
+                source_only -> list[list[dict]]
+                first_only -> list[dict]
         """
         hits_only = kwargs.pop("hits_only", True)
         source_only = kwargs.pop("source_only", False)
@@ -239,7 +238,7 @@ class ESClient(Elasticsearch):
         :param location: A tuple, list, or dict of
             a latitude-longitude pair.
         :param distance: Distance (in various units) in format "42km".
-        :return: List of results that are :param distance: away.
+        :return: list of results that are :param distance: away.
 
         Example::
             es = ESClient("dev_realestate.real_estate")
@@ -259,12 +258,12 @@ class ESClient(Elasticsearch):
             if self.es_index == RE_OLD:
                 query = {"query": {"bool": {"must": {
                     "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
-                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                result: dict[str, Any] = self.find(query=query, first_only=True)
                 location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
             else:
                 query = {"query": {"bool": {"must": {
                     "match": {"address.identification.addressId.keyword": address_id}}}}}
-                result: MutableMapping[str, Any] = self.find(query=query, first_only=True)
+                result: dict[str, Any] = self.find(query=query, first_only=True)
                 location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
 
         try:
@@ -325,10 +324,10 @@ class ESClient(Elasticsearch):
         """Used for Elasticsearch queries that return more than 10k documents.
         Returns all results at once.
 
-        :param query: MutableMapping[str, Any]
+        :param query: dict[str, Any]
         :param index: str
         :param kwargs: scroll: str
-        :return: Sequence[MutableMapping[Any, Any]]
+        :return: list[dict[Any, Any]]
         """
 
         hits_only = kwargs.pop("hits_only", True)
@@ -504,13 +503,13 @@ class ESClient(Elasticsearch):
     def total(self) -> int:
         """The total number of documents within the index."""
         self._check_index_exists()
-        return self.indices.stats(self.es_index)["_all"]["total"]["docs"]["count"]
+        return self.indices.stats(index=self.es_index)["_all"]["total"]["docs"]["count"]
 
     def count(self,
               body=None,
               index=None,
               doc_type=None,
-              find: MutableMapping[str, MutableMapping] = None,
+              find: dict[str, dict] = None,
               **kwargs
               ) -> int:
         """Count the number of documents a query will return."""
@@ -525,7 +524,7 @@ class ESClient(Elasticsearch):
 
     def distinct_count(self,
                        field: str,
-                       find: MutableMapping[str, MutableMapping] = None
+                       find: dict[str, dict] = None
                        ) -> int:
         """Provide a count of distinct values in a certain field.
 
@@ -547,7 +546,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                             ], "size": 10_000
                         }}}}
             try:
-                result: MutableMapping[str, Any] = self.find(query, size=0)
+                result: dict[str, Any] = self.find(query, size=0)
                 break
             except TransportError as e:
                 if "fielddata" in f"{e}" and field[-8:] != ".keyword":
@@ -569,8 +568,8 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
 
     def distinct_values(self,
                         field: str,
-                        find: MutableMapping[str, MutableMapping] = None
-                        ) -> List[Any]:
+                        find: dict[str, dict] = None
+                        ) -> list[Any]:
         """Return distinct values in a certain field.
 
         See:
@@ -591,7 +590,7 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                             ], "size": 10_000
                         }}}}
             try:
-                response: MutableMapping[str, Any] = self.find(query, size=0)
+                response: dict[str, Any] = self.find(query, size=0)
                 break
             except TransportError as e:
                 if "fielddata" in f"{e}" and field[-8:] != ".keyword":

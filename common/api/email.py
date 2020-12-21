@@ -1,3 +1,8 @@
+__all__ = (
+    "check_email",
+    "validate_email",
+)
+
 from copy import copy
 from datetime import datetime as dt
 from functools import lru_cache

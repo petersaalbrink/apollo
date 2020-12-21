@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+__all__ = (
+    "MongoDB",
+)
+
 from collections.abc import Iterable
 from typing import Union
 from urllib.parse import quote_plus
@@ -124,10 +128,7 @@ class MxCollection(Collection):
 
 
 class MongoDB:
-    """Client for Matrixian's MongoDB databases.
-
-    Inherits from the official `MongoClient`.
-    """
+    """Factory for a Matrixian MongoDB client, database, or collection object."""
 
     def __new__(cls,
                 database: str = None,
@@ -136,18 +137,18 @@ class MongoDB:
                 client: bool = False,
                 **kwargs
                 ) -> Union[MxClient, MxDatabase, MxCollection]:
-        """Client for Matrixian's MongoDB databases.
+        """Factory for Matrixian's MongoDB database access.
 
-        Creates a MongoClient, Database, or Collection object.
+        Creates a MxClient, MxDatabase, or MxCollection object.
 
         Usage::
-            # Create a MongoClient object
+            # Create a MxClient object
             client = MongoDB(client=True)
 
-            # Create a Database object
+            # Create a MxDatabase object
             db = MongoDB("cdqc")
 
-            # Create a Collection object
+            # Create a MxCollection object (pick one)
             coll = MongoDB("cdqc", "person_data")  # first method
             coll = MongoDB("cdqc.person_data")  # second method
             coll = MongoDB()["cdqc"]["person_data"]  # third method

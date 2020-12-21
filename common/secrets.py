@@ -12,6 +12,13 @@ This module also contains a `get_token` function, which returns headers
 containing an access token for the Matrixian Platform.
 """
 
+__all__ = (
+    "change_secret",
+    "get_secret",
+    "get_token",
+    "getenv",
+)
+
 from base64 import b64encode, b64decode
 from collections import namedtuple
 from contextlib import suppress

@@ -42,9 +42,22 @@ This module contains the following objects:
         dateformat("28/08/2014") == "%d/%m/%Y"
 """
 
+from __future__ import annotations
+
+__all__ = (
+    "Checks",
+    "DISTANCE",
+    "PERCENTAGE",
+    "dateformat",
+    "drop_empty_columns",
+    "expand",
+    "flatten",
+    "levenshtein",
+)
+
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, List, MutableMapping, Optional, Union
+from typing import Any, Optional, Union
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import notna
@@ -52,7 +65,7 @@ from text_unidecode import unidecode
 from .exceptions import ParseError
 
 
-def _flatten(input_dict: MutableMapping[str, Any], sep: str):
+def _flatten(input_dict: dict[str, Any], sep: str):
     flattened_dict = {}
     for key, maybe_nested in input_dict.items():
         if isinstance(maybe_nested, dict):
@@ -63,14 +76,14 @@ def _flatten(input_dict: MutableMapping[str, Any], sep: str):
     return flattened_dict
 
 
-def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
+def flatten(nested_dict: dict[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
     __flatten = _flatten
     return_dict = __flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
-            if not isinstance(v, MutableMapping):
+            if not isinstance(v, dict):
                 count += 1
         if count == len(return_dict):
             break
@@ -230,7 +243,7 @@ def dateformat(date: str) -> str:
     return fmt
 
 
-def expand(data: List[dict], sort: bool = True) -> List[dict]:
+def expand(data: list[dict], sort: bool = True) -> list[dict]:
     """Standardize irregular data, e.g. for writing to CSV or SQL.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -250,7 +263,7 @@ def expand(data: List[dict], sort: bool = True) -> List[dict]:
     return data
 
 
-def drop_empty_columns(data: List[dict]) -> List[dict]:
+def drop_empty_columns(data: list[dict]) -> list[dict]:
     """Remove keys that have no value for all entries.
 
     This function accepts a list of dictionaries, and transforms it so

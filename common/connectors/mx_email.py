@@ -1,4 +1,11 @@
 """Send emails using Matrixian dev account."""
+
+from __future__ import annotations
+
+__all__ = (
+    "EmailClient",
+)
+
 from email.encoders import encode_base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -8,7 +15,7 @@ from pathlib import Path
 from smtplib import SMTP
 from sys import argv
 from traceback import format_exc
-from typing import List, Union
+from typing import Union
 from zipfile import ZipFile, ZIP_LZMA
 
 DEFAULT_EMAIL = "datateam@matrixiangroup.com"
@@ -50,11 +57,11 @@ class EmailClient:
         return True
 
     def send_email(self,
-                   to_address: Union[str, List[str]] = DEFAULT_EMAIL,
+                   to_address: Union[str, list[str]] = DEFAULT_EMAIL,
                    subject: str = None,
                    message: Union[str, Exception] = None,
                    from_address: str = None,
-                   attachment_path: Union[Union[str, Path], List[Union[str, Path]]] = None,
+                   attachment_path: Union[Union[str, Path], list[Union[str, Path]]] = None,
                    error_message: bool = False,
                    ):
         """Send an email to an email address (str) or a list of addresses.

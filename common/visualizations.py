@@ -30,7 +30,15 @@ Example 3::
                 horizontal=True)
 """
 
-from typing import List
+from __future__ import annotations
+
+__all__ = (
+    "DistributionPlot",
+    "PlotMx",
+    "RadarPlot",
+    "plot_stacked_bar",
+)
+
 import numpy as np
 from matplotlib import rc
 import matplotlib.path as path

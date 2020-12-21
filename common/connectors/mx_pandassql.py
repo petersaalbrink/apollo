@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+__all__ = (
+    "PandasSQL",
+)
+
 # Connections
 from common.connectors.mx_sqlalchemy import SQLClient
 
@@ -7,7 +13,7 @@ from sqlalchemy.dialects.mysql import CHAR, DECIMAL, INTEGER, DATE
 # Data handlers
 from pandas import DataFrame, read_sql
 from numpy import ceil, datetime64
-from typing import Sequence, List, Union
+from typing import Sequence, Union
 from functools import partial
 from re import IGNORECASE, search
 from tqdm import tqdm
@@ -74,8 +80,8 @@ class PandasSQL(SQLClient):
 
         return self.dtypes
 
-    def get_df(self, query: str = None, chunk_size: int = None, columns: List[str] = None,
-               index_columns: List[str] = None, use_tqdm: bool = False, limit: int = None,
+    def get_df(self, query: str = None, chunk_size: int = None, columns: list[str] = None,
+               index_columns: list[str] = None, use_tqdm: bool = False, limit: int = None,
                parse_dates: Union[bool, list] = None):
         """
         Description

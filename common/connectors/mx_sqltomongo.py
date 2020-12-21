@@ -1,6 +1,13 @@
+from __future__ import annotations
+
+__all__ = (
+    "MappingsBase",
+    "SQLtoMongo",
+)
+
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import Callable, List, NewType, Union, Type
+from typing import Callable, NewType, Union, Type
 from tqdm import tqdm
 
 from pandas import read_sql
@@ -61,7 +68,7 @@ class SQLtoMongo:
         self.date_columns = kwargs.pop("date_columns", None)
         self.index_columns = kwargs.pop("index_columns", None)
 
-    def create_indexes(self, names: List[str]):
+    def create_indexes(self, names: list[str]):
         """Create indexes in the MongoDB collection.
 
         The name of the (nested) field is set as the index name.
@@ -139,7 +146,7 @@ class SQLtoMongo:
             result = self.coll.insert_many(chunk)
             self.number_of_insertions += len(result.inserted_ids)
 
-    def notify(self, to_address: Union[List[str], str], title: str = "Update succeeded", name: str = ""):
+    def notify(self, to_address: Union[list[str], str], title: str = "Update succeeded", name: str = ""):
         if name:
             name = f"{name}\n\n"
         total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
