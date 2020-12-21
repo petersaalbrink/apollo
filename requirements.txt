@@ -159,3 +159,6 @@ seaborn>=0.10.1
 # tests
 hypothesis>=5.6.0
 pytest>=5.3.5
+
+# geo
+Shapely>=1.7.1
