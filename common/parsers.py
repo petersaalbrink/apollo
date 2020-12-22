@@ -40,6 +40,11 @@ This module contains the following objects:
    Parse a date from a datestring and return the format.
    Example::
         dateformat("28/08/2014") == "%d/%m/%Y"
+
+.. py:function:: common.parsers.find_all_urls(text: str) -> list
+   Finds all urls in a string and returns a list
+   Example::
+        urls = find_all_urls(text)
 """
 
 from __future__ import annotations
@@ -63,6 +68,7 @@ from numpy import zeros
 from pandas import notna
 from text_unidecode import unidecode
 from .exceptions import ParseError
+from re import findall, compile
 
 
 def _flatten(input_dict: dict[str, Any], sep: str):
@@ -287,3 +293,9 @@ def drop_empty_columns(data: list[dict]) -> list[dict]:
                 if field in doc:
                     del doc[field]
     return data
+
+
+def find_all_urls(text: str) -> list:
+    """Finds all urls in a string and returns a list"""
+    url_regex = compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+    return findall(url_regex, text)
