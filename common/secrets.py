@@ -13,6 +13,7 @@ containing an access token for the Matrixian Platform.
 """
 
 __all__ = (
+    "Credentials",
     "change_secret",
     "get_secret",
     "get_token",
