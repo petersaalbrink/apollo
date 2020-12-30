@@ -171,27 +171,28 @@ class Person:
             date: Union[str, datetime] = None,
             source: str = None,
     ):
-        self.lastname = lastname
-        self.initials = initials
-        self.gender = gender
-        self.firstname = firstname
-        self.middlename = middlename
-        self.address = Address(
-            postcode,
-            housenumber,
-            housenumber_ext,
-            street,
-            city,
-            country,
-        )
-        self.mobile = mobile
-        self.number = number
-        self.date_of_birth = date_of_birth
-        self.email_address = email_address
-        self.date = date
-        self.source = source
+        if ad is None:
+            self.lastname = lastname
+            self.initials = initials
+            self.gender = gender
+            self.firstname = firstname
+            self.middlename = middlename
+            self.address = Address(
+                postcode,
+                housenumber,
+                housenumber_ext,
+                street,
+                city,
+                country,
+            )
+            self.mobile = mobile
+            self.number = number
+            self.date_of_birth = date_of_birth
+            self.email_address = email_address
+            self.date = date
+            self.source = source
 
-        if ln:
+        else:
             self.lastname = ln
             self.initials = it
             self.address = ad
