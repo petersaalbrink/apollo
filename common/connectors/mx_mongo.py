@@ -102,7 +102,7 @@ class MxCollection(Collection):
     def insert_one(self, document, bypass_document_validation=False, session=None):
         if isinstance(document, dict) and document.get("geometry"):
             document = self.correct_geoshape(document)
-        super().insert_many(document, bypass_document_validation, session)
+        super().insert_one(document, bypass_document_validation, session)
 
     @staticmethod
     def correct_geoshape(doc: dict, key: str = "geometry") -> dict:
