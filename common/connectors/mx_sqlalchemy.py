@@ -1,3 +1,7 @@
+__all__ = (
+    "SQLClient",
+)
+
 # Environment variables
 from common.env import getenv, commondir
 from common.secrets import get_secret

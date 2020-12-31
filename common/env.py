@@ -7,6 +7,12 @@ used externally, if one needs to load secrets or hostnames into the
 system's environment variables outside of common.
 """
 
+__all__ = (
+    "commondir",
+    "envfile",
+    "getenv",
+)
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv

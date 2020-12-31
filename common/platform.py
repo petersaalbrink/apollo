@@ -13,13 +13,20 @@ and downloads from the Platform.
    Upload and download files to/from the Matrixian Platform.
 """
 
+from __future__ import annotations
+
+__all__ = (
+    "FileTransfer",
+)
+
+from collections.abc import Iterable
 try:
     from functools import cached_property
 except ImportError:
     from cached_property import cached_property
 import io
 from pathlib import Path
-from typing import BinaryIO, List, Sequence, Tuple, Union
+from typing import BinaryIO, Union
 
 from bson import ObjectId
 from paramiko import AutoAddPolicy, SSHClient
@@ -125,7 +132,7 @@ class FileTransfer:
         if stderr[:30] != "[sudo] password for consucom: " or stderr[30:]:
             raise FileTransferError(stderr)
 
-    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> Tuple[BinaryIO, BinaryIO]:
+    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[BinaryIO, BinaryIO]:
         """Create a process from a shell command."""
         stdin, stdout, stderr = self.client.exec_command(
             f"sudo -S {cmd}",
@@ -144,8 +151,8 @@ class FileTransfer:
         stdin.close()
         return stdout, stderr
 
-    def list_files(self) -> List[str]:
-        """List existing files in this user's Platform folder."""
+    def list_files(self) -> list[str]:
+        """list existing files in this user's Platform folder."""
         self._connect()
         stdout, _ = self._run_cmd(f"ls {self.filepath}")
         files = [f for f in stdout.read().decode().split("\n") if f]
@@ -189,7 +196,7 @@ class FileTransfer:
 
     def notify(
             self,
-            to_address: Union[str, Sequence[str]] = None,
+            to_address: Union[str, list[str], tuple[str, ...]] = None,
             username: str = None
     ) -> "FileTransfer":
         """Notify the user of the new Platform upload."""
@@ -204,7 +211,7 @@ class FileTransfer:
         # Prepare receivers
         if isinstance(to_address, str):
             to_address = (to_address, self.email)
-        elif isinstance(to_address, Sequence):
+        elif isinstance(to_address, Iterable):
             to_address = (*to_address, self.email)
         else:
             to_address = self.email

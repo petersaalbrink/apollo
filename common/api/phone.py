@@ -1,5 +1,15 @@
+__all__ = (
+    "CALL_TO_VALIDATE",
+    "PhoneApiResponse",
+    "RESPECT_HOURS",
+    "cache_clear",
+    "call_phone",
+    "check_phone",
+    "parse_phone",
+)
+
 from dataclasses import astuple, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 import re
 from socket import gethostname
@@ -33,6 +43,7 @@ TYPES = {
 }
 abc_pattern = re.compile(r"[a-zA-Z/]")
 num_pattern = re.compile(r"([^0-9+]+)")
+td_90_days = timedelta(days=90)
 if gethostname() == "matrixian":
     URL = "http://localhost:5000/call/"
 else:
@@ -170,8 +181,11 @@ def lookup_call_result(
     result = ESClient(
         "cdqc.validated_numbers", index_exists=True,
     ).find(
-        {"query": {"bool": {"filter": {"term": {"phoneNumber": phone.national_number}}}}},
-        size=1, source_only=True,
+        {"query": {"bool": {"filter": [
+            {"term": {"phoneNumber": phone.national_number}},
+            {"range": {"date": {"gte": (datetime.now() - td_90_days)}}},
+        ]}}},
+        size=1, source_only=True, _source="valid",
     )
     if result:
         phone.valid_number = result["valid"]

@@ -46,6 +46,31 @@ Runtime handlers:
    Upgrade all installed Python packages using pip.
 """
 
+from __future__ import annotations
+
+__all__ = (
+    "tqdm",
+    "trange",
+    "remove_adjacent",
+    "chunker",
+    "csv_write",
+    "csv_read",
+    "Log",
+    "get_logger",
+    "send_email",
+    "ZipData",
+    "Timer",
+    "TicToc",
+    "FunctionTimer",
+    "timer",
+    "keep_trying",
+    "pip_upgrade",
+    "read_txt",
+    "read_json_line",
+    "read_json",
+    "assert_never",
+)
+
 from collections import OrderedDict
 from contextlib import ContextDecorator
 from csv import DictReader, DictWriter, Error, Sniffer
@@ -66,13 +91,9 @@ from typing import (
     Any,
     Callable,
     ClassVar,
-    Dict,
     Iterator,
-    List,
-    MutableMapping,
     NoReturn,
     Optional,
-    Tuple,
     Type,
     Union,
 )
@@ -105,7 +126,7 @@ def chunker(lst: list, n) -> Iterator[list]:
         yield lst[i:i + n]
 
 
-def csv_write(data: Union[List[dict], dict],
+def csv_write(data: Union[list[dict], dict],
               filename: Union[Path, str],
               **kwargs) -> None:
     """Write data to a csv file.
@@ -154,7 +175,7 @@ def csv_write(data: Union[List[dict], dict],
 
 def csv_read(filename: Union[Path, str],
              **kwargs,
-             ) -> MutableMapping:
+             ) -> dict:
     """Generate data read from a csv file.
 
     Returns rows as dict, with None instead of empty string. If no
@@ -478,12 +499,12 @@ class ZipData:
              remove: bool = False,
              n_lines: int = None,
              as_generator: bool = False
-             ) -> Union[List[OrderedDict],
-                        List[list],
-                        Dict[str, List[OrderedDict]]]:
+             ) -> Union[list[OrderedDict],
+                        list[list],
+                        dict[str, list[OrderedDict]]]:
         """Load (and optionally remove) data from zip archive. If the
         archive contains multiple csv files, they are returned in
-        Dict[str, List[OrderedDict]] format.
+        dict[str, list[OrderedDict]] format.
 
         Example:
             zipdata = ZipData("testfile.zip", delimiter=",")
@@ -522,7 +543,7 @@ class ZipData:
             else:
                 self.data[file] = function(data[1:] if skip_fieldnames else data, *args, **kwargs)
 
-    def write(self, replace: Tuple[str, str] = ("", "")):
+    def write(self, replace: tuple[str, str] = ("", "")):
         """Archives and deflates all data files."""
         with ZipFile(self.file_path, "w", compression=8) as zipfile:
             for file, values in self.data.items():
@@ -584,7 +605,7 @@ class TicToc(ContextDecorator):
         my_func()
     """
 
-    timers: ClassVar[Dict[str, float]] = dict()
+    timers: ClassVar[dict[str, float]] = dict()
     name: Optional[str] = None
     text: str = "Elapsed time: {:0.4f} seconds"
     logger: Optional[Callable[[str], None]] = print
@@ -699,7 +720,7 @@ def timer(f):
 def keep_trying(
         function: Callable,
         *args,
-        exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = None,
+        exceptions: Union[Type[Exception], tuple[Type[Exception], ...]] = None,
         timeout: Union[int, float] = None,
         **kwargs,
 ) -> Any:

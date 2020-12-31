@@ -29,6 +29,23 @@ Multithreading:
    Decorator that takes a generator function and makes it thread-safe.
 """
 
+from __future__ import annotations
+
+__all__ = (
+    "Executor",
+    "ThreadSafeIterator",
+    "calculate_bandwith",
+    "download_file",
+    "get",
+    "get_proxies",
+    "get_session",
+    "google_sign_url",
+    "post",
+    "request",
+    "thread",
+    "threadsafe",
+)
+
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from functools import lru_cache
@@ -37,11 +54,7 @@ import hmac
 from pathlib import Path
 from shutil import copyfileobj
 from threading import Lock
-from typing import (Any,
-                    Callable,
-                    Iterable,
-                    List,
-                    Union)
+from typing import Any, Callable, Iterable, Union
 from urllib.parse import urlparse
 
 from psutil import net_io_counters
@@ -192,7 +205,7 @@ def thread(function: Callable,
            data: Iterable,
            process: Callable = None,
            **kwargs,
-           ) -> List[Any]:
+           ) -> list[Any]:
     """Thread :param data: with :param function: and optionally do :param process:.
 
     Usage:
