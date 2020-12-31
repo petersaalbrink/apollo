@@ -4,7 +4,7 @@ __all__ = (
 )
 
 from copy import copy
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -16,8 +16,7 @@ import dns.resolver as resolve
 from dns.exception import DNSException
 from pymailcheck import suggest
 
-from ..connectors import MongoDB
-from ..env import getenv
+from ..connectors.mx_mongo import MongoDB
 from ..requests import get
 
 PATH = Path(__file__).parents[1] / "etc"
@@ -32,8 +31,9 @@ class _EmailValidator:
     at_words_regex = re.compile(r"[a-zA-Z]*@[a-zA-Z]*")
     disposable_providers = [x.rstrip().lower() for x in open(PATH / "disposable_providers.txt")]
     free_providers = [x.rstrip().lower() for x in open(PATH / "free_providers.txt")]
-    mongo_cache = MongoDB(host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="cache")
-    mongo_mx = MongoDB(host="dev", database=getenv("MX_MONGO_EMAIL_CHECKER"), collection="mx_records")
+    mongo_cache = MongoDB("cdqc.email_checker_cache")
+    mongo_mx = MongoDB("cdqc.email_checker_mx_records")
+    td = timedelta(days=90)
 
     def __init__(
             self,
@@ -155,7 +155,10 @@ class _EmailValidator:
 
     def search_cache(self) -> Optional[dict]:
         if self.USE_CACHE:
-            result = self.mongo_cache.find_one({"email": self.EMAIL})
+            result = self.mongo_cache.find_one({
+                "email": self.EMAIL,
+                "created_at": {"$gte": dt.now() - self.td},
+            })
 
             if result and "output" in result and result["output"]:
                 result["output"]["time"] = self.time_spent(True)
