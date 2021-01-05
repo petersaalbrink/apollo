@@ -51,17 +51,20 @@ class _EmailValidator:
         self.START = dt.now()
 
         self.OUTPUT_DICT = {
-            "time": "",
-            "disposable": False,
             "accept_all": False,
-            "free": False,
-            "email": self.EMAIL,
-            "user": "",
-            "domain": "",
-            "mx_record": "",
-            "safe_to_send": True,
             "corrected": False,
+            "disposable": False,
+            "domain": None,
+            "email": self.EMAIL,
+            "free": False,
+            "mx_code": None,
+            "mx_record": None,
+            "qualification": None,
+            "safe_to_send": True,
+            "status": None,
             "success": "success",
+            "time": None,
+            "user": None,
         }
 
     def parse_and_correct(self):
@@ -239,11 +242,11 @@ class _EmailValidator:
             if self.DEBUG:
                 traceback.print_exc()
             self.OUTPUT_DICT.update({
-                "status": "MANREV",
-                "qualification": "Invalid e-mail address format",
                 "email": self.EMAIL,
-                "time": self.time_spent(True),
+                "qualification": "Invalid e-mail address format",
                 "safe_to_send": False,
+                "status": "MANREV",
+                "time": self.time_spent(True),
             })
             return self.OUTPUT_DICT
 
@@ -251,24 +254,24 @@ class _EmailValidator:
             if self.DEBUG:
                 traceback.print_exc()
             self.OUTPUT_DICT.update({
-                "status": "USELESS",
-                "qualification": "SMTP Invalid",
                 "email": self.EMAIL,
-                "time": self.time_spent(True),
+                "qualification": "SMTP Invalid",
                 "safe_to_send": False,
+                "status": "USELESS",
+                "time": self.time_spent(True),
             })
             return self.OUTPUT_DICT
 
-        except Exception:
+        except Exception:  # noqa
             if self.DEBUG:
                 traceback.print_exc()
             self.OUTPUT_DICT.update({
+                "email": self.EMAIL,
+                "qualification": "Exception",
+                "safe_to_send": False,
                 "status": "EXCEPTION",
                 "success": False,
-                "qualification": "Exception",
-                "email": self.EMAIL,
                 "time": self.time_spent(True),
-                "safe_to_send": False,
             })
             return self.OUTPUT_DICT
 
