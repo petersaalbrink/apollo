@@ -52,6 +52,7 @@ python-dotenv>=0.12.0
 requests>=2.23.0
 
 # email
+babel>=2.9.0
 dnspython>=2.0.0
 psutil>=5.7.2
 pymailcheck>=1.0.0

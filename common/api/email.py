@@ -12,6 +12,7 @@ from smtplib import SMTP, SMTPServerDisconnected
 import traceback
 from typing import Optional, Union
 
+from babel import Locale, UnknownLocaleError
 import dns.resolver as resolve
 from dns.exception import DNSException
 from pymailcheck import suggest
@@ -25,7 +26,8 @@ URL = f"http://{LIVE}:4000/email?email="
 
 
 class _EmailValidator:
-    tlds = ["com", "nl", "be", "de", "org", "net", "info", "xyz", "icu", "uk", "ru", "tk", "cn", "ga"]
+    english_tlds = {"com", "icu", "info", "net", "org", "tk", "uk", "xyz"}
+    tlds = (*english_tlds, "nl", "be", "cn", "de", "ga", "ru")
     email_regex = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
     syntax_regex = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6}")
     at_words_regex = re.compile(r"[a-zA-Z]*@[a-zA-Z]*")
@@ -57,12 +59,13 @@ class _EmailValidator:
             "domain": None,
             "email": self.EMAIL,
             "free": False,
+            "language": "English",
             "mx_code": None,
             "mx_record": None,
             "qualification": None,
             "safe_to_send": True,
             "status": None,
-            "success": "success",
+            "success": True,
             "time": None,
             "user": None,
         }
@@ -136,10 +139,16 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "USELESS"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
 
-    def parse_domain(self):
+    def parse_domain_and_country(self):
         split_address = self.EMAIL.split("@")
         self.OUTPUT_DICT["user"] = split_address[0]
         self.OUTPUT_DICT["domain"] = str(split_address[1])
+        tld = split_address[1].split(".")[-1]
+        if tld not in self.english_tlds:
+            try:
+                self.OUTPUT_DICT["language"] = Locale.parse(f"und_{tld}").language_name
+            except (ValueError, UnknownLocaleError):
+                pass
 
     def check_disposable(self):
         if self.OUTPUT_DICT["domain"].lower() in self.disposable_providers:
@@ -209,8 +218,8 @@ class _EmailValidator:
             # Check email syntax
             self.check_syntax()
 
-            # Parse domain from email
-            self.parse_domain()
+            # Parse domain and country from email
+            self.parse_domain_and_country()
 
             # Update output dictionary
             self.OUTPUT_DICT["email"] = self.EMAIL
