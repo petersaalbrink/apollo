@@ -62,6 +62,11 @@ class _EmailValidator:
             "language": "English",
             "mx_code": None,
             "mx_record": None,
+            "name": {
+                "first": None,
+                "gender": None,
+                "last": None,
+            },
             "qualification": None,
             "safe_to_send": True,
             "status": None,
@@ -139,10 +144,23 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "USELESS"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
 
-    def parse_domain_and_country(self):
+    def parse_user_domain_country(self):
         split_address = self.EMAIL.split("@")
+
+        # Parse user
         self.OUTPUT_DICT["user"] = split_address[0]
+        from ..persons import parse_name  # importing here to avoid circular import
+        parsed = parse_name(split_address[0])
+        self.OUTPUT_DICT["name"].update({
+            "first": parsed.first,
+            "gender": parsed.gender,
+            "last": parsed.last,
+        })
+
+        # Parse domain
         self.OUTPUT_DICT["domain"] = str(split_address[1])
+
+        # Parse country
         tld = split_address[1].split(".")[-1]
         if tld not in self.english_tlds:
             try:
@@ -219,7 +237,7 @@ class _EmailValidator:
             self.check_syntax()
 
             # Parse domain and country from email
-            self.parse_domain_and_country()
+            self.parse_user_domain_country()
 
             # Update output dictionary
             self.OUTPUT_DICT["email"] = self.EMAIL

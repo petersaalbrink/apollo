@@ -36,6 +36,8 @@ __all__ = (
     "Re",
     "Query",
     "Statistics",
+    "parse_name",
+    "preload_db",
     "set_alpha",
     "set_clean_email",
     "set_must_have_address",
@@ -44,6 +46,7 @@ __all__ = (
     "set_years_ago",
 )
 
+from collections import namedtuple
 from collections.abc import Iterator
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -65,6 +68,7 @@ import common.api.phone as phone
 from ._persons_probabilities import (
     estimated_people_with_lastname,
     extra_fields_calculation,
+    get_name_counts,
     set_alpha,
     set_population_size,
 )
@@ -536,6 +540,59 @@ class Names:
 
 
 Constant.NAMES = Names()
+ParsedName = namedtuple("ParsedName", ("first", "last", "gender"))
+
+
+def preload_db():
+    """Helper function to aid application startup."""
+    _ = Constant.NAMES.affixes
+    _ = Constant.NAMES.first_names
+
+
+def parse_name(name: str) -> ParsedName:
+    """Parse parts from a name."""
+
+    for char in "_.+-":
+        name = name.replace(char, " ")
+    name_split = [token.title() for token in name.split()]
+
+    initials = []
+    for token in list(name_split):
+        if len(token) == 1:
+            name_split.remove(token)
+            initials.append(token)
+        else:
+            break
+
+    affixes = []
+    for token in list(name_split):
+        token_lower = token.lower()
+        if token_lower in Constant.NAMES.affixes:
+            name_split.remove(token)
+            affixes.append(token_lower)
+
+    last_names = []
+    first_names = []
+    for token in name_split:
+        first_name_count, last_name_count = get_name_counts(token)
+        if last_name_count > first_name_count:
+            last_names.append(token)
+        else:
+            first_names.append(token)
+
+    # Make sure we have a last name instead of multiple first names
+    if not last_names and len(first_names) > 1:
+        last_names.append(first_names.pop())
+
+    if last_names:
+        last_names = affixes + last_names
+
+    first_name = " ".join(first_names) or None
+    gender = Constant.NAMES.first_names.get(first_names[0]) if first_names else None
+    initials = ".".join(initials) + "." if initials else None
+    last_name = " ".join(last_names) or None
+
+    return ParsedName(initials or first_name, last_name, gender)
 
 
 class Re:

@@ -26,7 +26,8 @@ Location = Union[
     List[Union[str, float]],
     Dict[str, Union[str, float]]
 ]
-NestedDict = Dict[str, Dict[str, Any]]
+DictAny = Dict[str, Any]
+NestedDict = Dict[str, DictAny]
 Query = Union[
     NestedDict,
     List[NestedDict]
@@ -34,6 +35,7 @@ Query = Union[
 Result = Union[
     List[NestedDict],
     NestedDict,
+    DictAny,
 ]
 
 # Globals
