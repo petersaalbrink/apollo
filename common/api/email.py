@@ -3,12 +3,14 @@ __all__ = (
     "validate_email",
 )
 
+from concurrent.futures import ThreadPoolExecutor, wait
 from copy import copy
 from datetime import datetime as dt, timedelta
 from functools import lru_cache
 from pathlib import Path
 import re
 from smtplib import SMTP, SMTPServerDisconnected
+from threading import Thread
 import traceback
 from typing import Optional, Union
 
@@ -74,6 +76,7 @@ class _EmailValidator:
             "time": None,
             "user": None,
         }
+        self._futures = []
 
     def parse_and_correct(self):
 
@@ -144,18 +147,21 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "USELESS"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
 
-    def parse_user_domain_country(self):
-        split_address = self.EMAIL.split("@")
-
-        # Parse user
-        self.OUTPUT_DICT["user"] = split_address[0]
+    def _parse_user_name(self, user: str):
         from ..persons import parse_name  # importing here to avoid circular import
-        parsed = parse_name(split_address[0])
+        parsed = parse_name(user)
         self.OUTPUT_DICT["name"].update({
             "first": parsed.first,
             "gender": parsed.gender,
             "last": parsed.last,
         })
+
+    def parse_user_domain_country(self, executor: ThreadPoolExecutor):
+        split_address = self.EMAIL.split("@")
+
+        # Parse user
+        self.OUTPUT_DICT["user"] = split_address[0]
+        self._futures.append(executor.submit(self._parse_user_name, split_address[0]))
 
         # Parse domain
         self.OUTPUT_DICT["domain"] = str(split_address[1])
@@ -223,84 +229,91 @@ class _EmailValidator:
             })
 
     def validate_email(self) -> dict:
-        try:
+        with ThreadPoolExecutor() as executor:
+            try:
 
-            # Searches the cache
-            cache = self.search_cache()
-            if cache:
-                return cache
+                # Searches the cache
+                cache = self.search_cache()
+                if cache:
+                    return cache
 
-            # Parse input and correct email
-            self.parse_and_correct()
+                # Parse input and correct email
+                self.parse_and_correct()
 
-            # Check email syntax
-            self.check_syntax()
+                # Check email syntax
+                self.check_syntax()
 
-            # Parse domain and country from email
-            self.parse_user_domain_country()
+                # Parse domain and country from email
+                self.parse_user_domain_country(executor)
 
-            # Update output dictionary
-            self.OUTPUT_DICT["email"] = self.EMAIL
+                # Get MX records - Searches in mx_records collection if previously queried
+                future = executor.submit(self.get_mx_records)
 
-            # Check if domain is from a disposable mail provider
-            self.check_disposable()
+                # Update output dictionary
+                self.OUTPUT_DICT["email"] = self.EMAIL
 
-            # Check if domain is from a free mail provider
-            self.check_free()
+                # Check if domain is from a disposable mail provider
+                self.check_disposable()
 
-            # Get MX records - Searches in mx_records collection if previously queried
-            self.get_mx_records()
+                # Check if domain is from a free mail provider
+                self.check_free()
 
-            # Check if user exists on mailserver
-            self.check_user()
+                while future.running():
+                    ...  # wait for MX record
 
-            # Check if mailserver accepts all user names
-            self.check_accept_all()
+                # Check if user exists on mailserver
+                self._futures.append(executor.submit(self.check_user))
 
-            # Save the request into cache collection on Mongo
-            self.save_request()
+                # Check if mailserver accepts all user names
+                self._futures.append(executor.submit(self.check_accept_all))
 
-            # Update output dictionary with the request time
-            self.time_spent()
+                # wait for: check_user check_accept_all parse_name
+                wait(self._futures)
 
-            return self.OUTPUT_DICT
+                # Save the request into cache collection on Mongo
+                Thread(target=self.save_request).start()
 
-        except ValueError:
-            if self.DEBUG:
-                traceback.print_exc()
-            self.OUTPUT_DICT.update({
-                "email": self.EMAIL,
-                "qualification": "Invalid e-mail address format",
-                "safe_to_send": False,
-                "status": "MANREV",
-                "time": self.time_spent(True),
-            })
-            return self.OUTPUT_DICT
+                # Update output dictionary with the request time
+                self.time_spent()
 
-        except (DNSException, OSError, SMTPServerDisconnected):
-            if self.DEBUG:
-                traceback.print_exc()
-            self.OUTPUT_DICT.update({
-                "email": self.EMAIL,
-                "qualification": "SMTP Invalid",
-                "safe_to_send": False,
-                "status": "USELESS",
-                "time": self.time_spent(True),
-            })
-            return self.OUTPUT_DICT
+                return self.OUTPUT_DICT
 
-        except Exception:  # noqa
-            if self.DEBUG:
-                traceback.print_exc()
-            self.OUTPUT_DICT.update({
-                "email": self.EMAIL,
-                "qualification": "Exception",
-                "safe_to_send": False,
-                "status": "EXCEPTION",
-                "success": False,
-                "time": self.time_spent(True),
-            })
-            return self.OUTPUT_DICT
+            except ValueError:
+                if self.DEBUG:
+                    traceback.print_exc()
+                self.OUTPUT_DICT.update({
+                    "email": self.EMAIL,
+                    "qualification": "Invalid e-mail address format",
+                    "safe_to_send": False,
+                    "status": "MANREV",
+                    "time": self.time_spent(True),
+                })
+                return self.OUTPUT_DICT
+
+            except (DNSException, OSError, SMTPServerDisconnected):
+                if self.DEBUG:
+                    traceback.print_exc()
+                self.OUTPUT_DICT.update({
+                    "email": self.EMAIL,
+                    "qualification": "SMTP Invalid",
+                    "safe_to_send": False,
+                    "status": "USELESS",
+                    "time": self.time_spent(True),
+                })
+                return self.OUTPUT_DICT
+
+            except Exception:  # noqa
+                if self.DEBUG:
+                    traceback.print_exc()
+                self.OUTPUT_DICT.update({
+                    "email": self.EMAIL,
+                    "qualification": "Exception",
+                    "safe_to_send": False,
+                    "status": "EXCEPTION",
+                    "success": False,
+                    "time": self.time_spent(True),
+                })
+                return self.OUTPUT_DICT
 
 
 def validate_email(

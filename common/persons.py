@@ -557,7 +557,7 @@ def parse_name(name: str) -> ParsedName:
     name_split = [token.title() for token in name.split()]
 
     initials = []
-    for token in list(name_split):
+    for token in name_split.copy():
         if len(token) == 1:
             name_split.remove(token)
             initials.append(token)
@@ -565,7 +565,7 @@ def parse_name(name: str) -> ParsedName:
             break
 
     affixes = []
-    for token in list(name_split):
+    for token in name_split.copy():
         token_lower = token.lower()
         if token_lower in Constant.NAMES.affixes:
             name_split.remove(token)
