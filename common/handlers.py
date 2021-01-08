@@ -9,6 +9,8 @@ File handlers:
 
 .. py:function: common.handlers.csv_read
    Generate data read from a csv file.
+.. py:function: common.handlers.csv_read_from_zip
+   Generate data read from a zipped csv file.
 .. py:function: common.handlers.csv_write
    Write data to a csv file.
 .. py:class: common.handlers.ZipData
@@ -53,8 +55,9 @@ __all__ = (
     "trange",
     "remove_adjacent",
     "chunker",
-    "csv_write",
     "csv_read",
+    "csv_read_from_zip",
+    "csv_write",
     "Log",
     "get_logger",
     "send_email",
@@ -175,7 +178,7 @@ def csv_write(data: Union[list[dict], dict],
 
 def csv_read(filename: Union[Path, str],
              **kwargs,
-             ) -> dict:
+             ) -> Iterator[dict]:
     """Generate data read from a csv file.
 
     Returns rows as dict, with None instead of empty string. If no
@@ -215,6 +218,67 @@ def csv_read(filename: Union[Path, str],
         # Yield the data
         for row in DictReader(f, **kwargs):
             yield {k: v if v else None for k, v in row.items()}
+
+
+def csv_read_from_zip(
+        zipfilename: Union[Path, str],
+        csvfilename: Union[Path, str] = None,
+        **kwargs,
+) -> Iterator[dict]:
+    """Generate data read from a zipped csv file.
+
+    Returns rows as dict, with None instead of empty string. If no
+    delimiter is specified, tries to find out if the delimiter is
+    either a comma or a semicolon.
+
+    Provide the following arguments:
+        :param zipfilename: path or file name of zip to read from
+        :param csvfilename: path or file name of csv in zip to read from;
+            if None, grabs the first available file
+
+    Optionally, provide the following keyword arguments:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+    Additional keyword arguments will be passed through to
+    `csv.DictReader`.
+
+    :raises DataError: if the csv file does not exist in the zip file, or
+        if there are no csv files in the zip file.
+    :raises FileNotFoundError: if the zip file does not exist.
+    """
+    zipfile = ZipFile(zipfilename)
+
+    if not csvfilename:
+        try:
+            csvfilename = next(name for name in zipfile.namelist() if name.endswith(".csv"))
+        except StopIteration:
+            zipfile.close()
+            raise DataError(f"No CSV file found in archive.")
+
+    try:
+        csvfile = TextIOWrapper(zipfile.open(csvfilename), encoding=kwargs.pop("encoding", "utf-8"))
+    except KeyError:
+        zipfile.close()
+        raise DataError(f"CSV file {csvfilename} not found in archive.")
+
+    try:
+
+        # Try to find a commonly used delimiter
+        if not kwargs.get("delimiter"):
+            d = next(DictReader(csvfile, **kwargs))
+            if len(d) == 1 and ";" in list(d)[0]:
+                kwargs["delimiter"] = ";"
+            csvfile.seek(0)
+
+        # Yield the data
+        yield from (
+            {k: v if v else None for k, v in d.items()}
+            for d in DictReader(csvfile, **kwargs)
+        )
+
+    finally:
+        zipfile.close()
+        csvfile.close()
 
 
 _logging_levels = {
