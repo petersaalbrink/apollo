@@ -52,12 +52,22 @@ python-dotenv>=0.12.0
 requests>=2.23.0
 
 # email
+babel>=2.9.0
+beautifulsoup4>=4.9.1
+cached-property>=1.5.1
 dnspython>=2.0.0
+elasticsearch>=7.7.0
+pendulum>=2.0.0
+phonenumbers>=8.11.5
 psutil>=5.7.2
+pycountry>=19.8.18
 pymailcheck>=1.0.0
 pymongo>=3.10.1
+python-dateutil>=2.8.1
 python-dotenv>=0.12.0
 requests>=2.23.0
+text-unidecode>=1.3
+tqdm>=4.43.0
 
 # phone
 beautifulsoup4>=4.9.1

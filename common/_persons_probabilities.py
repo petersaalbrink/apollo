@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import namedtuple
 from functools import lru_cache, partial
 from itertools import combinations
 from typing import Any, Union
@@ -15,6 +16,11 @@ es_lastnames = partial(
     ESClient("cdqc.person_data_lastname_occurrence", index_exists=True).find,
     size=1, source_only=True, _source=["regular", "fuzzy"],
 )
+es_firstnames = partial(
+    ESClient("cdqc.person_data_firstname_occurrence", index_exists=True).find,
+    size=1, source_only=True, _source="count",
+)
+NameCounts = namedtuple("NameCounts", ("first", "last"))
 
 
 class Constant:
@@ -80,6 +86,24 @@ def set_number_of_postcodes() -> bool:
 @lru_cache()
 def get_es_lastname(lastname: str) -> dict[str, dict[str, float]]:
     return es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
+
+
+@lru_cache()
+def get_es_firstname(firstname: str) -> dict[str, float]:
+    return es_firstnames({"query": {"term": {"firstname.keyword": firstname}}})
+
+
+@lru_cache()
+def get_name_counts(name: str) -> NameCounts:
+    try:
+        first = get_es_firstname(name)["count"]
+    except TypeError:
+        first = 0
+    try:
+        last = get_es_lastname(name)["regular"]["count"]
+    except TypeError:
+        last = 0
+    return NameCounts(first, last)
 
 
 @lru_cache()
