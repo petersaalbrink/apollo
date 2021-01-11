@@ -3,7 +3,7 @@ __all__ = (
     "validate_email",
 )
 
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from datetime import datetime as dt, timedelta
 from functools import lru_cache
@@ -144,6 +144,7 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "OK"
             self.OUTPUT_DICT["qualification"] = "OK"
         else:
+            self.OUTPUT_DICT["safe_to_send"] = False
             self.OUTPUT_DICT["status"] = "USELESS"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
 
@@ -258,8 +259,8 @@ class _EmailValidator:
                 # Check if domain is from a free mail provider
                 self.check_free()
 
-                while future.running():
-                    ...  # wait for MX record
+                # wait for MX record
+                future.result()
 
                 # Check if user exists on mailserver
                 self._futures.append(executor.submit(self.check_user))
@@ -268,7 +269,8 @@ class _EmailValidator:
                 self._futures.append(executor.submit(self.check_accept_all))
 
                 # wait for: check_user check_accept_all parse_name
-                wait(self._futures)
+                for future in self._futures:
+                    future.result()
 
                 # Save the request into cache collection on Mongo
                 Thread(target=self.save_request).start()

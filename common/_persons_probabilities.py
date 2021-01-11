@@ -96,11 +96,11 @@ def get_es_firstname(firstname: str) -> dict[str, float]:
 @lru_cache()
 def get_name_counts(name: str) -> NameCounts:
     try:
-        first = get_es_firstname(name)["count"]
+        first = get_es_firstname(name)["count"] or 0
     except TypeError:
         first = 0
     try:
-        last = get_es_lastname(name)["regular"]["count"]
+        last = get_es_lastname(name)["regular"]["count"] or 0
     except TypeError:
         last = 0
     return NameCounts(first, last)
