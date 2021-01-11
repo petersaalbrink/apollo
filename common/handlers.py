@@ -104,14 +104,12 @@ from zipfile import ZipFile
 
 from tqdm import tqdm, trange
 
-from .connectors.mx_email import EmailClient
+from .connectors.mx_email import EmailClient, DEFAULT_EMAIL
 from .exceptions import DataError, Timeout, TimerError, ZipDataError
 
 _bar_format = "{l_bar: >16}{bar:20}{r_bar}"
 tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
 trange = partial(trange, smoothing=0, bar_format=_bar_format)
-
-DEFAULT_EMAIL = "datateam@matrixiangroup.com"
 
 
 def remove_adjacent(sentence: str) -> str:
