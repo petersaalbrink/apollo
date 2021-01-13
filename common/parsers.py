@@ -45,6 +45,11 @@ This module contains the following objects:
    Finds all urls in a string and returns a list
    Example::
         urls = find_all_urls(text)
+
+.. py:function:: common.parsers.reverse_geocode(x: float, y: float) -> dict
+   Returns address from x and y coordinates using ArcGIS; reverse geocoding.
+   Example::
+        address = reverse_geocode(4.894410,52.310158)
 """
 
 from __future__ import annotations
@@ -58,17 +63,21 @@ __all__ = (
     "expand",
     "flatten",
     "levenshtein",
+    "reverse_geocode",
 )
 
 from datetime import datetime
 from functools import lru_cache
+from re import findall, compile
 from typing import Any, Optional, Union
+
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import notna
 from text_unidecode import unidecode
+
 from .exceptions import ParseError
-from re import findall, compile
+from .requests import get
 
 
 def _flatten(input_dict: dict[str, Any], sep: str):
@@ -299,3 +308,10 @@ def find_all_urls(text: str) -> list:
     """Finds all urls in a string and returns a list"""
     url_regex = compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
     return findall(url_regex, text)
+
+
+def reverse_geocode(x: float, y: float) -> dict:
+    """Returns address from x and y coordinates using ArcGIS; reverse geocoding."""
+    return get(
+        f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
+    ).json()
