@@ -102,6 +102,7 @@ __all__ = (
     "remove_adjacent",
     "request",
     "requests",
+    "reverse_geocode",
     "secrets",
     "send_email",
     "set_alpha",
@@ -195,6 +196,7 @@ _module_mapping = {
         "expand",
         "flatten",
         "levenshtein",
+        "reverse_geocode",
     ],
     "persondata": [
         "Cleaner",

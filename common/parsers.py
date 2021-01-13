@@ -63,18 +63,22 @@ __all__ = (
     "expand",
     "flatten",
     "levenshtein",
+    "reverse_geocode",
 )
 
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Optional, Union
+from re import findall, compile
+
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import notna
 from text_unidecode import unidecode
+
 from .exceptions import ParseError
-from re import findall, compile
-from requests import get
+from .requests import get
+
 
 def _flatten(input_dict: dict[str, Any], sep: str):
     flattened_dict = {}
@@ -308,4 +312,6 @@ def find_all_urls(text: str) -> list:
 
 def reverse_geocode(x: float, y: float) -> dict:
     """Returns address from x and y coordinates using ArcGIS; reverse geocoding."""
-    return get(f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json").json()
+    return get(
+        f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
+    ).json()
