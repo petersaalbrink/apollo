@@ -68,8 +68,8 @@ __all__ = (
 
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Optional, Union
 from re import findall, compile
+from typing import Any, Optional, Union
 
 from dateutil.parser import parse
 from numpy import zeros
