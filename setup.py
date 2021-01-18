@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 __version__ = None
 exec(open("common/etc/version.py").read())  # noqa
 
-pkgs = [p for p in (p.strip("\r\n") for p in open("requirements.txt").readlines()) if p]
+pkgs = [p for p in (p.strip("\n") for p in open("requirements.txt").readlines()) if p]
 extras = {"all": [p for p in pkgs if not p.startswith("# ")]}
 extra = ""
 for pkg in pkgs:
@@ -30,6 +30,8 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.7,<3.10",
