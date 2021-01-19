@@ -36,7 +36,13 @@ from ..secrets import get_secret
 _MAX_ERRORS = 100
 _MYSQL_TYPES = {
     str: "CHAR",
-    int: "INT",
+    int: {
+        1: "TINYINT",
+        2: "SMALLINT",
+        3: "MEDIUMINT",
+        4: "INT",
+        8: "BIGINT",
+    },
     float: "DECIMAL",
     Decimal: "DECIMAL",
     bool: "TINYINT",
@@ -635,6 +641,7 @@ class MySQLClient:
         date_types = {timedelta, datetime, Timedelta, Timestamp, NaT, date}
         float_types = {float, Decimal}
         union = date_types.union(float_types)
+        union.add(int)
         dates = {field: (_type, 6) for field, _type in type_dict.items() if _type in date_types}
         floats_dict = {field: _type for field, _type in type_dict.items() if _type in float_types}
         floats_list = [
@@ -648,6 +655,21 @@ class MySQLClient:
         ))
         floats_list = [(_type, float(".".join((f"{l + r}", f"{r}")))) for _type, (l, r) in floats_list]
         floats = dict(zip(floats_dict, floats_list))
+
+        def _count_bytes(num: int) -> int:
+            return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))
+
+        ints_dict = {field: _type for field, _type in type_dict.items() if _type is int}
+        ints_list = [
+            [_count_bytes(value) for key, value in row.items() if key in ints_dict.keys()]
+            for row in data
+        ]
+        ints_list = list(zip(
+            ints_dict.values(),
+            list(map(max, zip(*ints_list)))  # noqa
+        ))
+        ints = dict(zip(ints_dict, ints_list))
+
         normals_dict = {field: _type for field, _type in type_dict.items() if _type not in union}
         normals_list = [
             [len(f"{value}") for key, value in row.items() if key in normals_dict.keys()]
@@ -658,7 +680,8 @@ class MySQLClient:
             list(map(max, zip(*normals_list)))  # noqa
         ))
         normals = dict(zip(normals_dict, normals_list))
-        all_types = {**dates, **floats, **normals}
+
+        all_types = {**dates, **floats, **ints, **normals}
         type_dict = {field: all_types[field] for field in type_dict}
 
         if len(type_dict) != len(fieldnames):
@@ -668,10 +691,15 @@ class MySQLClient:
 
     @staticmethod
     def _fields(fields: dict[str, tuple[Type, Union[int, float]]]) -> str:
-        fields = [f"`{name}` {_MYSQL_TYPES[type_]}({str(length).replace('.', ',')})"
-                  if type_ not in {date, datetime} else f"`{name}` {_MYSQL_TYPES[type_]}"
-                  for name, (type_, length) in fields.items()]
-        return ", ".join(fields)
+        definitions = []
+        for name, (type_, length) in fields.items():
+            if type_ in {date, datetime}:
+                definitions.append(f"`{name}` {_MYSQL_TYPES[type_]}")
+            elif type_ is int:
+                definitions.append(f"`{name}` {_MYSQL_TYPES[type_].get(length, 'BIGINT')}")
+            else:
+                definitions.append(f"`{name}` {_MYSQL_TYPES[type_]}({str(length).replace('.', ',')})")
+        return ", ".join(definitions)
 
     def create_table(self,
                      table: str,
@@ -724,8 +752,9 @@ class MySQLClient:
             raise
         field_type, field_len = field_type.strip(")").split("(")
 
-        if field_type.upper() == "INT" and int(field_len) >= 10:
-            field_type = f"BIGINT({field_len})"
+        if "INT" in field_type.upper():
+            int_types = list(_MYSQL_TYPES[int].values())
+            field_type = int_types[int_types.index(field_type.upper()) + 1]
 
         elif chunk is not None:
             position -= 1  # MySQL starts counting at 1, Python at 0
