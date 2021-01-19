@@ -21,7 +21,7 @@ from zipfile import ZipFile, ZIP_LZMA
 
 from ..secrets import getenv
 
-DEFAULT_EMAIL = getenv("MX_DEFAULT_EMAIL", "datateam@matrixiangroup.com")
+DEFAULT_EMAIL = getenv("MX_DEFAULT_EMAIL") or "datateam@matrixiangroup.com"
 
 
 class EmailClient:
