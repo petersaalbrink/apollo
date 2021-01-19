@@ -63,6 +63,7 @@ __all__ = (
     "check_phone",
     "chunker",
     "connectors",
+    "count_bytes",
     "csv_read",
     "csv_read_from_zip",
     "csv_write",
@@ -192,6 +193,7 @@ _module_mapping = {
     ],
     "parsers": [
         "Checks",
+        "count_bytes",
         "dateformat",
         "drop_empty_columns",
         "expand",

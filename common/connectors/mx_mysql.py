@@ -31,6 +31,7 @@ from pandas import NaT, Timestamp, Timedelta, isna
 from ..env import getenv, commondir, envfile, _write_pem  # noqa
 from ..exceptions import MySQLClientError
 from ..handlers import tqdm, trange
+from ..parsers import count_bytes
 from ..secrets import get_secret
 
 _MAX_ERRORS = 100
@@ -656,12 +657,9 @@ class MySQLClient:
         floats_list = [(_type, float(".".join((f"{l + r}", f"{r}")))) for _type, (l, r) in floats_list]
         floats = dict(zip(floats_dict, floats_list))
 
-        def _count_bytes(num: int) -> int:
-            return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))
-
         ints_dict = {field: _type for field, _type in type_dict.items() if _type is int}
         ints_list = [
-            [_count_bytes(value) for key, value in row.items() if key in ints_dict.keys()]
+            [count_bytes(value) for key, value in row.items() if key in ints_dict.keys()]
             for row in data
         ]
         ints_list = list(zip(

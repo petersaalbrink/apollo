@@ -12,9 +12,12 @@ tqdm>=4.43.0
 # mysql
 dataclasses>=0.6
 mysql-connector-python>=8.0.19
+numpy==1.19.3
 pandas>=1.0.1
+python-dateutil>=2.8.1
 python-dotenv>=0.12.0
 requests>=2.23.0
+text-unidecode>=1.3
 tqdm>=4.43.0
 
 # mongo

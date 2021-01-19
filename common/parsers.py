@@ -55,6 +55,11 @@ This module contains the following objects:
    Split an iterable `it` into two lists using some predicate `pred`.
    Example::
         evens, odds = partition(lambda num: (num % 2) == 0, range(100))
+
+.. py:function:: common.parsers.count_bytes(num: int) -> int
+   Calculate the number of bytes needed to store `num` as a signed integer.
+   Example::
+        print(count_bytes(127), count_bytes(128))
 """
 
 from __future__ import annotations
@@ -65,6 +70,7 @@ __all__ = (
     "PERCENTAGE",
     "dateformat",
     "drop_empty_columns",
+    "count_bytes",
     "expand",
     "flatten",
     "levenshtein",
@@ -347,3 +353,13 @@ def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list
     for item in it:
         (t if pred(item) else f)(item)
     return ts, fs
+
+
+def count_bytes(num: int) -> int:
+    """Calculate the number of bytes needed to store `num` as a signed integer.
+
+    Example:
+        from common.parsers import count_bytes
+        print(count_bytes(127), count_bytes(128))
+    """
+    return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))
