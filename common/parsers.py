@@ -50,6 +50,11 @@ This module contains the following objects:
    Returns address from x and y coordinates using ArcGIS; reverse geocoding.
    Example::
         address = reverse_geocode(4.894410, 52.310158)
+
+.. py:function:: common.parsers.partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]
+   Split an iterable `it` into two lists using some predicate `pred`.
+   Example::
+        evens, odds = partition(lambda num: (num % 2) == 0, range(100))
 """
 
 from __future__ import annotations
@@ -63,13 +68,14 @@ __all__ = (
     "expand",
     "flatten",
     "levenshtein",
+    "partition",
     "reverse_geocode",
 )
 
 from datetime import datetime
 from functools import lru_cache
 from re import findall, compile
-from typing import Any, Optional, Union
+from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
 from dateutil.parser import parse
 from numpy import zeros
@@ -78,6 +84,9 @@ from text_unidecode import unidecode
 
 from .exceptions import ParseError
 from .requests import get
+
+
+T = TypeVar('T')
 
 
 def _flatten(input_dict: dict[str, Any], sep: str):
@@ -315,3 +324,26 @@ def reverse_geocode(x: float, y: float) -> dict:
     return get(
         f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
     ).json()
+
+
+def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]:
+    """Split an iterable `it` into two lists using some predicate `pred`.
+
+    This function is faster than using alternatives from stdlib, functools, or itertools!
+
+    Example:
+        from common.parsers import partition
+
+        def is_even(num):
+            return (num % 2) == 0
+
+        data = range(100)
+        evens, odds = partition(is_even, data)
+    """
+    ts: list[T] = []
+    fs: list[T] = []
+    t = ts.append
+    f = fs.append
+    for item in it:
+        (t if pred(item) else f)(item)
+    return ts, fs

@@ -89,6 +89,7 @@ __all__ = (
     "parse",
     "parse_name",
     "parsers",
+    "partition",
     "persondata",
     "persons",
     "pip_upgrade",
@@ -196,6 +197,7 @@ _module_mapping = {
         "expand",
         "flatten",
         "levenshtein",
+        "partition",
         "reverse_geocode",
     ],
     "persondata": [
