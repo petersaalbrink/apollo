@@ -65,7 +65,7 @@ HOST = "cdqc"
 DATE_FORMAT = "%Y-%m-%d"
 DEFAULT_DATE = "1900-01-01"
 
-DATE_KEYS = {"birth", "death"}
+DATE_KEYS = "birth"
 EMAIL_KEY = "email"
 PHONE_KEYS = {"number", "mobile"}
 
@@ -123,26 +123,22 @@ class _Score:
     __slots__ = [
         "source",
         "year_of_record",
-        "deceased",
         "lastname_number",
         "gender",
         "date_of_birth",
         "phonenumber_number",
         "occurring",
-        "moved",
         "mobile",
         "matched_names",
         "found_persons",
     ]
     source: str
     year_of_record: str
-    deceased: Optional[int]
     lastname_number: int
     gender: str
     date_of_birth: int
     phonenumber_number: int
     occurring: bool
-    moved: bool
     mobile: bool
     matched_names: Tuple[str, str]
     found_persons: int
@@ -309,11 +305,6 @@ class _SourceScore:
             if result.occurring:
                 self._score = 4
 
-        def death_score(result: _Score):
-            """Lowest score if a person is deceased."""
-            if result.deceased:
-                self._score = 4
-
         def date_score(result: _Score):
             """The older the record, the lower the score."""
             delta = self._year - int(result.year_of_record)
@@ -329,14 +320,6 @@ class _SourceScore:
         def source_score(result: _Score):
             """Lower quality of the record's source means a lower score."""
             self._score = max((self._score, self._source_valuation[result.source]))
-
-        def moved_score(result: _Score):
-            """Lower score if there was an address movement."""
-            if result.moved:
-                if result.mobile:
-                    self._score = max((self._score, 2))
-                else:
-                    self._score = 4
 
         def missing_score(result: _Score):
             """Lower score if date of birth or gender is missing."""
@@ -378,10 +361,8 @@ class _SourceScore:
             for func in (
                     data_score,
                     occurring_score,
-                    death_score,
                     date_score,
                     source_score,
-                    moved_score,
                     missing_score,
                     fuzzy_score,
                     n_score,
@@ -908,10 +889,7 @@ class PersonData(_MatchQueries,
                 "address_houseNumberExt",
                 "address_street",
                 "address_city",
-                "address_state",
                 "address_country",
-                "address_location",
-                "address_moved",
             ),
             "mobile": (
                 "phoneNumber_mobile",
@@ -920,9 +898,6 @@ class PersonData(_MatchQueries,
             "number": (
                 "phoneNumber_number",
                 "phoneNumber_country",
-            ),
-            "death": (
-                "death_date",
             ),
             "birth": (
                 "birth_date",
@@ -939,10 +914,10 @@ class PersonData(_MatchQueries,
                  _fields["address"], _fields["email"])
         elif self._response_type == "address":
             del (_fields["mobile"], _fields["number"], _fields["details"],
-                 _fields["email"], _fields["birth"], _fields["death"])
+                 _fields["email"], _fields["birth"])
         elif self._response_type == "phone":
             del (_fields["address"], _fields["details"],
-                 _fields["email"], _fields["birth"], _fields["death"])
+                 _fields["email"], _fields["birth"])
         return _fields
 
     def _check_country(self, country: str):
@@ -1061,7 +1036,6 @@ class PersonData(_MatchQueries,
         self._calc_score(_Score(
             source=response["source"],
             year_of_record=response["date"][:4],
-            deceased=response["death_year"],
             lastname_number=len({
                 response["details_lastname"] for response in self._responses.values()
                 if isinstance(response, dict)}),
@@ -1072,7 +1046,6 @@ class PersonData(_MatchQueries,
                 if isinstance(response, dict)})
             if "phoneNumber" in key else 1,
             occurring=self._check_match(key),
-            moved=response["address_moved"][:10] > response["date"][:10],
             mobile="number" not in key,
             matched_names=(self.data.lastname, response["details_lastname"]),
             found_persons=len({
@@ -1102,7 +1075,7 @@ class PersonData(_MatchQueries,
 
         # Fix dates
         for field in self.result:
-            for key in ("date", "address_moved", "birth_date", "death_date"):
+            for key in "date", "birth_date":
                 if key in self.result[field] and isinstance(self.result[field][key], str):
                     self.result[field][key] = datetime.strptime(self.result[field][key][:10], DATE_FORMAT)
 
