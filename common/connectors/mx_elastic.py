@@ -6,14 +6,11 @@ __all__ = (
     "ESClient",
 )
 
-from contextlib import suppress
 from logging import debug
 from typing import Any, Dict, Iterator, List, Union
 
 from elasticsearch.client import Elasticsearch
-from elasticsearch.exceptions import (ElasticsearchException,
-                                      NotFoundError,
-                                      TransportError)
+from elasticsearch.exceptions import ElasticsearchException, TransportError
 from urllib3.exceptions import HTTPWarning
 
 from ..env import envfile, getenv
@@ -51,14 +48,6 @@ _hosts = {
     "prod": "MX_ELASTIC_PROD_IP",
 }
 _port = int(getenv("MX_ELASTIC_PORT", 9200))
-
-# Constants
-RE_OLD = "dev_realestate.realestate"
-RE_NEW = "dev_realestate.real_estate"
-REAL_ESTATES = {
-    RE_OLD,
-    RE_NEW,
-}
 
 
 class ESClient(Elasticsearch):
@@ -143,7 +132,6 @@ class ESClient(Elasticsearch):
         super().__init__(hosts, **_config)
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
-        self.index_exists = kwargs.get("index_exists")
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
 
     def __repr__(self) -> str:
@@ -152,10 +140,11 @@ class ESClient(Elasticsearch):
     def __str__(self) -> str:
         return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
 
-    def find(self,
-             query: Query = None,
-             *args, **kwargs
-             ) -> Result:
+    def find(
+            self,
+            query: Query = None,
+            **kwargs,
+    ) -> Result:
         """Perform an Elasticsearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
@@ -177,14 +166,13 @@ class ESClient(Elasticsearch):
         first_only = kwargs.pop("first_only", False)
         with_id = kwargs.pop("with_id", False)
 
-        self._check_index_exists()
         if "index" in kwargs:
             index = kwargs.pop("index")
         else:
             index = self.es_index
         if not query:
             size = kwargs.pop("size", 1)
-            result = self.search(index=index, size=size, body={}, *args, **kwargs)
+            result = self.search(index=index, size=size, body={}, **kwargs)
             return result
         if isinstance(query, dict):
             query = (query,)
@@ -207,7 +195,7 @@ class ESClient(Elasticsearch):
                 continue
             while True:
                 try:
-                    result = self.search(index=self.es_index, size=size, body=q, *args, **kwargs)
+                    result = self.search(index=index, size=size, body=q, **kwargs)
                     break
                 except (OSError, HTTPWarning, TransportError) as e:
                     if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
@@ -221,21 +209,23 @@ class ESClient(Elasticsearch):
                     result = [{**doc, **doc.pop("_source")} for doc in result]
                 if source_only:
                     result = [doc["_source"] for doc in result]
-                if first_only or size == 1:
-                    with suppress(IndexError):
-                        result = result[0]
+                if (first_only or size == 1) and result:
+                    result = result[0]
             results.append(result)
         if len(results) == 1:
             results = results[0]
         return results
 
-    def geo_distance(self, *,
-                     address_id: str = None,
-                     location: Location = None,
-                     distance: str = None
-                     ) -> Result:
-        """Find all real estate objects within :param distance: of
-        :param address_id: or :param location:.
+    def geo_distance(
+            self,
+            *,
+            address_id: str = None,
+            location: Location = None,
+            distance: str = "10m",
+            **kwargs,
+    ) -> Result:
+        """Find all real estate objects or addresses within distance of
+        address_id or location.
 
         :param address_id: Address ID in format
             "postalCode houseNumber houseNumberExt"
@@ -252,30 +242,36 @@ class ESClient(Elasticsearch):
                 print(d["address"]["identification"]["addressId"])
         """
 
-        if self.es_index not in REAL_ESTATES:
-            raise ESClientError(f"Index should be in {REAL_ESTATES}.")
-
         if not any((address_id, location)) or all((address_id, location)):
             raise ESClientError("Provide either an address_id or a location")
 
         if address_id:
-            if self.es_index == RE_OLD:
+            if "realestate.realestate" in self.es_index:
                 query = {"query": {"bool": {"must": {
                     "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
-                result: dict[str, Any] = self.find(query=query, first_only=True)
+                result = self.find(query=query, size=1, _source="geometry")
                 location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
-            else:
+            elif "real_estate" in self.es_index:
                 query = {"query": {"bool": {"must": {
                     "match": {"address.identification.addressId.keyword": address_id}}}}}
-                result: dict[str, Any] = self.find(query=query, first_only=True)
+                result = self.find(query=query, size=1, _source="geometry")
                 location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+            elif "addressvalidation" in self.es_index:
+                query = {"query": {"bool": {"must": {"match": {"fullAddressLine": address_id}}}}}
+                result = self.find(query=query, size=1, _source="details.geometry.coordinates")
+                location = (
+                    result["details"]["geometry"]["coordinates"][1],
+                    result["details"]["geometry"]["coordinates"][0],
+                )
+            else:
+                raise NotImplementedError(f"{self.es_index}")
 
         try:
             location = dict(zip(("latitude", "longitude"), location.values()))
         except AttributeError:
             location = dict(zip(("latitude", "longitude"), location))
 
-        if self.es_index == RE_OLD:
+        if "realestate.realestate" in self.es_index:
             query = {
                 "query": {
                     "bool": {
@@ -293,7 +289,7 @@ class ESClient(Elasticsearch):
                             "lon": location["longitude"]},
                         "order": "asc"
                     }}]}
-        else:
+        elif "real_estate" in self.es_index:
             query = {
                 "query": {
                     "bool": {
@@ -312,19 +308,39 @@ class ESClient(Elasticsearch):
                         ],
                         "order": "asc"
                     }}]}
+        elif "addressvalidation" in self.es_index:
+            query = {
+                "query": {
+                    "bool": {
+                        "filter": {
+                            "geo_distance": {
+                                "distance": distance,
+                                "details.geometry.coordinates": [
+                                    location["longitude"],
+                                    location["latitude"],
+                                ]}}}},
+                "sort": [{
+                    "_geo_distance": {
+                        "details.geometry.coordinates": [
+                            location["longitude"],
+                            location["latitude"],
+                        ],
+                        "order": "asc"
+                    }}]}
+        else:
+            raise NotImplementedError(f"{self.es_index}")
 
-        results = self.findall(query=query)
+        if "size" in kwargs:
+            return self.find(query=query, **kwargs)
 
-        if results:
-            results = [result["_source"] for result in results]
+        return self.findall(query=query, **kwargs)
 
-        return results
-
-    def findall(self,
-                query: Query,
-                index: str = None,
-                **kwargs,
-                ) -> Result:
+    def findall(
+            self,
+            query: Query,
+            index: str = None,
+            **kwargs,
+    ) -> Result:
         """Used for Elasticsearch queries that return more than 10k documents.
         Returns all results at once.
 
@@ -348,7 +364,13 @@ class ESClient(Elasticsearch):
         if not index:
             index = self.es_index
 
-        data = self.search(index=index, scroll=scroll, size=size, body=query)
+        data = self.search(
+            index=index,
+            scroll=scroll,
+            size=size,
+            body=query,
+            **kwargs,
+        )
 
         sid = data["_scroll_id"]
         scroll_size = len(data["hits"]["hits"])
@@ -372,11 +394,12 @@ class ESClient(Elasticsearch):
 
         return data
 
-    def scrollall(self,
-                  query: Query = None,
-                  index: str = None,
-                  **kwargs,
-                  ) -> Iterator[Result]:
+    def scrollall(
+            self,
+            query: Query = None,
+            index: str = None,
+            **kwargs,
+    ) -> Iterator[Result]:
         """Used for Elasticsearch queries that return more than 10k documents.
         Returns an iterator of documents.
 
@@ -421,11 +444,14 @@ class ESClient(Elasticsearch):
                 _data = (d["_source"] for d in _data)
             return _data
 
-        data = self.search(index=index,
-                           scroll=scroll,
-                           size=chunk_size,
-                           _source=field,
-                           body=query)
+        data = self.search(
+            index=index,
+            scroll=scroll,
+            size=chunk_size,
+            _source=field,
+            body=query,
+            **kwargs
+        )
         sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
         if as_chunks:
             yield _return(data)
@@ -496,17 +522,9 @@ class ESClient(Elasticsearch):
         else:
             return self.find(**find_kwargs)
 
-    def _check_index_exists(self):
-        if not self.index_exists:
-            if self.index_exists is None:
-                self.index_exists = self.indices.exists(self.es_index)
-            if self.index_exists is False:
-                raise NotFoundError(404, self.es_index)
-
     @property
     def total(self) -> int:
         """The total number of documents within the index."""
-        self._check_index_exists()
         return self.indices.stats(index=self.es_index)["_all"]["total"]["docs"]["count"]
 
     def count(self,

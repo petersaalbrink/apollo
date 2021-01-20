@@ -26,10 +26,7 @@ def getenv():
 
     # Create .env, if it doesn't exist yet
     if not envfile.exists():
-        try:
-            envfile.parent.mkdir()
-        except FileExistsError:
-            pass
+        envfile.parent.mkdir(exist_ok=True)
         env = Path(__file__).parent / "etc/.env"
         with open(env) as src, open(envfile, "w") as dst:
             dst.write(src.read())

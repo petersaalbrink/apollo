@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 __all__ = (
+    "DEFAULT_EMAIL",
     "EmailClient",
 )
 
@@ -18,7 +19,9 @@ from traceback import format_exc
 from typing import Union
 from zipfile import ZipFile, ZIP_LZMA
 
-DEFAULT_EMAIL = "datateam@matrixiangroup.com"
+from ..secrets import getenv
+
+DEFAULT_EMAIL = getenv("MX_DEFAULT_EMAIL") or "datateam@matrixiangroup.com"
 
 
 class EmailClient:

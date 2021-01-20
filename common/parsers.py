@@ -45,6 +45,21 @@ This module contains the following objects:
    Finds all urls in a string and returns a list
    Example::
         urls = find_all_urls(text)
+
+.. py:function:: common.parsers.reverse_geocode(x: float, y: float) -> dict
+   Returns address from x and y coordinates using ArcGIS; reverse geocoding.
+   Example::
+        address = reverse_geocode(4.894410, 52.310158)
+
+.. py:function:: common.parsers.partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]
+   Split an iterable `it` into two lists using some predicate `pred`.
+   Example::
+        evens, odds = partition(lambda num: (num % 2) == 0, range(100))
+
+.. py:function:: common.parsers.count_bytes(num: int) -> int
+   Calculate the number of bytes needed to store `num` as a signed integer.
+   Example::
+        print(count_bytes(127), count_bytes(128))
 """
 
 from __future__ import annotations
@@ -55,20 +70,29 @@ __all__ = (
     "PERCENTAGE",
     "dateformat",
     "drop_empty_columns",
+    "count_bytes",
     "expand",
     "flatten",
     "levenshtein",
+    "partition",
+    "reverse_geocode",
 )
 
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Optional, Union
+from re import findall, compile
+from typing import Any, Callable, Iterable, Optional, TypeVar, Union
+
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import notna
 from text_unidecode import unidecode
+
 from .exceptions import ParseError
-from re import findall, compile
+from .requests import get
+
+
+T = TypeVar('T')
 
 
 def _flatten(input_dict: dict[str, Any], sep: str):
@@ -299,3 +323,43 @@ def find_all_urls(text: str) -> list:
     """Finds all urls in a string and returns a list"""
     url_regex = compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
     return findall(url_regex, text)
+
+
+def reverse_geocode(x: float, y: float) -> dict:
+    """Returns address from x and y coordinates using ArcGIS; reverse geocoding."""
+    return get(
+        f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
+    ).json()
+
+
+def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]:
+    """Split an iterable `it` into two lists using some predicate `pred`.
+
+    This function is faster than using alternatives from stdlib, functools, or itertools!
+
+    Example:
+        from common.parsers import partition
+
+        def is_even(num):
+            return (num % 2) == 0
+
+        data = range(100)
+        evens, odds = partition(is_even, data)
+    """
+    ts: list[T] = []
+    fs: list[T] = []
+    t = ts.append
+    f = fs.append
+    for item in it:
+        (t if pred(item) else f)(item)
+    return ts, fs
+
+
+def count_bytes(num: int) -> int:
+    """Calculate the number of bytes needed to store `num` as a signed integer.
+
+    Example:
+        from common.parsers import count_bytes
+        print(count_bytes(127), count_bytes(128))
+    """
+    return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))

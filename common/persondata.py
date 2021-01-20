@@ -215,7 +215,8 @@ class _SourceMatch:
 
     def _dob_match(self, response):
         """Does the date of birth match?"""
-        return (response["birth_date"][:10] != DEFAULT_DATE
+        return (response["birth_date"]
+                and response["birth_date"][:10] != DEFAULT_DATE
                 and self.data.date_of_birth
                 and response["birth_date"][:10] == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
