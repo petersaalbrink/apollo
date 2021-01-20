@@ -14,9 +14,10 @@ from functools import lru_cache
 import re
 from socket import gethostname
 from threading import Lock
-from time import localtime, sleep
+from time import sleep
 from typing import Optional, Union
 
+from pendulum import now
 from phonenumbers import is_valid_number, parse, PhoneNumber, PhoneNumberMatcher
 from phonenumbers.carrier import name_for_number, number_type  # noqa
 from phonenumbers.geocoder import country_name_for_number
@@ -218,10 +219,10 @@ def call_phone(
             _SECRET = get_secret("MX_WEBHOOK_DATATEAM")
 
         if RESPECT_HOURS:
-            t = localtime().tm_hour
-            while t >= 22 or t < 8:
+            h = now("Europe/Amsterdam").hour
+            while h >= 22 or h < 8:
                 sleep(60)
-                t = localtime().tm_hour
+                h = now("Europe/Amsterdam").hour
 
         with _lock:
             phone = keep_trying(
