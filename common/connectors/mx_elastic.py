@@ -631,3 +631,8 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
             response = self.find(query, size=0)
 
         return result
+
+    def db(self) -> tuple[int, int]:
+        """Returns a named two-tuple with the document count of the corresponding MongoDB collection and this index."""
+        from .mx_mongo import Count, MongoDB
+        return Count(MongoDB(self.es_index).estimated_document_count(), self.count())

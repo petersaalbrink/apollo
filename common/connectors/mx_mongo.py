@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 __all__ = (
+    "Count",
     "MongoDB",
 )
 
+from collections import namedtuple
 from collections.abc import Iterable
 from typing import Union
 from urllib.parse import quote_plus
@@ -23,6 +25,8 @@ _hosts = {
     "dev": "MX_MONGO_DEV",
     "prod": "MX_MONGO_PROD",
 }
+
+Count = namedtuple("Count", ("db", "es"))
 
 
 class MxClient(MongoClient):
@@ -125,6 +129,11 @@ class MxCollection(Collection):
             doc[key] = shapely.geometry.mapping(geom_doc.buffer(0))
 
         return doc
+
+    def es(self) -> tuple[int, int]:
+        """Returns a named two-tuple with the document count of this collection and the corresponding Elasticsearch index."""
+        from .mx_elastic import ESClient
+        return Count(self.estimated_document_count(), ESClient(self.full_name).count())
 
 
 class MongoDB:
