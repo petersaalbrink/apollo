@@ -659,7 +659,7 @@ class MySQLClient:
 
         ints_dict = {field: _type for field, _type in type_dict.items() if _type is int}
         ints_list = [
-            [count_bytes(value) for key, value in row.items() if key in ints_dict.keys()]
+            [count_bytes(value) if value else 0 for key, value in row.items() if key in ints_dict.keys()]
             for row in data
         ]
         ints_list = list(zip(
