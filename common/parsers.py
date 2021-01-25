@@ -362,4 +362,5 @@ def count_bytes(num: int) -> int:
         from common.parsers import count_bytes
         print(count_bytes(127), count_bytes(128))
     """
+    num = int(num)
     return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))
