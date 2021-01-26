@@ -34,7 +34,7 @@ from ..handlers import tqdm, trange
 from ..parsers import count_bytes
 from ..secrets import get_secret
 
-_MAX_ERRORS = 100
+_MAX_ERRORS = 10_000
 _MYSQL_TYPES = {
     str: "CHAR",
     int: {

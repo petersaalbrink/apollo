@@ -129,6 +129,7 @@ class ESClient(Elasticsearch):
             if not _config["http_auth"]:
                 _config["http_auth"] = get_secret("MX_ELASTIC")  # noqa
         hosts = [{"host": self._host, "port": self._port}]
+        _config["maxsize"] = kwargs.pop("maxsize", 32)
         super().__init__(hosts, **_config)
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
