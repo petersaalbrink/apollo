@@ -9,15 +9,15 @@ from .connectors.mx_elastic import ESClient
 from .exceptions import PersonsError
 
 es_initials = partial(
-    ESClient("cdqc.person_data_initials_occurrence", index_exists=True).find,
+    ESClient("cdqc.person_data_initials_occurrence").find,
     size=1, source_only=True, _source="proportion",
 )
 es_lastnames = partial(
-    ESClient("cdqc.person_data_lastname_occurrence", index_exists=True).find,
+    ESClient("cdqc.person_data_lastname_occurrence").find,
     size=1, source_only=True, _source=["regular", "fuzzy"],
 )
 es_firstnames = partial(
-    ESClient("cdqc.person_data_firstname_occurrence", index_exists=True).find,
+    ESClient("cdqc.person_data_firstname_occurrence").find,
     size=1, source_only=True, _source="count",
 )
 NameCounts = namedtuple("NameCounts", ("first", "last"))
@@ -28,7 +28,7 @@ class Constant:
     adults_nl = 14_000_000
     yearly_deceased = 151_885
     population_size = adults_nl + (yearly_deceased * 20)
-    db_count = ESClient("cdqc.person_data", index_exists=True).count()
+    db_count = ESClient("cdqc.person_data").count()
     max_proportion_initials: float = es_initials({"sort": {"proportion": "desc"}})["proportion"]
     max_proportion_lastname: float = es_lastnames({"sort": {"regular.proportion": "desc"}})["regular"]["proportion"]
     mean_proportion_lastname = (max_proportion_lastname + es_lastnames(
@@ -69,7 +69,7 @@ def set_population_size(oldest_client_record_in_years: int = 20) -> bool:
 
 def set_number_of_residential_addresses() -> bool:
     Constant.number_of_residential_addresses = ESClient(
-        "real_estate_alias", host="prod", index_exists=True).distinct_count(
+        "real_estate_alias", host="prod").distinct_count(
         field="address.identification.addressId",
         find={"match": {"houseDetails.usePurpose": "woonfunctie"}})
     return True
@@ -77,7 +77,7 @@ def set_number_of_residential_addresses() -> bool:
 
 def set_number_of_postcodes() -> bool:
     Constant.number_of_postcodes = ESClient(
-        "real_estate_alias", host="prod", index_exists=True).distinct_count(
+        "real_estate_alias", host="prod").distinct_count(
         field="address.identification.postalCode",
         find={"match": {"houseDetails.usePurpose": "woonfunctie"}})
     return True

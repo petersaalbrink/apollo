@@ -489,7 +489,7 @@ class Names:
     """
 
     def __init__(self):
-        self.es = ESClient(Constant.ND_INDEX, index_exists=True)
+        self.es = ESClient(Constant.ND_INDEX)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}"
@@ -979,6 +979,7 @@ class Match:
         "person",
         "query",
     )
+    _es = ESClient(Constant.PD_INDEX)
 
     def __init__(self, matchable: Matchable, query_type: str = "person_query"):
         self._composite: Optional[Person] = None
@@ -1005,10 +1006,7 @@ class Match:
     def search_response(self) -> list[dict]:
         """Elastic response for this Match."""
         if not self._search_response:
-            self._search_response = ESClient(
-                Constant.PD_INDEX,
-                index_exists=True,
-            ).search(
+            self._search_response = self._es.search(
                 index=Constant.PD_INDEX,
                 body=getattr(self.query, self._query_type),
                 size=Constant.SEARCH_SIZE,

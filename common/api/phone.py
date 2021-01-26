@@ -35,6 +35,7 @@ from ._acm import ACM
 _SECRET = None
 _WRONG_NUMS = ("9", "66", "67", "69", "60")
 _acm = ACM()
+_es = ESClient("cdqc.validated_numbers")
 _lock = Lock()
 CALL_TO_VALIDATE = True
 RESPECT_HOURS = True
@@ -179,9 +180,7 @@ def lookup_carriers_acm(
 def lookup_call_result(
         phone: PhoneApiResponse,
 ) -> Optional[PhoneApiResponse]:
-    result = ESClient(
-        "cdqc.validated_numbers", index_exists=True,
-    ).find(
+    result = _es.find(
         {"query": {"bool": {"filter": [
             {"term": {"phoneNumber": phone.national_number}},
             {"range": {"date": {"gte": (datetime.now() - td_90_days)}}},
