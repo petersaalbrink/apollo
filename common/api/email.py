@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = (
+    "ERROR_CODES",
     "check_email",
     "validate_email",
 )
@@ -27,6 +28,33 @@ from ..requests import get
 PATH = Path(__file__).parents[1] / "etc"
 LIVE = "136.144.203.100"
 URL = f"http://{LIVE}:4000/email?email="
+
+ERROR_CODES = {
+    421: "Service not available, closing transmission channel",
+    432: "A password transition is needed",
+    450: "Requested mail action not taken: mailbox unavailable",
+    451: "IMAP server unavailable",
+    452: "Requested action not taken: insufficient system storage",
+    454: "Temporary authentication failure",
+    455: "Server unable to accommodate parameters",
+    500: "Authentication Exchange line is too long",
+    501: "Client initiated Authentication Exchange",
+    502: "Command not implemented",
+    503: "Bad sequence of commands",
+    504: "Unrecognized authentication type",
+    521: "Server does not accept mail",
+    523: "Encryption Needed",
+    530: "Authentication required",
+    534: "Authentication mechanism is too weak",
+    535: "Authentication credentials invalid",
+    538: "Encryption required for requested authentication mechanism",
+    550: "Requested action not taken: mailbox unavailable",
+    551: "User not local; please try <forward-path>",
+    552: "Requested mail action aborted: exceeded storage allocation",
+    553: "Requested action not taken: mailbox name not allowed",
+    554: "Message too big for system",
+    556: "Domain does not accept mail",
+}
 
 
 class _EmailValidator:
