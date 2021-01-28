@@ -369,13 +369,22 @@ def validate_email(
         check_accept_all: bool,
         use_cache: bool,
         debug: bool = False,
+        try_again: bool = False,
 ):
-    return _EmailValidator(
+    response = _EmailValidator(
         email=email,
         check_accept_all=check_accept_all,
         use_cache=use_cache,
         debug=debug,
     ).validate_email()
+    if try_again and response["mx_code"] != 250:
+        response = _EmailValidator(
+            email=email,
+            check_accept_all=check_accept_all,
+            use_cache=False,
+            debug=debug,
+        ).validate_email()
+    return response
 
 
 @lru_cache()
