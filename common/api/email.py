@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __all__ = (
     "check_email",
     "validate_email",
@@ -106,7 +108,7 @@ class _EmailValidator:
         if not matched or len(self.EMAIL.strip()) > 320:
             raise ValueError
 
-    def _connect(self, rcpt: str) -> int:
+    def _connect(self, rcpt: str) -> tuple[int, str]:
 
         server = SMTP(timeout=10)
 
@@ -119,16 +121,16 @@ class _EmailValidator:
 
         server.helo()
         server.mail("my@from.addr.ess")
-        code, _ = server.rcpt(rcpt)
+        code, message = server.rcpt(rcpt)
         server.quit()
 
-        return code
+        return code, message.decode().lower()
 
     def check_accept_all(self):
         if not self.CHECK_ACCEPT_ALL:
             return
 
-        code = self._connect(f"70206294287020629428@{self.OUTPUT_DICT['domain']}")
+        code, _ = self._connect(f"70206294287020629428@{self.OUTPUT_DICT['domain']}")
 
         if code == 250:
             self.OUTPUT_DICT["accept_all"] = True
@@ -136,13 +138,29 @@ class _EmailValidator:
 
     def check_user(self):
 
-        code = self._connect(self.EMAIL)
+        code, message = self._connect(self.EMAIL)
 
         self.OUTPUT_DICT["mx_code"] = code
 
         if code == 250:
             self.OUTPUT_DICT["status"] = "OK"
             self.OUTPUT_DICT["qualification"] = "OK"
+        elif (
+                "4.1.8" in message
+                or "5.1.8" in message
+                or "5.7.1" in message
+                or "authentication required" in message
+                or "block" in message
+                or "list" in message
+                or "not yet authorized" in message
+                or "relay access denied" in message
+                or "relay not permitted" in message
+                or "relaying denied from" in message
+                or "sender address rejected" in message
+                or "sender verify failed" in message
+        ):
+            self.OUTPUT_DICT["status"] = "WARNING"
+            self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
         else:
             self.OUTPUT_DICT["safe_to_send"] = False
             self.OUTPUT_DICT["status"] = "USELESS"
