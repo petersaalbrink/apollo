@@ -13,6 +13,8 @@ File handlers:
    Generate data read from a zipped csv file.
 .. py:function: common.handlers.csv_write
    Write data to a csv file.
+.. py:function: common.handlers.csv_write_to_zip
+   Write data to a csv file and archive it.
 .. py:class: common.handlers.ZipData
    Class for processing zip archives containing csv data files.
 
@@ -58,6 +60,7 @@ __all__ = (
     "csv_read",
     "csv_read_from_zip",
     "csv_write",
+    "csv_write_to_zip",
     "Log",
     "get_logger",
     "send_email",
@@ -100,7 +103,7 @@ from typing import (
     Type,
     Union,
 )
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED
 
 from tqdm import tqdm, trange
 
@@ -172,6 +175,61 @@ def csv_write(data: Union[list[dict], dict],
             csv.writerows(data)
         else:
             csv.writerow(data)
+
+
+def csv_write_to_zip(
+        data: Union[list[dict], dict],
+        filename: Union[Path, str],
+        **kwargs,
+) -> None:
+    """Write data to a csv file and archive it.
+
+    The zip file will be created if it doesn't exist.
+
+    Provide the following arguments:
+        :param data: list of dictionaries or single dictionary
+        :param filename: path or file name to write to
+            (can have csv, zip, or no suffix)
+
+    Optionally, provide the following keyword arguments to csv_write_to_zip:
+        compression: method for compression, default ZIP_DEFLATED
+        compresslevel: level for compression, default None
+        mode: file write mode, default "w"
+    Optionally, provide the following keyword arguments to csv_write:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+        mode: file write mode, default "w"
+        extrasaction: action to be taken for extra keys, default "raise"
+        quotechar: csv file quote character, default '"'
+    Additional keyword arguments will be passed through to
+    `csv.DictWriter`.
+    """
+    compression = kwargs.pop("compression", ZIP_DEFLATED)
+    compresslevel = kwargs.pop("compresslevel", None)
+
+    filename = Path(filename)
+    if filename.suffix == ".csv":
+        csv_filename = filename
+        zip_filename = Path(f"{filename}".replace(".csv", ".zip"))
+    elif filename.suffix == ".zip":
+        csv_filename = Path(f"{filename}".replace(".zip", ".csv"))
+        zip_filename = filename
+    else:
+        csv_filename = Path(f"{filename}.csv")
+        zip_filename = Path(f"{filename}.zip")
+    mode = kwargs.get("mode", "w")
+
+    csv_write(data=data, filename=csv_filename, **kwargs)
+
+    with ZipFile(
+            file=zip_filename,
+            mode=mode,
+            compression=compression,
+            compresslevel=compresslevel,
+    ) as f:
+        f.write(csv_filename)
+
+    csv_filename.unlink()
 
 
 def csv_read(filename: Union[Path, str],
