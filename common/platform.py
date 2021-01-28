@@ -154,7 +154,7 @@ class FileTransfer:
     def list_files(self) -> list[str]:
         """list existing files in this user's Platform folder."""
         self._connect()
-        stdout, _ = self._run_cmd(f"ls {self.filepath}")
+        stdout, _ = self._run_cmd(f"ls -t {self.filepath}")
         files = [f for f in stdout.read().decode().split("\n") if f]
         self._disconnect()
         return files
