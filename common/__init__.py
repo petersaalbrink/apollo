@@ -115,6 +115,7 @@ __all__ = (
     "set_search_size",
     "set_years_ago",
     "thread",
+    "thread_queue",
     "threadsafe",
     "timer",
     "tqdm",
@@ -242,6 +243,7 @@ _module_mapping = {
         "post",
         "request",
         "thread",
+        "thread_queue",
         "threadsafe",
     ],
     "secrets": [
