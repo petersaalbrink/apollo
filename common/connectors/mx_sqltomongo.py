@@ -197,7 +197,7 @@ class SQLtoMongo:
             preprocessing: Callable = None,
             progress_bar: bool = False,
             update_cls: Union[Type[UpdateMany], Type[UpdateOne]] = UpdateOne,
-            upsert: bool = False
+            upsert: bool = False,
     ):
         for chunk in tqdm(self.generator_df, disable=not progress_bar):
             if preprocessing:
@@ -205,7 +205,7 @@ class SQLtoMongo:
             chunk = [update_cls(
                 filter(d),
                 update(d),
-                upsert=upsert
+                upsert=upsert,
             )
                 for d in chunk.to_dict("records")
             ]
