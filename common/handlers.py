@@ -9,8 +9,12 @@ File handlers:
 
 .. py:function: common.handlers.csv_read
    Generate data read from a csv file.
+.. py:function: common.handlers.csv_read_from_zip
+   Generate data read from a zipped csv file.
 .. py:function: common.handlers.csv_write
    Write data to a csv file.
+.. py:function: common.handlers.csv_write_to_zip
+   Write data to a csv file and archive it.
 .. py:class: common.handlers.ZipData
    Class for processing zip archives containing csv data files.
 
@@ -38,11 +42,40 @@ Timing handlers:
 
 Runtime handlers:
 
+.. py:function: common.handlers.keep_trying
+   Keep trying a callable, until optional timeout.
 .. py:function: common.handlers.send_email
    Decorator for sending email notification on success/fail.
 .. py:function: common.handlers.pip_upgrade
    Upgrade all installed Python packages using pip.
 """
+
+from __future__ import annotations
+
+__all__ = (
+    "tqdm",
+    "trange",
+    "remove_adjacent",
+    "chunker",
+    "csv_read",
+    "csv_read_from_zip",
+    "csv_write",
+    "csv_write_to_zip",
+    "Log",
+    "get_logger",
+    "send_email",
+    "ZipData",
+    "Timer",
+    "TicToc",
+    "FunctionTimer",
+    "timer",
+    "keep_trying",
+    "pip_upgrade",
+    "read_txt",
+    "read_json_line",
+    "read_json",
+    "assert_never",
+)
 
 from collections import OrderedDict
 from contextlib import ContextDecorator
@@ -58,29 +91,46 @@ from pathlib import Path
 import pkg_resources
 from subprocess import run
 import sys
-from time import perf_counter
-from typing import (Any,
-                    Callable,
-                    ClassVar,
-                    Dict,
-                    List,
-                    MutableMapping,
-                    Optional,
-                    Tuple,
-                    Union)
-from zipfile import ZipFile
+from time import perf_counter, time
+from json import load, loads
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Iterator,
+    NoReturn,
+    Optional,
+    Type,
+    Union,
+)
+from zipfile import ZipFile, ZIP_DEFLATED
+
 from tqdm import tqdm, trange
-from .connectors.mx_email import EmailClient
-from .exceptions import DataError, TimerError, ZipDataError
+
+from .connectors.mx_email import EmailClient, DEFAULT_EMAIL
+from .exceptions import DataError, Timeout, TimerError, ZipDataError
 
 _bar_format = "{l_bar: >16}{bar:20}{r_bar}"
 tqdm = partial(tqdm, smoothing=0, bar_format=_bar_format)
 trange = partial(trange, smoothing=0, bar_format=_bar_format)
 
-DEFAULT_EMAIL = "datateam@matrixiangroup.com"
+
+def remove_adjacent(sentence: str) -> str:
+    """ Remove adjecent words in a string """
+    if sentence and isinstance(sentence, str):
+        lst = sentence.split()
+        return " ".join([elem for i, elem in enumerate(lst) if i == 0 or lst[i - 1] != elem])
+    else:
+        return sentence
 
 
-def csv_write(data: Union[List[dict], dict],
+def chunker(lst: list, n) -> Iterator[list]:
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def csv_write(data: Union[list[dict], dict],
               filename: Union[Path, str],
               **kwargs) -> None:
     """Write data to a csv file.
@@ -127,9 +177,64 @@ def csv_write(data: Union[List[dict], dict],
             csv.writerow(data)
 
 
+def csv_write_to_zip(
+        data: Union[list[dict], dict],
+        filename: Union[Path, str],
+        **kwargs,
+) -> None:
+    """Write data to a csv file and archive it.
+
+    The zip file will be created if it doesn't exist.
+
+    Provide the following arguments:
+        :param data: list of dictionaries or single dictionary
+        :param filename: path or file name to write to
+            (can have csv, zip, or no suffix)
+
+    Optionally, provide the following keyword arguments to csv_write_to_zip:
+        compression: method for compression, default ZIP_DEFLATED
+        compresslevel: level for compression, default None
+        mode: file write mode, default "w"
+    Optionally, provide the following keyword arguments to csv_write:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+        mode: file write mode, default "w"
+        extrasaction: action to be taken for extra keys, default "raise"
+        quotechar: csv file quote character, default '"'
+    Additional keyword arguments will be passed through to
+    `csv.DictWriter`.
+    """
+    compression = kwargs.pop("compression", ZIP_DEFLATED)
+    compresslevel = kwargs.pop("compresslevel", None)
+
+    filename = Path(filename)
+    if filename.suffix == ".csv":
+        csv_filename = filename
+        zip_filename = Path(f"{filename}".replace(".csv", ".zip"))
+    elif filename.suffix == ".zip":
+        csv_filename = Path(f"{filename}".replace(".zip", ".csv"))
+        zip_filename = filename
+    else:
+        csv_filename = Path(f"{filename}.csv")
+        zip_filename = Path(f"{filename}.zip")
+    mode = kwargs.get("mode", "w")
+
+    csv_write(data=data, filename=csv_filename, **kwargs)
+
+    with ZipFile(
+            file=zip_filename,
+            mode=mode,
+            compression=compression,
+            compresslevel=compresslevel,
+    ) as f:
+        f.write(csv_filename)
+
+    csv_filename.unlink()
+
+
 def csv_read(filename: Union[Path, str],
              **kwargs,
-             ) -> MutableMapping:
+             ) -> Iterator[dict]:
     """Generate data read from a csv file.
 
     Returns rows as dict, with None instead of empty string. If no
@@ -171,6 +276,67 @@ def csv_read(filename: Union[Path, str],
             yield {k: v if v else None for k, v in row.items()}
 
 
+def csv_read_from_zip(
+        zipfilename: Union[Path, str],
+        csvfilename: Union[Path, str] = None,
+        **kwargs,
+) -> Iterator[dict]:
+    """Generate data read from a zipped csv file.
+
+    Returns rows as dict, with None instead of empty string. If no
+    delimiter is specified, tries to find out if the delimiter is
+    either a comma or a semicolon.
+
+    Provide the following arguments:
+        :param zipfilename: path or file name of zip to read from
+        :param csvfilename: path or file name of csv in zip to read from;
+            if None, grabs the first available file
+
+    Optionally, provide the following keyword arguments:
+        encoding: csv file encoding, default "utf-8"
+        delimiter: csv file delimiter, default ","
+    Additional keyword arguments will be passed through to
+    `csv.DictReader`.
+
+    :raises DataError: if the csv file does not exist in the zip file, or
+        if there are no csv files in the zip file.
+    :raises FileNotFoundError: if the zip file does not exist.
+    """
+    zipfile = ZipFile(zipfilename)
+
+    if not csvfilename:
+        try:
+            csvfilename = next(name for name in zipfile.namelist() if name.endswith(".csv"))
+        except StopIteration:
+            zipfile.close()
+            raise DataError(f"No CSV file found in archive.")
+
+    try:
+        csvfile = TextIOWrapper(zipfile.open(csvfilename), encoding=kwargs.pop("encoding", "utf-8"))
+    except KeyError:
+        zipfile.close()
+        raise DataError(f"CSV file {csvfilename} not found in archive.")
+
+    try:
+
+        # Try to find a commonly used delimiter
+        if not kwargs.get("delimiter"):
+            d = next(DictReader(csvfile, **kwargs))
+            if len(d) == 1 and ";" in list(d)[0]:
+                kwargs["delimiter"] = ";"
+            csvfile.seek(0)
+
+        # Yield the data
+        yield from (
+            {k: v if v else None for k, v in d.items()}
+            for d in DictReader(csvfile, **kwargs)
+        )
+
+    finally:
+        zipfile.close()
+        csvfile.close()
+
+
 _logging_levels = {
     "notset": logging.NOTSET,
     "debug": logging.DEBUG,
@@ -196,9 +362,13 @@ class Log:
             filename="my.log",
         )
     """
+
     def __init__(self, level: str = None, filename: str = None):
         """Logger class that by default logs with level debug to stderr."""
-        self.level = _logging_levels.get(level.lower(), logging.DEBUG)
+        try:
+            self.level = _logging_levels.get(level.lower(), logging.DEBUG)
+        except AttributeError:
+            self.level = logging.DEBUG
         self.kwargs = {
             "level": self.level,
             "format": _log_format,
@@ -220,7 +390,7 @@ class Log:
 
 
 def get_logger(level: str = None,
-               filename: str = None,
+               filename: Union[Path, str] = None,
                name: str = None,
                **kwargs
                ) -> logging.Logger:
@@ -352,6 +522,7 @@ def send_email(function: Callable = None, *,
                     error_message=True
                 )
                 raise
+
         return wrapped
 
     if function:
@@ -361,6 +532,7 @@ def send_email(function: Callable = None, *,
 
 class ZipData:
     """Class for processing zip archives containing csv data files."""
+
     def __init__(self,
                  file_path: Union[Path, str],
                  data_as_dicts: bool = True,
@@ -447,12 +619,12 @@ class ZipData:
              remove: bool = False,
              n_lines: int = None,
              as_generator: bool = False
-             ) -> Union[List[OrderedDict],
-                        List[list],
-                        Dict[str, List[OrderedDict]]]:
+             ) -> Union[list[OrderedDict],
+                        list[list],
+                        dict[str, list[OrderedDict]]]:
         """Load (and optionally remove) data from zip archive. If the
         archive contains multiple csv files, they are returned in
-        Dict[str, List[OrderedDict]] format.
+        dict[str, list[OrderedDict]] format.
 
         Example:
             zipdata = ZipData("testfile.zip", delimiter=",")
@@ -491,7 +663,7 @@ class ZipData:
             else:
                 self.data[file] = function(data[1:] if skip_fieldnames else data, *args, **kwargs)
 
-    def write(self, replace: Tuple[str, str] = ("", "")):
+    def write(self, replace: tuple[str, str] = ("", "")):
         """Archives and deflates all data files."""
         with ZipFile(self.file_path, "w", compression=8) as zipfile:
             for file, values in self.data.items():
@@ -511,6 +683,7 @@ class Timer:
         [i**i for i in range(10000)]
         print(t.end())
     """
+
     def __init__(self):
         self.t = self.now()
 
@@ -552,7 +725,7 @@ class TicToc(ContextDecorator):
         my_func()
     """
 
-    timers: ClassVar[Dict[str, float]] = dict()
+    timers: ClassVar[dict[str, float]] = dict()
     name: Optional[str] = None
     text: str = "Elapsed time: {:0.4f} seconds"
     logger: Optional[Callable[[str], None]] = print
@@ -652,6 +825,7 @@ def timer(f):
             return [i**i for i in range(10000)]
         my_func()
     """
+
     @wraps(f)
     def timed(*args, **kwargs):
         start_time = perf_counter()
@@ -659,7 +833,59 @@ def timer(f):
         elapsed_time = perf_counter() - start_time
         logging.info("%s:%.8f", f.__name__, elapsed_time)
         return return_value
+
     return timed
+
+
+def keep_trying(
+        function: Callable,
+        *args,
+        exceptions: Union[Type[Exception], tuple[Type[Exception], ...]] = None,
+        timeout: Union[int, float] = None,
+        **kwargs,
+) -> Any:
+    """Keep trying a callable, until optional timeout.
+
+    :param function: the callable to execute
+    :param args: positional arguments to execute the callable with
+    :param kwargs: keyword arguments to execute the callable with
+    :param exceptions: the exception(s) to suppress
+    :param timeout: the number of seconds to keep retrying
+
+    Example::
+        from common.handlers import keep_trying
+
+        def function_with_bug(i: int):
+            my_list = []
+            return my_list[i]
+
+        # Without any arguments:
+        keep_trying(function_with_bug, 8)
+
+        # With optional arguments:
+        keep_trying(function_with_bug, i=9, exceptions=IndexError, timeout=1)
+    """
+
+    if not exceptions:
+        exceptions = Exception
+    if timeout:
+        start = time()
+
+    def eval_cond():
+        if timeout:
+            return time() < start + timeout
+        return True
+
+    while eval_cond():
+        try:
+            return function(*args, **kwargs)
+        except exceptions as e:
+            error = e
+    else:
+        try:
+            raise Timeout from error  # noqa
+        except NameError:
+            raise Timeout
 
 
 def pip_upgrade():
@@ -669,3 +895,48 @@ def pip_upgrade():
         if not dist.project_name.startswith("-")
     ]
     run(["pip", "install", "--upgrade", *packages])
+
+
+def read_txt(
+    filename: Union[Path, str],
+    use_tqdm: bool = False,
+    encoding: str = "utf-8",
+    **kwargs
+):
+    """Reads any text file per line and yields stripped"""
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
+        for line in tqdm(f, disable=False if use_tqdm else True):
+            yield line.strip()
+
+
+def read_json(
+    filename: Union[Path, str],
+    use_tqdm: bool = False,
+    encoding: str = "utf-8",
+    **kwargs
+):
+    """Reads and loads any JSON file and yields per object in list"""
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
+        json_data = load(f)
+    for line in tqdm(json_data, disable=False if use_tqdm else True):
+        yield line
+
+
+def read_json_line(
+    filename: Union[Path, str],
+    use_tqdm: bool = False,
+    encoding: str = "utf-8",
+    **kwargs
+):
+    """Reads and loads any JSON file that is delimited per line and yields per line"""
+    with open(filename, "r", encoding=encoding, **kwargs) as f:
+        for line in tqdm(f, disable=False if use_tqdm else True):
+            yield loads(line)
+
+
+def assert_never(x: NoReturn) -> NoReturn:
+    """Utility for exhaustiveness checking.
+
+    See https://github.com/python/typing/issues/735
+    """
+    raise AssertionError(f"Invalid value: {x!r}")

@@ -40,19 +40,62 @@ This module contains the following objects:
    Parse a date from a datestring and return the format.
    Example::
         dateformat("28/08/2014") == "%d/%m/%Y"
+
+.. py:function:: common.parsers.find_all_urls(text: str) -> list
+   Finds all urls in a string and returns a list
+   Example::
+        urls = find_all_urls(text)
+
+.. py:function:: common.parsers.reverse_geocode(x: float, y: float) -> dict
+   Returns address from x and y coordinates using ArcGIS; reverse geocoding.
+   Example::
+        address = reverse_geocode(4.894410, 52.310158)
+
+.. py:function:: common.parsers.partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]
+   Split an iterable `it` into two lists using some predicate `pred`.
+   Example::
+        evens, odds = partition(lambda num: (num % 2) == 0, range(100))
+
+.. py:function:: common.parsers.count_bytes(num: int) -> int
+   Calculate the number of bytes needed to store `num` as a signed integer.
+   Example::
+        print(count_bytes(127), count_bytes(128))
 """
+
+from __future__ import annotations
+
+__all__ = (
+    "Checks",
+    "DISTANCE",
+    "PERCENTAGE",
+    "dateformat",
+    "drop_empty_columns",
+    "count_bytes",
+    "expand",
+    "flatten",
+    "levenshtein",
+    "partition",
+    "reverse_geocode",
+)
 
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, List, MutableMapping, Optional, Union
+from re import findall, compile
+from typing import Any, Callable, Iterable, Optional, TypeVar, Union
+
 from dateutil.parser import parse
 from numpy import zeros
-from pandas import isna
+from pandas import notna
 from text_unidecode import unidecode
+
 from .exceptions import ParseError
+from .requests import get
 
 
-def _flatten(input_dict: MutableMapping[str, Any], sep: str):
+T = TypeVar('T')
+
+
+def _flatten(input_dict: dict[str, Any], sep: str):
     flattened_dict = {}
     for key, maybe_nested in input_dict.items():
         if isinstance(maybe_nested, dict):
@@ -63,14 +106,14 @@ def _flatten(input_dict: MutableMapping[str, Any], sep: str):
     return flattened_dict
 
 
-def flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict:
+def flatten(nested_dict: dict[str, Any], sep: str = "_") -> dict:
     """Flatten a nested dictionary."""
     __flatten = _flatten
     return_dict = __flatten(nested_dict, sep)
     while True:
         count = 0
         for v in return_dict.values():
-            if not isinstance(v, MutableMapping):
+            if not isinstance(v, dict):
                 count += 1
         if count == len(return_dict):
             break
@@ -92,42 +135,42 @@ class Checks:
     def int_or_null(var: Any) -> Optional[int]:
         """Transform to an integer, if possible."""
         try:
-            return int(var) if var and not isna(var) else None
-        except ValueError:
+            return int(var)
+        except (TypeError, ValueError):
             return None
 
     @staticmethod
     def bool_or_null(var: Any) -> Optional[bool]:
         """Transform to a boolean, if possible."""
-        return bool(Checks.int_or_null(var)) if var and not isna(var) else None
+        return bool(Checks.float_or_null(var))
 
     @staticmethod
     def str_or_null(var: Any) -> Optional[str]:
         """Transform to a string, if possible."""
-        return str(var) if var and not isna(var) else None
+        return str(var) if notna(var) else None
 
     @staticmethod
     def str_or_empty(var: Any) -> str:
         """Always transform to a string."""
-        return str(var) if var and not isna(var) else ""
+        return str(var) if notna(var) else ""
 
     @staticmethod
     def float_or_null(var: Any) -> Optional[float]:
         """Transform to a floating point, if possible."""
         try:
-            return float(var) if var and not isna(var) else None
-        except ValueError:
+            return float(var) if notna(var) else None
+        except (TypeError, ValueError):
             return None
 
     @staticmethod
     def date_or_null(var: str, f: str) -> Optional[datetime]:
         """Transform to a datetime, if possible."""
-        return datetime.strptime(var, f) if var and not isna(var) else None
+        return datetime.strptime(var, f) if notna(var) else None
 
     @staticmethod
     def check_null(var: Any) -> Optional[Any]:
         """Check if data resolves to True, otherwise return None."""
-        return var if var and not isna(var) else None
+        return var if notna(var) else None
 
     @staticmethod
     def energy_label(var: str) -> int:
@@ -165,16 +208,19 @@ class Checks:
         return int(lev * 100)
 
 
+DISTANCE = "distance"
+PERCENTAGE = "percentage"
+
+
 @lru_cache()
-def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]:
+def levenshtein(seq1: str, seq2: str, measure: str = PERCENTAGE) -> Union[float, int]:
     """Calculate the Levenshtein distance and score for two strings.
 
     By default, returns the percentage score.
     Set :param measure: to "distance" to return the Levenshtein distance.
     """
-    measures = {"distance", "percentage"}
-    if measure not in measures:
-        raise ParseError(f"measure should be one of {measures}")
+    if measure != DISTANCE and measure != PERCENTAGE:
+        raise ParseError(f"wrong measure: {measure}")
 
     size_1, size_2 = len(seq1), len(seq2)
     size_1p, size_2p = size_1 + 1, size_2 + 1
@@ -203,7 +249,7 @@ def levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[floa
                 else:
                     distances[t1][t2] = c + 1
 
-    if measure == "percentage":
+    if measure == PERCENTAGE:
         return 1 - (distances[size_1, size_2]) / max(size_1, size_2)
     else:
         return int(distances[size_1][size_2])
@@ -227,7 +273,7 @@ def dateformat(date: str) -> str:
     return fmt
 
 
-def expand(data: List[dict], sort: bool = True) -> List[dict]:
+def expand(data: list[dict], sort: bool = True) -> list[dict]:
     """Standardize irregular data, e.g. for writing to CSV or SQL.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -247,7 +293,7 @@ def expand(data: List[dict], sort: bool = True) -> List[dict]:
     return data
 
 
-def drop_empty_columns(data: List[dict]) -> List[dict]:
+def drop_empty_columns(data: list[dict]) -> list[dict]:
     """Remove keys that have no value for all entries.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -258,15 +304,63 @@ def drop_empty_columns(data: List[dict]) -> List[dict]:
         from common.parsers import drop_empty_columns
         data = drop_empty_columns(data)
     """
-    fieldnames = set(data[0].keys())
+    fieldnames = {field for doc in data for field in doc}
     for doc in data:
         for field in tuple(fieldnames):
-            if not isna(doc[field]):
+            if doc.get(field):
                 fieldnames.remove(field)
         if not fieldnames:
             break
     else:
         for doc in data:
             for field in fieldnames:
-                del doc[field]
+                if field in doc:
+                    del doc[field]
     return data
+
+
+def find_all_urls(text: str) -> list:
+    """Finds all urls in a string and returns a list"""
+    url_regex = compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+    return findall(url_regex, text)
+
+
+def reverse_geocode(x: float, y: float) -> dict:
+    """Returns address from x and y coordinates using ArcGIS; reverse geocoding."""
+    return get(
+        f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
+    ).json()
+
+
+def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]:
+    """Split an iterable `it` into two lists using some predicate `pred`.
+
+    This function is faster than using alternatives from stdlib, functools, or itertools!
+
+    Example:
+        from common.parsers import partition
+
+        def is_even(num):
+            return (num % 2) == 0
+
+        data = range(100)
+        evens, odds = partition(is_even, data)
+    """
+    ts: list[T] = []
+    fs: list[T] = []
+    t = ts.append
+    f = fs.append
+    for item in it:
+        (t if pred(item) else f)(item)
+    return ts, fs
+
+
+def count_bytes(num: int) -> int:
+    """Calculate the number of bytes needed to store `num` as a signed integer.
+
+    Example:
+        from common.parsers import count_bytes
+        print(count_bytes(127), count_bytes(128))
+    """
+    num = int(num)
+    return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))

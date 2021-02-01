@@ -1,10 +1,17 @@
+from __future__ import annotations
+
+__all__ = (
+    "MappingsBase",
+    "SQLtoMongo",
+)
+
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import Callable, List, NewType
+from typing import Callable, NewType, Union, Type
 from tqdm import tqdm
 
 from pandas import read_sql
-from pymongo import IndexModel
+from pymongo import IndexModel, UpdateMany, UpdateOne
 from pymongo.errors import OperationFailure
 from sqlalchemy import create_engine
 
@@ -61,7 +68,7 @@ class SQLtoMongo:
         self.date_columns = kwargs.pop("date_columns", None)
         self.index_columns = kwargs.pop("index_columns", None)
 
-    def create_indexes(self, names: List[str]):
+    def create_indexes(self, names: list[str]):
         """Create indexes in the MongoDB collection.
 
         The name of the (nested) field is set as the index name.
@@ -94,8 +101,20 @@ class SQLtoMongo:
                 result = self.coll.delete_many(filter={field: {"$in": chunk}})
                 self.number_of_deletions += result.deleted_count
 
+    def _set_session_variables(self):
+        # We set these session variables to avoid error 2013 (Lost connection)
+        for var, val in (
+            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
+            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
+            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
+            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
+        ):
+            self.engine.execute(f"SET SESSION {var}={val}")
+
     @property
     def generator_df(self):
+        self._set_session_variables()
         try:
             return read_sql(
                 sql=self.query,
@@ -127,12 +146,15 @@ class SQLtoMongo:
             result = self.coll.insert_many(chunk)
             self.number_of_insertions += len(result.inserted_ids)
 
-    def notify(self, to_address: str, title: str = "Update succeeded"):
+    def notify(self, to_address: Union[list[str], str], title: str = "Update succeeded", name: str = ""):
+        if name:
+            name = f"{name}\n\n"
         total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
         EmailClient().send_email(
             to_address=to_address,
             subject=title,
             message=f"MongoDB update ran successfully!\n\n"
+                    f"{name}"
                     f"Number of matched documents: {self.matched_count}\n"
                     f"Number of updated documents: {self.number_of_updates}\n"
                     f"Number of deleted documents: {self.number_of_deletions}\n"
@@ -173,12 +195,13 @@ class SQLtoMongo:
             filter: Callable,
             update: Callable,
             preprocessing: Callable = None,
-            check_progress: bool = False,
+            progress_bar: bool = False,
+            update_cls: Union[Type[UpdateMany], Type[UpdateOne]] = UpdateOne,
     ):
-        for chunk in tqdm(self.generator_df, disable=check_progress):
+        for chunk in tqdm(self.generator_df, disable=not progress_bar):
             if preprocessing:
                 chunk = preprocessing(chunk)
-            chunk = [MongoDB.UpdateOne(
+            chunk = [update_cls(
                 filter(d),
                 update(d),
             )

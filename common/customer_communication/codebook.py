@@ -260,7 +260,7 @@ class GraphBuilder:
                 ax[1].set_title("Boxplot zonder uitschieters", fontsize=20)
                 ax[2].set_title("Boxplot alle waardes", fontsize=20)
 
-                sns.distplot(data_nonull[f"{col_name}"], ax=ax[0], color="#0E5C59")
+                sns.histplot(data_nonull, x=f"{col_name}", ax=ax[0], color="#0E5C59", kde=True, linewidth=0)
                 sns.boxplot(
                     y=data_nonull[f"{col_name}"],
                     ax=ax[1],

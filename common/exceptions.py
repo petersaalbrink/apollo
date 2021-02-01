@@ -49,6 +49,18 @@ class ParseError(CommonError):
     """Exception for data parsers."""
 
 
+class PersonsError(CommonError):
+    """Exception for common.persondata"""
+
+
+class RequestError(CommonError):
+    """Exception for requests."""
+
+
+class Timeout(CommonError):
+    """Timout."""
+
+
 class TimerError(CommonError):
     """Exception for Timer."""
 

@@ -1,20 +1,27 @@
+__all__ = (
+    "parse",
+    "validate",
+)
+
 from functools import lru_cache
+import logging
 from typing import Union
 
 from pycountry import countries
-from requests.exceptions import HTTPError
+import urllib3
 
 from ..requests import get
-from ..connectors import EmailClient
 
 LIVE = "136.144.203.100"
 TEST = "136.144.209.80"
-PARSER = f"http://{LIVE}:5000/parser"
-VALIDATION = f"http://{LIVE}:5000/validation"
+PARSER = f"https://{TEST}:5000/parser"
+VALIDATION = f"https://{TEST}:5000/validation"
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @lru_cache()
-def parse(address: str, country: str = "NL"):
+def parse(address: str, country: str = None):
     """
     Parses an address in a string format and returns address elements in JSON.
 
@@ -30,33 +37,27 @@ def parse(address: str, country: str = "NL"):
 
     for s in ("p.a. ", "P.a. ", "p/a ", "P/a "):
         address = address.replace(s, "")
+    if not country:
+        country = "NLD"
+    elif not (country.isupper() and len(country) == 3):
+        country = {
+            "NL": "NLD",
+            "UK": "GBR",
+            "United Kingdom": "GBR"
+        }.get(country, countries.lookup(country).alpha_3)
     params = {
         "address": address,
-        "country": {
-            "NL": "Netherlands",
-            "UK": "UK",
-            "United Kingdom": "UK"
-        }.get(country, countries.lookup(country).name)
+        "country": country,
     }
-    while True:
-        try:
-            response = get(
-                PARSER,
-                params=params,
-                text_only=True,
-            )
-            break
-        except HTTPError as e:
-            e = f"{e}"
-            if not e.startswith("400 Client Error: BAD REQUEST"):
-                response = {"status": e}
-                break
-    if "status" in response:
-        EmailClient().send_email(to_address=["esezgin@matrixiangroup.com",
-                                             "psaalbrink@matrixiangroup.com"],
-                                 subject="Address Parser error",
-                                 message=f"params = {params}\n"
-                                         f"response = {response}")
+    response = get(
+        PARSER,
+        params=params,
+        verify=False,
+        text_only=True,
+    )
+    if isinstance(response, list):
+        logging.warning("%s", response)
+        response = {}
     return response
 
 
@@ -104,12 +105,14 @@ def validate(params: Union[dict, str]) -> dict:
         if key not in params:
             params[key] = ""
 
+    response = get(
+        VALIDATION,
+        verify=False,
+        params=params,
+        text_only=True,
+    )
     try:
-        response = get(
-            VALIDATION,
-            params=params,
-            text_only=True
-        )["objects"][0]
-        return response
-    except HTTPError:
+        return response["objects"][0]
+    except KeyError:
+        logging.warning("%s", response)
         return {}

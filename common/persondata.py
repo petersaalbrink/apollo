@@ -39,7 +39,13 @@ from datetime import datetime
 from functools import lru_cache, partial
 from itertools import combinations
 from logging import debug
-from math import prod
+
+try:
+    from functools import cached_property
+    from math import prod
+except ImportError:
+    from cached_property import cached_property
+    from .etc.prod import prod
 from re import sub
 from typing import Iterator, Optional, Sequence, Tuple, Union
 
@@ -49,7 +55,6 @@ from text_unidecode import unidecode
 import common.api.phone
 from .api.email import check_email
 from .connectors.mx_elastic import ESClient
-from .connectors.mx_mongo import MongoDB
 from .exceptions import MatchError, NoMatch
 from .parsers import flatten, levenshtein
 
@@ -60,27 +65,15 @@ HOST = "cdqc"
 DATE_FORMAT = "%Y-%m-%d"
 DEFAULT_DATE = "1900-01-01"
 
-ADDRESS_KEY = "address"
-DATE_KEYS = {"address_moved", "birth_date", "death_date"}
-EMAIL_KEY = "contact_email"
-PERSONAL_KEYS = ("details", "birth")
-PHONE_KEYS = {"phoneNumber_number", "phoneNumber_mobile"}
+DATE_KEYS = "birth"
+EMAIL_KEY = "email"
+PHONE_KEYS = {"number", "mobile"}
 
-_module_data = {}
 _extra_fields = {
     "birth.date": 1 / 38,
     "phoneNumber.mobile": 1 / 38,
     "phoneNumber.number": 1 / 26,
     "address.address_id": 1 / 26,
-}
-_extra_fields = {
-    field: _extra_fields[field]
-    for field in (
-        "birth.date",
-        "phoneNumber.mobile",
-        "phoneNumber.number",
-        "address.address_id",
-    )
 }
 
 
@@ -88,6 +81,7 @@ class BaseDataClass(MutableMapping):
     """Base class for extending dataclasses
     with dictionary-like functionality.
     """
+
     def __setitem__(self, key, value):
         self.__dict__[key] = value
 
@@ -118,6 +112,8 @@ class Data(BaseDataClass):
     gender: str = None
     firstname: str = None
     date_of_birth: datetime = None
+
+
 # TODO: convert to pydantic.BaseModel
 
 
@@ -127,29 +123,27 @@ class _Score:
     __slots__ = [
         "source",
         "year_of_record",
-        "deceased",
         "lastname_number",
         "gender",
         "date_of_birth",
         "phonenumber_number",
         "occurring",
-        "moved",
         "mobile",
         "matched_names",
         "found_persons",
     ]
     source: str
     year_of_record: str
-    deceased: Optional[int]
     lastname_number: int
     gender: str
     date_of_birth: int
     phonenumber_number: int
     occurring: bool
-    moved: bool
     mobile: bool
     matched_names: Tuple[str, str]
     found_persons: int
+
+
 # TODO: incorporate into SourceScore:
 #  total number of search results
 #  frequency of lastname
@@ -184,7 +178,7 @@ class _SourceMatch:
         """Do the initials match?"""
         try:
             return (response.get("details_initials") and self.data.initials
-                    and response["details_initials"][0] == self.data.initials[0]
+                    and response["details_initials"][0] == self.data.initials[0][0].upper()
                     ) or False
         except IndexError:
             return False
@@ -217,7 +211,8 @@ class _SourceMatch:
 
     def _dob_match(self, response):
         """Does the date of birth match?"""
-        return (response["birth_date"][:10] != DEFAULT_DATE
+        return (response["birth_date"]
+                and response["birth_date"][:10] != DEFAULT_DATE
                 and self.data.date_of_birth
                 and response["birth_date"][:10] == self.data.date_of_birth.strftime(DATE_FORMAT)
                 ) or False
@@ -243,7 +238,7 @@ class _SourceMatch:
         """Decide which fields are the source of the match."""
         return self._source_match[sum(map(bool, self._matched.values()))]
 
-    def _get_source(self, response: dict):
+    def _set_source(self, response: dict):
         """Get the source of the person match."""
         self._set_match(response)
         try:
@@ -310,11 +305,6 @@ class _SourceScore:
             if result.occurring:
                 self._score = 4
 
-        def death_score(result: _Score):
-            """Lowest score if a person is deceased."""
-            if result.deceased:
-                self._score = 4
-
         def date_score(result: _Score):
             """The older the record, the lower the score."""
             delta = self._year - int(result.year_of_record)
@@ -330,14 +320,6 @@ class _SourceScore:
         def source_score(result: _Score):
             """Lower quality of the record's source means a lower score."""
             self._score = max((self._score, self._source_valuation[result.source]))
-
-        def moved_score(result: _Score):
-            """Lower score if there was an address movement."""
-            if result.moved:
-                if result.mobile:
-                    self._score = max((self._score, 2))
-                else:
-                    self._score = 4
 
         def missing_score(result: _Score):
             """Lower score if date of birth or gender is missing."""
@@ -379,10 +361,8 @@ class _SourceScore:
             for func in (
                     data_score,
                     occurring_score,
-                    death_score,
                     date_score,
                     source_score,
-                    moved_score,
                     missing_score,
                     fuzzy_score,
                     n_score,
@@ -414,6 +394,8 @@ class _MatchQueries:
         "firstname": "details.firstname",
         "date_of_birth": "birth.date",
     }
+    _sort = [{"_score": "desc"}, {"date": "desc"}]
+    _date_sort = list(reversed(_sort))
 
     def __init__(self, **kwargs):
         self._address_query = kwargs.pop("address_query", False)
@@ -436,20 +418,29 @@ class _MatchQueries:
         address: query with must-clause (address)
         name_only: query with must-clause (lastname and initials)
         """
-        def lastname_clause(f: int = 1):
+
+        def lastname_clause(f: Union[int, str] = "AUTO", b: int = 2):
             if "ij" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("ij", "y"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
                 ], "minimum_should_match": 1}}
             elif "y" in self.data.lastname:
                 clause = {"bool": {"should": [
                     {"match": {"details.lastname": {"query": self.data.lastname.replace("y", "ij"), "fuzziness": f}}},
                     {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
                 ], "minimum_should_match": 1}}
             else:
-                clause = {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}}
+                clause = {"bool": {"should": [
+                    {"match": {"details.lastname": {"query": self.data.lastname, "fuzziness": f}}},
+                    {"match": {"details.lastname": {"query": self.data.lastname, "boost": b}}},
+                ], "minimum_should_match": 1}}
             return clause
+
+        if self.data.lastname:
+            lastname = lastname_clause()
 
         if self.data.lastname and self.data.initials and self.data.date_of_birth:
             if self.data.date_of_birth.day <= 12:
@@ -462,7 +453,7 @@ class _MatchQueries:
             else:
                 dob = {"term": {"birth.date": self.data.date_of_birth}}
             yield "dob", self._base_query(must=[
-                dob, lastname_clause(),
+                dob, lastname,
                 {"bool": {"should": [
                     {"wildcard": {"details.initials": self.data.initials[0]}},
                     {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 2}}},
@@ -480,7 +471,6 @@ class _MatchQueries:
             person=True)
 
         if self.data.lastname:
-            lastname = lastname_clause()
 
             if self.data.initials:
 
@@ -527,18 +517,28 @@ class _MatchQueries:
             if self.data.houseNumberExt:
                 must.append({"wildcard": {
                     "address.houseNumberExt": f"*{self.data.houseNumberExt[0].lower()}*"}})
-            yield "address", self._base_query(must=must)
+            yield "address", self._base_query(date_sort=True, must=must)
 
         if self._name_only_query and self.data.lastname and self.data.initials:
             yield "name_only", self._base_query(
-                must=[{"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}},
-                      {"wildcard": {"details.initials": self.data.initials[0]}}])
+                must=[{"bool": {"minimum_should_match": 1, "should": [
+                    lastname,
+                    {"wildcard": {"details.lastname": f"*{self.data.lastname.lower()}*"}},
+                ]}},
+                      {"bool": {"minimum_should_match": 1, "should": [
+                          {"wildcard": {"details.initials": {"value": self.data.initials[1], "boost": 5}}},
+                          {"wildcard": {"details.initials": self.data.initials[0]}},
+                      ]}}])
 
-    def _base_query(self, person: bool = False, **kwargs):
+    def _base_query(self, person: bool = False, date_sort: bool = False, **kwargs):
         """Encapsulate clauses in a bool query, with sorting on date."""
+        if date_sort:
+            sort = self._date_sort
+        else:
+            sort = self._sort
         return self._extend_query(query={
             "query": {"bool": kwargs},
-            "sort": [{"_score": "desc"}, {"date": "desc"}]},
+            "sort": sort},
             person=person)
 
     def _extend_query(self, query: dict, person: bool):
@@ -593,6 +593,7 @@ class NamesData:
 
     All data pertains to the Netherlands, and is loaded using Elasticsearch.
     """
+
     def __init__(self):
         self.es = ESClient(ND_INDEX, host=HOST)
         self.es.index_exists = True
@@ -683,6 +684,9 @@ class Cleaner:
 
     The main entry point is the `.clean()` method.
     """
+    _affixes = (" Van ", " Het ", " De ")
+    _phone_fields = ("number", "telephone", "mobile")
+    _title_data = NamesData().titles()
 
     def __init__(self):
         """Make a cleaner.
@@ -691,8 +695,6 @@ class Cleaner:
         been loaded already.
         """
         self.data = {}
-        self._affixes = (" Van ", " Het ", " De ")
-        self._phone_fields = ("number", "telephone", "mobile")
 
     def clean(self, data: Union[Data, dict]) -> Union[Data, dict]:
         self.data = data
@@ -708,7 +710,7 @@ class Cleaner:
             if self.data.get(_type):
                 try:
                     parsed = common.api.phone.parse_phone(self.data[_type], "NL")
-                    if parsed.is_valid_number:
+                    if parsed.valid_number:
                         self.data[_type] = parsed.national_number
                         if _type == "telephone":
                             if f"{self.data[_type]}".startswith("6"):
@@ -749,13 +751,8 @@ class Cleaner:
             self.data["lastname"] = sub(r"-", " ", self.data["lastname"])
             self.data["lastname"] = sub(r"[^\sA-Za-z\u00C0-\u017F]", "", self.data["lastname"])
             self.data["lastname"] = unidecode(self.data["lastname"].strip())
-            try:
-                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
-                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
-            except KeyError:
-                _module_data["title_data"] = NamesData().titles()
-                if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in _module_data["title_data"]:
-                    self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
+            if self.data["lastname"] and self.data["lastname"].split()[-1].lower() in self._title_data:
+                self.data["lastname"] = " ".join(self.data["lastname"].split()[:-1])
         if not self.data["lastname"]:
             self.data.pop("lastname")
 
@@ -825,6 +822,7 @@ class PersonData(_MatchQueries,
     https://matrixiangroup.atlassian.net/wiki/spaces/SF/pages/1319763972/Person+matching#Tweaking-parameters
 
     Example::
+        from common.persondata import PersonData, NoMatch
         pm = PersonData(call_to_validate=True)
         data = {
             "initials": "P",
@@ -859,7 +857,6 @@ class PersonData(_MatchQueries,
         common.api.phone.CALL_TO_VALIDATE = kwargs.pop("call_to_validate", False)
         self._check_phone = partial(
             common.api.phone.check_phone,
-            valid=True,
             call=common.api.phone.CALL_TO_VALIDATE,
         )
 
@@ -867,109 +864,61 @@ class PersonData(_MatchQueries,
         self._email = kwargs.pop("email", False)
         self._use_id_query = kwargs.pop("id_query", False)
         self._response_type = kwargs.pop("response_type", "all")
-        if (self._response_type not in self._categories and
-                not isinstance(self._response_type, (tuple, list))):
+        if self._response_type not in self._categories:
             raise MatchError(f"Requested fields should be one"
                              f" of {', '.join(self._categories)}")
 
     def __repr__(self):
         return f"PersonData(in={self.data}, out={self.result})"
 
-    @property
-    def _requested_fields(self) -> tuple:
-        """Fields to return, based on response_type."""
-        if isinstance(self._response_type, (tuple, list)):
-            return self._response_type
-        elif self._response_type == "all":
-            return (
-                "address_city",
-                "address_country",
+    @cached_property
+    def _fields(self) -> dict:
+        """Fields to score and return, based on response_type."""
+        _fields = {
+            "details": (
+                "details_lastname",
+                "details_initials",
+                "details_gender",
+                "details_firstname",
+                "details_middlename",
+                "details_common",
+            ),
+            "address": (
+                "address_postalCode",
                 "address_houseNumber",
                 "address_houseNumberExt",
-                "address_location",
-                "address_postalCode",
-                "address_state",
                 "address_street",
-                "address_moved",
+                "address_city",
+                "address_country",
+            ),
+            "mobile": (
+                "phoneNumber_mobile",
+                "phoneNumber_country",
+            ),
+            "number": (
+                "phoneNumber_number",
+                "phoneNumber_country",
+            ),
+            "birth": (
                 "birth_date",
+            ),
+            "email": (
                 "contact_email",
-                "death_date",
-                "details_common",
-                "details_firstname",
-                "details_gender",
-                "details_initials",
-                "details_lastname",
-                "details_middlename",
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            ) if self._email else (
-                "address_city",
-                "address_country",
-                "address_houseNumber",
-                "address_houseNumberExt",
-                "address_location",
-                "address_postalCode",
-                "address_state",
-                "address_street",
-                "address_moved",
-                "birth_date",
-                "death_date",
-                "details_common",
-                "details_firstname",
-                "details_gender",
-                "details_initials",
-                "details_lastname",
-                "details_middlename",
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            )
+            ),
+        }
+        if self._response_type == "all":
+            if not self._email:
+                del _fields["email"]
         elif self._response_type == "name":
-            return (
-                "birth_date",
-                "death_date",
-                "details_common",
-                "details_firstname",
-                "details_gender",
-                "details_initials",
-                "details_lastname",
-                "details_middlename",
-            )
+            del (_fields["mobile"], _fields["number"],
+                 _fields["address"], _fields["email"])
         elif self._response_type == "address":
-            return (
-                "address_city",
-                "address_country",
-                "address_houseNumber",
-                "address_houseNumberExt",
-                "address_location",
-                "address_postalCode",
-                "address_state",
-                "address_street",
-                "address_moved",
-            )
+            del (_fields["mobile"], _fields["number"], _fields["details"],
+                 _fields["email"], _fields["birth"])
         elif self._response_type == "phone":
-            return (
-                "phoneNumber_country",
-                "phoneNumber_mobile",
-                "phoneNumber_number",
-            )
-
-    @property
-    def _main_fields(self) -> tuple:
-        """Fields to score, based on response_type."""
-        if isinstance(self._response_type, (tuple, list)):
-            return tuple(f for f in self._response_type
-                         if f != "phoneNumber_country")
-        elif self._response_type == "phone":
-            return "phoneNumber_number", "phoneNumber_mobile"
-        elif self._response_type == "address":
-            return "address_postalCode",
-        elif self._response_type == "name":
-            return "details_lastname",
-        else:
-            return ("details_lastname", "birth_date", "address_postalCode",
-                    "phoneNumber_number", "phoneNumber_mobile")
+            del (_fields["address"], _fields["details"],
+                 _fields["email"], _fields["birth"])
+        return _fields
 
     def _check_country(self, country: str):
         """Check if input country is accepted."""
@@ -1009,31 +958,58 @@ class PersonData(_MatchQueries,
             else:
                 responses = self._es_find(q)
 
-            for response in responses:
+            if responses:
+                self._responses[_type] = responses
 
+        if not self._responses:
+            raise NoMatch
+
+        self._post_find()
+
+        if not [key for key in self._fields if key in self._responses]:
+            raise NoMatch
+
+    def _post_find(self):
+        for _type, responses in list(self._responses.items()):
+            for response in responses:
                 response = flatten(response)
-                for key in self._requested_fields:
-                    if key not in self.result and response.get(key):
+                for key, keys in self._fields.items():
+                    primary_key = keys[0]
+                    if response.get(primary_key):
                         skip_key = (
                                 (key in PHONE_KEYS
-                                 and not self._check_phone(response[key]))
+                                 and not self._check_phone(response[primary_key]).valid_number)
                                 or (key in DATE_KEYS
-                                    and response[key][:10] == DEFAULT_DATE)
-                                or (_type == ADDRESS_KEY
-                                    and key.startswith(PERSONAL_KEYS))
+                                    and response[keys[-1]][:10] == DEFAULT_DATE)
                                 or (key == EMAIL_KEY
-                                    and not check_email(response[key]))
+                                    and not check_email(response[primary_key]))
                         )
                         if skip_key:
                             continue
-                        self.result[key] = response[key]
-                        if key in self._main_fields:
-                            self._responses[key] = response
-                        self.result["search_type"] = _type
-                        self.result["source"] = response["source"]
-                        self.result["date"] = response["date"]
 
-                if all(map(self.result.get, self._main_fields)):
+                        try:
+                            prev_result = self.result[key]
+                            prev_response = self._responses[key]
+                            prev_score = prev_result["score"]
+                        except KeyError:
+                            prev_score = ""
+
+                        self.result[key] = {k: response.get(k) for k in keys}
+                        self._responses[key] = response
+                        self._set_score(key, response)
+
+                        # Yes, it's supposed to be the wrong way around.
+                        if prev_score and prev_score <= self.result[key]["score"]:
+                            self.result[key]["score"] = prev_score
+                            self.result[key] = prev_result  # noqa
+                            self._responses[key] = prev_response  # noqa
+                            continue
+
+                        self.result[key]["search_type"] = _type
+                        self.result[key]["source"] = response["source"]
+                        self.result[key]["date"] = response["date"]
+
+                if all(map(self.result.get, self._fields)):
                     return
 
     def _wrap_find(self):
@@ -1045,53 +1021,63 @@ class PersonData(_MatchQueries,
         else:
             self._find()
 
-    def _get_score(self):
+    def _set_score(self, key: str, response: dict):
         """After a result has been found, calculate the score for this match."""
-        self.result["match_keys"] = set()
-        if not [key for key in self._main_fields if key in self._responses]:
-            raise NoMatch
-        for key in self._main_fields:
-            if key in self._responses:
-                response = self._responses[key]
-                if not self.result.get("details_common"):
-                    self.result["details_common"] = response.get("details_common")
-                try:
-                    self._get_source(response)
-                except MatchError:
-                    continue
-                self.result["match_keys"].update(self._match_keys)
-                self._calc_score(_Score(
-                    source=response["source"],
-                    year_of_record=response["date"][:4],
-                    deceased=response["death_year"],
-                    lastname_number=len(set(d["details_lastname"] for d in self._responses.values())),
-                    gender=response["details_gender"],
-                    date_of_birth=response["birth_year"],
-                    phonenumber_number=len(set(d[key] for d in self._responses.values()))
-                    if "phoneNumber" in key else 1,
-                    occurring=self._check_match(key),
-                    moved=response["address_moved"][:10] > response["date"][:10],
-                    mobile="number" not in key,
-                    matched_names=(self.data.lastname, response["details_lastname"]),
-                    found_persons=len({response["id"] for response in self._responses.values()}),
-                ))
-                self.result[self._score_mapping.get(key, f"{key}_score")] = f"{self._source}{self._score}"
+        self.result[key]["match_keys"] = set()
+        if not self.result.get("details"):
+            self.result["details"] = {}
+        if not self.result["details"].get("details_common"):
+            self.result["details"]["details_common"] = response.get("details_common")
+        try:
+            self._set_source(response)
+        except MatchError:
+            self._source = "D"
+        self.result[key]["match_keys"].update(self._match_keys)
+        self._calc_score(_Score(
+            source=response["source"],
+            year_of_record=response["date"][:4],
+            lastname_number=len({
+                response["details_lastname"] for response in self._responses.values()
+                if isinstance(response, dict)}),
+            gender=response["details_gender"],
+            date_of_birth=response["birth_year"],
+            phonenumber_number=len({
+                response[key] for response in self._responses.values()
+                if isinstance(response, dict)})
+            if "phoneNumber" in key else 1,
+            occurring=self._check_match(key),
+            mobile="number" not in key,
+            matched_names=(self.data.lastname, response["details_lastname"]),
+            found_persons=len({
+                response["id"] for response in self._responses.values()
+                if isinstance(response, dict)}),
+        ))
+        self.result[key]["score"] = f"{self._source}{self._score}"
+        # Get match keys
+        self.result[key]["match_keys"].update(self._match_keys)
 
     def _finalize(self):
         """After getting and scoring the result, complete the output."""
-        # Get match keys
-        self.result["match_keys"].update(self._match_keys)
 
         # Get commonalities
-        if not self.result.get("details_common"):
-            mm = MatchMetrics(list(self._responses.values())[0])
-            mm.get_metrics()
-            self.result["details_common"] = mm.counts
+        if not self.result["details"].get("details_common"):
+            try:
+                doc = self._responses["details"]
+            except KeyError:
+                doc = self._responses.get("number") or self._responses.get("mobile")
+            try:
+                mm = MatchMetrics(doc)
+                mm.get_metrics()
+                self.result["details"]["details_common"] = mm.counts
+            except KeyError:
+                self.result["details"]["details_common"] = {}
+                raise
 
         # Fix dates
-        for key in ("date", "address_moved", "birth_date", "death_date"):
-            if key in self.result and isinstance(self.result[key], str):
-                self.result[key] = datetime.strptime(self.result[key][:10], DATE_FORMAT)
+        for field in self.result:
+            for key in "date", "birth_date":
+                if key in self.result[field] and isinstance(self.result[field][key], str):
+                    self.result[field][key] = datetime.strptime(self.result[field][key][:10], DATE_FORMAT)
 
         debug("Result = %s", self.result)
 
@@ -1107,7 +1093,6 @@ class PersonData(_MatchQueries,
         self._wrap_find()
 
         if self.result:
-            self._get_score()
             self._finalize()
             return self.result
         else:
@@ -1143,22 +1128,24 @@ class MatchMetrics:
             combinations(_extra_fields, r=r)
         ]
     }
+    count_types = ("fuzzy", "regular")
+    initials = {
+        d["initials"]: d["proportion"] for c in
+        ESClient(f"{collection}_initials_occurrence").scrollall(
+            {"query": {"match_all": {}}}, source_only=True, as_chunks=True)
+        for d in c
+    }
 
     def __init__(self, doc):
         self.doc = doc
         self.counts = {}
+        self.data = {}
         self.response = {}
         self.esl = ESClient(f"{self.collection}_lastname_occurrence")
         self.esl.index_exists = True
-        try:
-            self.initials = _module_data["initials"]
-        except KeyError:
-            self.initials = _module_data["initials"] = {
-                d["initials"]: d["frequency"]
-                for d in MongoDB(f"{self.collection}_initials_occurrence").find()
-            }
 
     def get_metrics(self) -> dict:
+        self.set_data()
         self.calc_prob()
         self.get_response()
         self.counts = {
@@ -1167,18 +1154,26 @@ class MatchMetrics:
         }
         return self.response
 
-    def get_count_and_type(self, count_type: str) -> Tuple[int, str]:
+    def set_data(self):
         try:
             lastname = self.doc["details"]["lastname"]
         except KeyError:
             lastname = self.doc["details_lastname"]
+        if not lastname:
+            raise NoMatch
         q = {"query": {"bool": {"filter": {"term": {
             "lastname.keyword": lastname
         }}}}}
-        res = self.esl.find(q, size=1, source_only=True)
-        count_ = res[count_type] - 1 if res else 0
-        suffix = "_fuzzy" if count_type == "fuzzy" else ""
-        return count_, suffix
+        try:
+            self.data = self.esl.find(q, size=1, source_only=True)
+        except Exception as e:
+            raise MatchError(q) from e
+
+    def get_count(self, count_type: str) -> int:
+        try:
+            return self.data[count_type]["count"] - 1
+        except TypeError:
+            return 0
 
     def calc_prob(self):
         try:
@@ -1187,19 +1182,26 @@ class MatchMetrics:
             initials = self.doc["details_initials"]
         if initials:
             # Get all the probabilities
-            prob = [self.initials[i] for i in initials]
+            try:
+                prob = [self.initials[i] for i in initials]
+            except KeyError:
+                prob = [0]
             # Get total probability by muliplying
             result = prod(prob)
-            for count_type in ("fuzzy", "count"):
-                count_, suffix = self.get_count_and_type(count_type)
-                self.counts[f"full{suffix}"] = count_ * result
+            for count_type in self.count_types:
+                count_ = self.get_count(count_type)
+                self.counts[f"full_{count_type}"] = count_ * result
                 # Get first initial probability
-                self.counts[f"first{suffix}"] = count_ * prob[0]
+                self.counts[f"first_{count_type}"] = count_ * prob[0]
         else:
-            for count_type in ("fuzzy", "count"):
-                count_, suffix = self.get_count_and_type(count_type)
+            for count_type in self.count_types:
+                count_ = self.get_count(count_type)
                 for key in ("full", "first"):
-                    self.counts[f"{key}{suffix}"] = count_
+                    self.counts[f"{key}_{count_type}"] = count_
+        try:
+            self.counts["estimation"] = int(self.data["regular"]["proportion"] * 17_461_543)
+        except (KeyError, TypeError):
+            self.counts["estimation"] = 1
 
     def get_response(self):
         for key, count_ in self.counts.items():

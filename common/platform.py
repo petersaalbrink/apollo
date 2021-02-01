@@ -13,22 +13,28 @@ and downloads from the Platform.
    Upload and download files to/from the Matrixian Platform.
 """
 
-from datetime import datetime
+from __future__ import annotations
+
+__all__ = (
+    "FileTransfer",
+)
+
+from collections.abc import Iterable
 try:
     from functools import cached_property
 except ImportError:
     from cached_property import cached_property
+import io
 from pathlib import Path
-from secrets import token_hex
-from subprocess import run, CalledProcessError, DEVNULL, PIPE
-from time import time
-from typing import List, Sequence, Tuple, Union
-from bson import DBRef, ObjectId
-from pendulum import timezone
-from pymongo.errors import PyMongoError
+from typing import BinaryIO, Union
+
+from bson import ObjectId
+from paramiko import AutoAddPolicy, SSHClient
+
 from .connectors.mx_email import EmailClient
 from .connectors.mx_mongo import MongoDB
 from .exceptions import FileTransferError
+from .secrets import get_secret
 
 
 class FileTransfer:
@@ -51,10 +57,10 @@ class FileTransfer:
 
     def __init__(
             self,
-            user_id: str = None,
             username: str = None,
-            email: str = None,
             filename: str = None,
+            user_id: str = None,
+            email: str = None,
     ):
         """Create a FileTransfer object to upload/download files.
 
@@ -71,12 +77,7 @@ class FileTransfer:
         # Prepare parameters
         self.filename = filename
         self.fthost = "consucom"
-        self.ftpath = f"/var/www/platform_projects_live_docker/public/upload/filetransfer"
-
-        # Connect
-        db = MongoDB("production_api.user", host="prod")
-        self.db = MongoDB("production_api.filetransferFile", host="prod")
-        self.test_connections()
+        self.ftpath = f"/var/lib/docker/volumes/filetransfer_live/_data"
 
         # Find user details
         if user_id:
@@ -87,15 +88,27 @@ class FileTransfer:
             q = {"email": email}
         else:
             raise FileTransferError("Provide either a name, ID or email for the user.")
-        doc = db.find_one(q)
+        doc = MongoDB("production_api.user", host="prod").find_one(q)
         self.user_id = doc["_id"]
         self.username = doc["username"]
         self.email = doc["email"]
 
-    @cached_property
-    def unique_dir(self) -> str:
-        """Provide the unique directory name needed for uploads."""
-        return f"{token_hex(10)}{round(time())}"
+        # Connect
+        self._usr, self._pwd = get_secret("MX_PLATFORM_HOST")
+        self.client = SSHClient()
+        self.client.set_missing_host_key_policy(AutoAddPolicy())
+
+    def _connect(self):
+        self.client.connect(
+            hostname="136.144.203.100",
+            username="consucom",
+            password=self._pwd,
+            port=2233,
+            timeout=10,
+        )
+
+    def _disconnect(self):
+        self.client.close()
 
     @cached_property
     def insert_filename(self) -> str:
@@ -105,116 +118,85 @@ class FileTransfer:
     @cached_property
     def filepath(self) -> str:
         """Provide the full directory path needed for uploads."""
-        return f"{self.ftpath}/{self.user_id}/{self.unique_dir}"
-
-    @cached_property
-    def cmds(self) -> Tuple[List[str], List[str], List[str]]:
-        """Provide the shell commands needed for uploads."""
-        return (
-            ["ssh", self.fthost, "install", "-d", "-m", "0777", self.filepath],
-            ["scp", self.filename, f"{self.fthost}:{self.filepath}/"],
-            ["ssh", self.fthost, "chmod", "777", f'"{self.filepath}/{self.insert_filename}"'],
-        )
-
-    @cached_property
-    def doc(self):
-        """Provide the MongoDB document needed for uploads."""
-        return {
-            "createdDate": datetime.now(tz=timezone("Europe/Amsterdam")),
-            "filePath": f"{self.user_id}/{self.unique_dir}",
-            "fileName": self.insert_filename,
-            "fileSize": Path(self.filename).stat().st_size,
-            "downloadsCount": 0,
-            "creator": DBRef("user", ObjectId("5d8b7cee7704cf416b41ce93"), "production_api"),
-            "owner": DBRef("user", ObjectId(self.user_id), "production_api")
-        }
+        return f"{self.ftpath}/{self.user_id}"
 
     def _check_filename(self):
         """Check if a filename is provided."""
         if not self.filename:
             raise FileTransferError("Provide a filename.")
 
-    def _check_process(self, p):
+    @staticmethod
+    def _check_process(stderr: BinaryIO):
         """Check if a process has completed successfully."""
-        try:
-            p.check_returncode()
-        except CalledProcessError as e:
-            raise FileTransferError(
-                f"Error:\n{p.stdout.decode()}\n{p.stderr.decode()}\n"
-                f"Make sure you have full access to user directory,"
-                f" use command: `sudo chmod 777 {self.ftpath}` on {self.fthost}."
-            ) from e
+        stderr = stderr.read().decode()
+        if stderr[:30] != "[sudo] password for consucom: " or stderr[30:]:
+            raise FileTransferError(stderr)
 
-    def _run_cmd(self, cmd: List[str]):
+    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[BinaryIO, BinaryIO]:
         """Create a process from a shell command."""
-        p = run(cmd, stdout=PIPE, stderr=PIPE)
-        self._check_process(p)
+        stdin, stdout, stderr = self.client.exec_command(
+            f"sudo -S {cmd}",
+            bufsize=io.DEFAULT_BUFFER_SIZE,
+            timeout=10,
+        )
+        stdin.write(f"{self._pwd}\n")
+        stdin.flush()
+        if fileobj:
+            while True:
+                data = fileobj.read(io.DEFAULT_BUFFER_SIZE)
+                if not data:
+                    break
+                stdin.write(data)
+                stdin.flush()
+        stdin.close()
+        return stdout, stderr
 
-    def list_files(self) -> list:
-        """List existing files in this user's Platform folder."""
-        return [
-            d["fileName"]
-            for d in self.db.find({
-                "owner": DBRef("user", ObjectId(self.user_id), "production_api")
-            })]
+    def list_files(self) -> list[str]:
+        """list existing files in this user's Platform folder."""
+        self._connect()
+        stdout, _ = self._run_cmd(f"ls -t {self.filepath}")
+        files = [f for f in stdout.read().decode().split("\n") if f]
+        self._disconnect()
+        return files
 
     def download(self, file: str):
         """Download an existing Platform file to disk."""
-        result = self.db.find_one({"fileName": file})
-        request = f'{self.fthost}:"{self.ftpath}/{result["filePath"]}/{result["fileName"]}"'
-        cmd = ["scp", "-T", request, file]
-        self._run_cmd(cmd)
+        self._connect()
+        stdout, stderr = self._run_cmd(f'cat "{self.filepath}/{file}"')
+        with open(file, "wb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
+            while True:
+                data = stdout.read(io.DEFAULT_BUFFER_SIZE)
+                if not data:
+                    break
+                f.write(data)
+        self._check_process(stderr)
+        self._disconnect()
 
     def download_all(self):
         """Download all existing Platform files to disk."""
         for file in self.list_files():
             self.download(file)
 
-    def filetransfer_database_entry(self) -> "FileTransfer":
-        """Create a MongoDB entry for the current upload."""
-        self._check_filename()
-        self.db.insert_one(self.doc)
-        return self
-
-    def filetransfer_file_upload(self) -> "FileTransfer":
+    def transfer(self) -> "FileTransfer":
         """Upload a file to the Platform host."""
         self._check_filename()
-        for cmd in self.cmds:
-            self._run_cmd(cmd)
-        return self
-
-    def test_mongo(self):
-        """Test if a connection can be made to the MongoDB host."""
-        try:
-            self.db.find_one()
-        except PyMongoError as e:
-            raise FileTransferError(
-                "Make sure you have access to MongoDB prod/live server."
-            ) from e
-
-    def test_ssh(self):
-        """Test if a connection can be made to the Platform host."""
-        try:
-            run(["ssh", self.fthost, "echo", "ssh", "ok"], check=True, stdout=DEVNULL)
-        except CalledProcessError as e:
-            raise FileTransferError(
-                f"Make sure you have an entry for {self.fthost} in ~/.ssh/config."
-            ) from e
-
-    def test_connections(self):
-        """Test if connections can be made to the necessary hosts."""
-        self.test_mongo()
-        self.test_ssh()
-
-    def transfer(self) -> "FileTransfer":
-        """Upload the specified file to the specified Platform folder."""
-        self.filetransfer_file_upload()
-        self.filetransfer_database_entry()
+        self._connect()
+        local_filename = Path(self.filename)
+        remote_filename = local_filename.name
+        with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
+            _, stderr = self._run_cmd(
+                f'cp /dev/stdin "{self.filepath}/{remote_filename}"',
+                fileobj=f,
+            )
+        self._check_process(stderr)
+        _, stderr = self._run_cmd(f'chmod +r "{self.filepath}/{remote_filename}"')
+        self._check_process(stderr)
+        self._disconnect()
         return self
 
     def notify(
             self,
-            to_address: Union[str, Sequence[str]] = None,
+            to_address: Union[str, list[str], tuple[str, ...]] = None,
             username: str = None
     ) -> "FileTransfer":
         """Notify the user of the new Platform upload."""
@@ -229,7 +211,7 @@ class FileTransfer:
         # Prepare receivers
         if isinstance(to_address, str):
             to_address = (to_address, self.email)
-        elif isinstance(to_address, Sequence):
+        elif isinstance(to_address, Iterable):
             to_address = (*to_address, self.email)
         else:
             to_address = self.email

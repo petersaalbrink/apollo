@@ -10,10 +10,40 @@ There are two alternative connectors for MySQL: PandasSQL and SQLClient
 
 Finally, there is a SQLtoMongo class for moving data from MySQL to MongoDB
 """
-from .mx_elastic import ESClient
-from .mx_email import EmailClient
-from .mx_mongo import MongoDB
-from .mx_mysql import MySQLClient
-from .mx_pandassql import PandasSQL
-from .mx_sqlalchemy import SQLClient
-from .mx_sqltomongo import SQLtoMongo
+
+from __future__ import annotations
+
+__all__ = (
+    "ESClient",
+    "EmailClient",
+    "MongoDB",
+    "MySQLClient",
+    "PandasSQL",
+    "SQLClient",
+    "SQLtoMongo",
+)
+
+from importlib import import_module
+
+_module_mapping = {
+    "mx_elastic": "ESClient",
+    "mx_email": "EmailClient",
+    "mx_mongo": "MongoDB",
+    "mx_mysql": "MySQLClient",
+    "mx_pandassql": "PandasSQL",
+    "mx_sqlalchemy": "SQLClient",
+    "mx_sqltomongo": "SQLtoMongo",
+}
+
+
+def __getattr__(name):
+    if name in _module_mapping:
+        return import_module(f".{name}", __name__)
+    for module, symbol in _module_mapping.items():
+        if name == symbol:
+            return getattr(import_module(f".{module}", __name__), name)
+    raise ImportError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)
