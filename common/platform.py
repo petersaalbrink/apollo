@@ -13,8 +13,14 @@ and downloads from the Platform.
    Upload and download files to/from the Matrixian Platform.
 """
 
+from __future__ import annotations
+
+__all__ = (
+    "FileTransferFTP"
+)
+
 import binascii
-from ftplib import FTP_TLS, all_errors
+from ftplib import FTP, all_errors
 try:
     from functools import cached_property
 except ImportError:
@@ -32,14 +38,7 @@ from .exceptions import FileTransferError
 from .env import getenv
 
 
-class FTP(FTP_TLS):
-    """FTP_TLS"""
-    def makepasv(self):
-        _, port = super().makepasv()
-        return self.host, port
-
-
-class FileTransfer:
+class FileTransferFTP:
     """Upload and download files to/from the Matrixian Platform.
 
     Example usage::
@@ -116,9 +115,7 @@ class FileTransfer:
         self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
-        # Connect to FTP
         self.ftp = FTP()
-        self.test_ftp()
 
     def __enter__(self) -> FTP:
         self.connect()
@@ -161,7 +158,7 @@ class FileTransfer:
             self.disconnect()
         return data
 
-    def download(self, file: str, _connect: bool = True) -> "FileTransfer":
+    def download(self, file: str, _connect: bool = True) -> FileTransferFTP:
         """Download an existing Platform file to disk."""
         if _connect:
             self.connect()
@@ -171,7 +168,7 @@ class FileTransfer:
             self.disconnect()
         return self
 
-    def download_all(self) -> "FileTransfer":
+    def download_all(self) -> FileTransferFTP:
         """Download all existing Platform files to disk."""
         self.connect()
         for file in self.list_files(_connect=False):
@@ -179,7 +176,7 @@ class FileTransfer:
         self.disconnect()
         return self
 
-    def upload(self) -> "FileTransfer":
+    def upload(self) -> FileTransferFTP:
         """Upload a file to the Platform host."""
         self._check_filename()
         self.connect()
@@ -205,7 +202,7 @@ class FileTransfer:
         except all_errors as e:
             raise FileTransferError(f"Make sure you have access to the FTP server.") from e
 
-    def transfer(self) -> "FileTransfer":
+    def transfer(self) -> FileTransferFTP:
         """Upload the specified file to the specified Platform folder."""
         self.upload()
         return self
@@ -214,7 +211,7 @@ class FileTransfer:
             self,
             to_address: Union[str, Sequence[str]] = None,
             username: str = None
-    ) -> "FileTransfer":
+    ) -> FileTransferFTP:
         """Notify the user of the new Platform upload."""
 
         # Prepare message
