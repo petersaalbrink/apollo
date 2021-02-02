@@ -21,6 +21,8 @@ __all__ = (
     "ESClientError",
     "EmailClient",
     "FileTransfer",
+    "FileTransferDocker",
+    "FileTransferFTP",
     "FileTransferError",
     "FunctionTimer",
     "Log",
@@ -231,6 +233,8 @@ _module_mapping = {
     ],
     "platform": [
         "FileTransfer",
+        "FileTransferDocker",
+        "FileTransferFTP",
     ],
     "requests": [
         "ThreadSafeIterator",

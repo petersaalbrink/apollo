@@ -17,6 +17,7 @@ from __future__ import annotations
 
 __all__ = (
     "FileTransfer",
+    "FileTransferDocker",
     "FileTransferFTP",
 )
 
@@ -43,7 +44,7 @@ from .secrets import get_secret
 from .env import getenv
 
 
-class FileTransfer:
+class FileTransferDocker:
     """Upload and download files to/from the Matrixian Platform.
 
     Example usage::
@@ -183,7 +184,7 @@ class FileTransfer:
         for file in self.list_files():
             self.download(file)
 
-    def transfer(self) -> "FileTransfer":
+    def transfer(self) -> FileTransferDocker:
         """Upload a file to the Platform host."""
         self._check_filename()
         self._connect()
@@ -204,7 +205,7 @@ class FileTransfer:
             self,
             to_address: Union[str, list[str], tuple[str, ...]] = None,
             username: str = None
-    ) -> "FileTransfer":
+    ) -> FileTransferDocker:
         """Notify the user of the new Platform upload."""
 
         # Prepare message
@@ -431,3 +432,6 @@ class FileTransferFTP:
         )
 
         return self
+
+
+FileTransfer = FileTransferFTP
