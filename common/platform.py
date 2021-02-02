@@ -32,12 +32,8 @@ from pathlib import Path
 from typing import BinaryIO, List, Sequence, Union
 
 from bson import ObjectId
-from paramiko import AutoAddPolicy, SSHClient
-
-from typing import List, Sequence, Union
-
-from bson import ObjectId
 from Crypto.Cipher import AES
+from paramiko import AutoAddPolicy, SSHClient
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
