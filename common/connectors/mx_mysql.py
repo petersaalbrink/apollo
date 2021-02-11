@@ -260,7 +260,7 @@ class MySQLClient:
                 self.cnx = connect(**self.__config)
                 self.cursor = self.cnx.cursor(buffered=self.buffered,
                                               dictionary=self.dictionary)
-                self._set_session_variables(self.cursor)
+                self.set_session_variables()
                 break
         if conn:
             return self.cnx
@@ -458,18 +458,40 @@ class MySQLClient:
         self.disconnect()
         return row
 
-    @staticmethod
-    def _set_session_variables(cursor: MySQLCursor):
-        # We set these session variables to avoid error 2013 (Lost connection)
-        for var, val in (
-            ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
-            # ("CONNECT_TIMEOUT", "31536000"),  # s, this is the maximum
-            ("WAIT_TIMEOUT", "31536000"),  # s, this is the maximum
-            ("innodb_lock_wait_timeout", "1073741824"),  # s, this is the maximum
-            ("INTERACTIVE_TIMEOUT", "31536000"),  # s, can be higher
-            ("NET_WRITE_TIMEOUT", "31536000"),  # s, can be higher
-        ):
-            cursor.execute(f"SET SESSION {var}={val}")
+    def set_session_variables(
+            self,
+            cursor: MySQLCursor = None,
+            *,
+            variables: dict = None,
+            maximum_timeouts: bool = False,
+    ):
+        """Set session variables, for example to avoid error 2013 (Lost connection)."""
+        if maximum_timeouts:
+            variables = {
+                # "CONNECT_TIMEOUT"; "31536000",  # s, this is the maximum
+                "INTERACTIVE_TIMEOUT": "31536000",  # s, can be higher
+                "MAX_EXECUTION_TIME": "0",  # disable execution timeouts
+                "NET_READ_TIMEOUT": "31536000",  # s, can be higher
+                "NET_WRITE_TIMEOUT": "31536000",  # s, can be higher
+                "WAIT_TIMEOUT": "31536000",  # s, this is the maximum
+                "innodb_lock_wait_timeout": "1073741824",  # s, this is the maximum
+                **(variables or {})
+            }
+        if not variables:
+            variables = {
+                "INTERACTIVE_TIMEOUT": "28800",  # s
+                "MAX_EXECUTION_TIME": "7200000",  # ms
+                "NET_READ_TIMEOUT": "7200",  # s, can be higher
+                "NET_WRITE_TIMEOUT": "7200",  # s, can be higher
+                "WAIT_TIMEOUT": "7200",  # s
+                "innodb_lock_wait_timeout": "7200",  # s
+            }
+        variables = ", ".join(f"{var}={val}" for var, val in variables.items())
+        query = f"SET SESSION {variables}"
+        if cursor:
+            cursor.execute(query)
+        else:
+            self.cursor.execute(query)
 
     def chunk(self,
               query: Union[Query, str] = None,
@@ -581,7 +603,7 @@ class MySQLClient:
         cnx = connect(**self.__config)
         cursor = cnx.cursor(buffered=False,
                             dictionary=self.dictionary)
-        self._set_session_variables(cursor)
+        self.set_session_variables(cursor)
 
         cursor.execute(query, *args, **kwargs)
         for row in _tqdm(cursor, total=count):
