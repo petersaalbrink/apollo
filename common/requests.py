@@ -22,6 +22,8 @@ Multithreading:
 
 .. py:function: common.requests.thread
    Thread :param data: with :param function: and optionally do :param process:.
+.. py:function: common.requests.thread_queue
+   Take any iterable :param seq: and execute :param func: on its items in threads.
 .. py:class: common.requests.ThreadSafeIterator
    Takes an iterator/generator and makes it thread-safe
    by serializing call to the `next` method of given iterator/generator.
@@ -43,19 +45,24 @@ __all__ = (
     "post",
     "request",
     "thread",
+    "thread_queue",
     "threadsafe",
 )
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections import deque
+from collections.abc import Callable, Generator, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from functools import lru_cache
 from hashlib import sha1
 import hmac
+import json
 from pathlib import Path
 from shutil import copyfileobj
-from threading import Lock
-from typing import Any, Callable, Iterable, Union
-from urllib.parse import urlparse
+import socket
+from threading import Lock, Thread
+from typing import Any, Union
+from urllib.parse import parse_qs, urlparse
 
 from psutil import net_io_counters
 from requests import Session, Response
@@ -120,7 +127,7 @@ def get_session(
 ) -> Session:
     """Get session with predefined options for requests."""
 
-    def hook(response, *args, **kwargs):  # noqa
+    def hook(response: Response, *args, **kwargs):  # noqa
         if 400 <= response.status_code < 500:
             response.raise_for_status()
 
@@ -291,3 +298,108 @@ def calculate_bandwith(function, *args, n: int = 100, **kwargs) -> float:
     bandwith = min(n_bytes)
     print(f"Function '{function.__name__}' uses {round(bandwith / 1024, 2)} KB (N={n})")
     return bandwith
+
+
+def listener(port: int = 5678) -> Iterable[Any]:
+    """Simple HTTP server on port 5678 and generator for POSTed data.
+
+    Listen to incoming data and yield it to do something with it.
+    This function expects you to do the async/threading stuff.
+
+    Example of usage in Python:
+        for data in listen_or_poll():
+            process(data)  # create a thread for this!
+
+    Example of sending data to this listener using curl:
+        curl -i localhost:5678 -d "{\"test\": \"ok\"}"
+        curl -i localhost:5678?test=ok
+
+    Example of sending data to this listener using Python requests:
+        from requests import Session
+        data = {"test": "ok"}
+        session = Session()
+        response = session.get("http://localhost:5678", params=data)
+        response = session.post("http://localhost:5678", data=data)
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", port))
+        sock.listen()
+        while True:
+            conn, _ = sock.accept()
+            with conn:
+                try:
+                    headers, content = conn.recv(1024).split(b"\r\n\r\n")
+                    headers = headers.decode().split("\r\n")
+                    if "?" in headers[0]:
+                        data = {
+                            k: v[0] for k, v in
+                            parse_qs(headers[0].split()[1].strip("/?")).items()
+                        }
+                    else:
+                        headers = {
+                            k.title(): v for k, v in
+                            (header.split(": ") for header in headers[1:])
+                        }
+                        content_length = int(headers["Content-Length"])
+                        while content_length > len(content):
+                            content += conn.recv(content_length)
+                        content = content.decode()
+                        if "{" in content:
+                            data = json.loads(content)
+                        elif "=" in content:
+                            data = {k: v[0] for k, v in parse_qs(content).items()}
+                        else:
+                            raise ValueError
+                    conn.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
+                    yield data
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    conn.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+
+
+def thread_queue(
+        func: Callable[[Any], Any],
+        seq: Union[Callable, Generator, Iterable, Iterator],
+        **kwargs,
+) -> None:
+    """Take any iterable :param seq: and execute :param func: on its items in threads.
+
+    Example:
+        from common.connectors.mx_mongo import MongoDB
+        from common.requests import listener, thread_queue
+
+        db = MongoDB("dev_peter.test_data")
+
+        thread_queue(lambda d: db.insert_one(d), listener)
+    """
+    if not (hasattr(func, "__code__")
+            and (func.__code__.co_argcount == 1  # noqa
+                 or (func.__code__.co_argcount == 2  # noqa
+                     and func.__code__.co_varnames[0] == "self"  # noqa
+                 ))):
+        raise Exception(f"'{func.__name__}' should be a function that accepts exactly one argument.")
+
+    maxlen = kwargs.pop("maxlen", None)
+    futures = deque(maxlen=maxlen)
+    queue = deque(maxlen=maxlen)
+    if isinstance(seq, Callable):
+        seq = seq()
+
+    def fill_queue():
+        for item in seq:
+            queue.append(item)
+
+    def wait_():
+        while futures:
+            futures.popleft().result()
+
+    with ThreadPoolExecutor(max_workers=kwargs.pop("max_workers", None)) as executor:
+        future = executor.submit(fill_queue)
+        while future.running():
+            if queue:
+                futures.append(executor.submit(func, queue.popleft()))
+        future.result()
+        thread_ = Thread(target=wait_)
+        thread_.start()
+        futures.extend(executor.submit(func, item) for item in queue)
+        queue.clear()
+        thread_.join()

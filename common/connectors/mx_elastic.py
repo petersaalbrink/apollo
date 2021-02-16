@@ -637,3 +637,41 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
         """Returns a named two-tuple with the document count of the corresponding MongoDB collection and this index."""
         from .mx_mongo import Count, MongoDB
         return Count(MongoDB(self.es_index).estimated_document_count(), self.count())
+
+    def update_alias(
+            self,
+            remove_index: str = None,
+            remove_alias: str = None,
+            add_index: str = None,
+            add_alias: str = None,
+    ) -> dict:
+        """Update aliases on Elasticsearch.
+
+        Provide both remove_index and remove_alias for alias removal.
+        Provide both add_index and add_alias for alias addition.
+        It's also possible to supply all four arguments. Operation is atomic.
+
+        Example:
+            from common.connectors.mx_elastic import ESClient
+            es = ESClient(host="prod")
+            es.update_alias(
+                remove_index="production_realestate.real_estate_v8",
+                remove_alias="real_estate_alias",
+                add_index="production_realestate.real_estate_v9",
+                add_alias="real_estate_alias",
+            )
+        """
+        actions = []
+        if remove_index and remove_alias:
+            actions.append({"remove": {
+                "index": remove_index,
+                "alias": remove_alias,
+            }})
+        if add_index and add_alias:
+            actions.append({"add": {
+                "index": add_index,
+                "alias": add_alias,
+            }})
+        if not actions:
+            raise ESClientError("Always provide both index and alias names.")
+        return self.indices.update_aliases(body={"actions": actions})
