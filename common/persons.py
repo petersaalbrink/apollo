@@ -268,6 +268,12 @@ class Person:
             (self.lastname == other.lastname and self.address.postcode == other.address.postcode)
             or (partial_lastname_match() and address)
         )
+        if name and family and (
+                not (self.initials and other.initials)
+                or (self.initials and other.initials
+                    and not (self.initials == other.initials or partial_initials_match()))
+        ):
+            name = False
 
         gender = self.gender and self.gender == other.gender
         date_of_birth = self.date_of_birth and self.date_of_birth == other.date_of_birth
