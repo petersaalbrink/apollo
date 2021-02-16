@@ -124,6 +124,7 @@ __all__ = (
     "trange",
     "validate",
     "visualizations",
+    "zip_file",
 )
 
 from importlib import import_module
@@ -195,6 +196,7 @@ _module_mapping = {
         "timer",
         "tqdm",
         "trange",
+        "zip_file",
     ],
     "parsers": [
         "Checks",

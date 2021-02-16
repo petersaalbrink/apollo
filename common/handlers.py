@@ -15,6 +15,8 @@ File handlers:
    Write data to a csv file.
 .. py:function: common.handlers.csv_write_to_zip
    Write data to a csv file and archive it.
+.. py:function: common.handlers.zip_file
+   Write a file to a zip archive.
 .. py:class: common.handlers.ZipData
    Class for processing zip archives containing csv data files.
 
@@ -53,28 +55,29 @@ Runtime handlers:
 from __future__ import annotations
 
 __all__ = (
-    "tqdm",
-    "trange",
-    "remove_adjacent",
+    "FunctionTimer",
+    "Log",
+    "TicToc",
+    "Timer",
+    "ZipData",
+    "assert_never",
     "chunker",
     "csv_read",
     "csv_read_from_zip",
     "csv_write",
     "csv_write_to_zip",
-    "Log",
     "get_logger",
-    "send_email",
-    "ZipData",
-    "Timer",
-    "TicToc",
-    "FunctionTimer",
-    "timer",
     "keep_trying",
     "pip_upgrade",
-    "read_txt",
-    "read_json_line",
     "read_json",
-    "assert_never",
+    "read_json_line",
+    "read_txt",
+    "remove_adjacent",
+    "send_email",
+    "timer",
+    "tqdm",
+    "trange",
+    "zip_file",
 )
 
 from collections import OrderedDict
@@ -177,6 +180,25 @@ def csv_write(data: Union[list[dict], dict],
             csv.writerow(data)
 
 
+def zip_file(
+        file_to_zip: Union[Path, str],
+        **kwargs,
+):
+    """Write a file to a zip archive."""
+    file_to_zip = Path(file_to_zip)
+    if not file_to_zip.exists():
+        raise FileNotFoundError(file_to_zip)
+    with ZipFile(
+            file=file_to_zip.with_suffix(".zip"),
+            mode=kwargs.get("mode", "w"),
+            compression=kwargs.get("compression", ZIP_DEFLATED),
+            compresslevel=kwargs.get("compresslevel", None),
+    ) as f:
+        f.write(file_to_zip)
+    if kwargs.get("remove", False):
+        file_to_zip.unlink()
+
+
 def csv_write_to_zip(
         data: Union[list[dict], dict],
         filename: Union[Path, str],
@@ -209,27 +231,21 @@ def csv_write_to_zip(
 
     filename = Path(filename)
     if filename.suffix == ".csv":
-        csv_filename = filename
-        zip_filename = Path(f"{filename}".replace(".csv", ".zip"))
+        pass
     elif filename.suffix == ".zip":
-        csv_filename = Path(f"{filename}".replace(".zip", ".csv"))
-        zip_filename = filename
+        filename = filename.with_suffix(".csv")
     else:
-        csv_filename = Path(f"{filename}.csv")
-        zip_filename = Path(f"{filename}.zip")
-    mode = kwargs.get("mode", "w")
+        filename = Path(f"{filename}.csv")
 
-    csv_write(data=data, filename=csv_filename, **kwargs)
+    csv_write(data=data, filename=filename, **kwargs)
 
-    with ZipFile(
-            file=zip_filename,
-            mode=mode,
-            compression=compression,
-            compresslevel=compresslevel,
-    ) as f:
-        f.write(csv_filename)
-
-    csv_filename.unlink()
+    zip_file(
+        file_to_zip=filename,
+        mode=kwargs.get("mode", "w"),
+        compression=compression,
+        compresslevel=compresslevel,
+        remove=True,
+    )
 
 
 def csv_read(filename: Union[Path, str],
