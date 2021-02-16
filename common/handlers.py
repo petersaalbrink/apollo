@@ -182,6 +182,7 @@ def csv_write(data: Union[list[dict], dict],
 
 def zip_file(
         file_to_zip: Union[Path, str],
+        zip_name: str = None,
         **kwargs,
 ):
     """Write a file to a zip archive."""
@@ -189,7 +190,7 @@ def zip_file(
     if not file_to_zip.exists():
         raise FileNotFoundError(file_to_zip)
     with ZipFile(
-            file=file_to_zip.with_suffix(".zip"),
+            file=zip_name or file_to_zip.with_suffix(".zip"),
             mode=kwargs.get("mode", "w"),
             compression=kwargs.get("compression", ZIP_DEFLATED),
             compresslevel=kwargs.get("compresslevel", None),
