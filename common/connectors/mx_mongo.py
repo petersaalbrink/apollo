@@ -9,6 +9,8 @@ __all__ = (
 
 from collections import namedtuple
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from typing import Union
 from urllib.parse import quote_plus
 
@@ -49,7 +51,7 @@ class MxCollection(Collection):
         """Return the last document in a collection.
 
         Usage::
-            from common.connectors import MongoDB
+            from common.connectors.mx_mongo import MongoDB
             db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
@@ -60,7 +62,7 @@ class MxCollection(Collection):
         """Return duplicated documents in a collection.
 
         Usage::
-            from common.connectors import MongoDB
+            from common.connectors.mx_mongo import MongoDB
             db = MongoDB("dev_peter.person_data_20190716")
             docs = MongoDB.find_duplicates(db)
             print(docs)
@@ -80,6 +82,49 @@ class MxCollection(Collection):
             }},
             {"$match": {"count": {"$gt": 1}}}
         ], allowDiskUse=True))
+
+    def remove_duplicates(
+            self,
+            field: str,
+            use_tqdm: bool = False,
+    ) -> int:
+        """Remove duplicated documents in a collection, based on `field`.
+
+        Provide `field` as a dot-separated string for nested fields.
+
+        Returns the number of deleted documents.
+
+        Usage::
+            from common.connectors.mx_mongo import MongoDB
+            coll = MongoDB("dev_realestate.real_estate_v10")
+            coll.remove_duplicates("address.identification.addressId")
+        """
+        from ..handlers import tqdm
+        from ..parsers import flatten
+
+        bar = tqdm(total=self.estimated_document_count(), disable=not use_tqdm)
+        count = 0
+        lock = Lock()
+
+        def count_and_delete(doc):
+            n_docs = self.count_documents({field: flatten(doc)[field]})
+            if n_docs > 1:
+                self.delete_one({"_id": doc["_id"]})
+                nonlocal count
+                with lock:
+                    count += 1
+                    bar.update(n_docs)
+            else:
+                with lock:
+                    bar.update(n_docs)
+
+        with ThreadPoolExecutor() as executor:
+            for future in as_completed(
+                    executor.submit(count_and_delete, d) for d in self.find({}, {field: True})
+            ):
+                future.result()
+        bar.close()
+        return count
 
     def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None):
         if not documents:
@@ -131,7 +176,8 @@ class MxCollection(Collection):
         return doc
 
     def es(self) -> tuple[int, int]:
-        """Returns a named two-tuple with the document count of this collection and the corresponding Elasticsearch index."""
+        """Returns a named two-tuple with the document count
+        of this collection and the corresponding Elasticsearch index."""
         from .mx_elastic import ESClient
         return Count(self.estimated_document_count(), ESClient(self.full_name).count())
 
