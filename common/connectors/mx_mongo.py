@@ -9,7 +9,6 @@ __all__ = (
 
 from collections import namedtuple
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from typing import Union
 from urllib.parse import quote_plus
@@ -101,28 +100,29 @@ class MxCollection(Collection):
         """
         from ..handlers import tqdm
         from ..parsers import flatten
+        from ..requests import thread
 
         bar = tqdm(total=self.estimated_document_count(), disable=not use_tqdm)
+        batch_size = 10_000
         count = 0
         lock = Lock()
 
         def count_and_delete(doc):
-            n_docs = self.count_documents({field: flatten(doc)[field]})
-            if n_docs > 1:
+            if self.count_documents({field: flatten(doc)[field]}) > 1:
                 self.delete_one({"_id": doc["_id"]})
                 nonlocal count
                 with lock:
                     count += 1
-                    bar.update(n_docs)
+                    bar.update()
             else:
                 with lock:
-                    bar.update(n_docs)
+                    bar.update()
 
-        with ThreadPoolExecutor() as executor:
-            for future in as_completed(
-                    executor.submit(count_and_delete, d) for d in self.find({}, {field: True})
-            ):
-                future.result()
+        thread(
+            function=count_and_delete,
+            data=self.find({}, {field: True}).batch_size(batch_size),
+            process_chunk_size=batch_size,
+        )
         bar.close()
         return count
 
