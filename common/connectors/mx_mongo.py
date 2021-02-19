@@ -17,6 +17,7 @@ from pymongo.database import Collection, Database
 from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
 from pymongo.operations import InsertOne, UpdateOne, UpdateMany
+from pymongo.results import InsertManyResult, InsertOneResult
 
 from ..exceptions import MongoDBError
 
@@ -126,7 +127,7 @@ class MxCollection(Collection):
         bar.close()
         return count
 
-    def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None):
+    def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None) -> InsertManyResult:
         if not documents:
             raise MongoDBError("Provide non-empty documents.")
         elif isinstance(documents, list) and isinstance(documents[0], dict):
@@ -146,12 +147,12 @@ class MxCollection(Collection):
                     else doc
                 ) for doc in documents
             )
-        super().insert_many(documents, ordered, bypass_document_validation, session)
+        return super().insert_many(documents, ordered, bypass_document_validation, session)
 
-    def insert_one(self, document, bypass_document_validation=False, session=None):
+    def insert_one(self, document, bypass_document_validation=False, session=None) -> InsertOneResult:
         if isinstance(document, dict) and document.get("geometry"):
             document = self.correct_geoshape(document)
-        super().insert_one(document, bypass_document_validation, session)
+        return super().insert_one(document, bypass_document_validation, session)
 
     @staticmethod
     def correct_geoshape(doc: dict, key: str = "geometry") -> dict:
