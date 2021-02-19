@@ -19,6 +19,7 @@ __all__ = (
     "MongoDB",
     "MySQLClient",
     "PandasSQL",
+    "PgSql",
     "SQLClient",
     "SQLtoMongo",
 )
@@ -31,6 +32,7 @@ _module_mapping = {
     "mx_mongo": "MongoDB",
     "mx_mysql": "MySQLClient",
     "mx_pandassql": "PandasSQL",
+    "mx_postgres": "PgSql",
     "mx_sqlalchemy": "SQLClient",
     "mx_sqltomongo": "SQLtoMongo",
 }
