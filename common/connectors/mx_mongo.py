@@ -9,6 +9,7 @@ __all__ = (
 
 from collections import namedtuple
 from collections.abc import Iterable
+from threading import Lock
 from typing import Union
 from urllib.parse import quote_plus
 
@@ -16,6 +17,7 @@ from pymongo.database import Collection, Database
 from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
 from pymongo.operations import InsertOne, UpdateOne, UpdateMany
+from pymongo.results import InsertManyResult, InsertOneResult
 
 from ..exceptions import MongoDBError
 
@@ -49,7 +51,7 @@ class MxCollection(Collection):
         """Return the last document in a collection.
 
         Usage::
-            from common.connectors import MongoDB
+            from common.connectors.mx_mongo import MongoDB
             db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
@@ -60,7 +62,7 @@ class MxCollection(Collection):
         """Return duplicated documents in a collection.
 
         Usage::
-            from common.connectors import MongoDB
+            from common.connectors.mx_mongo import MongoDB
             db = MongoDB("dev_peter.person_data_20190716")
             docs = MongoDB.find_duplicates(db)
             print(docs)
@@ -81,7 +83,51 @@ class MxCollection(Collection):
             {"$match": {"count": {"$gt": 1}}}
         ], allowDiskUse=True))
 
-    def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None):
+    def remove_duplicates(
+            self,
+            field: str,
+            use_tqdm: bool = False,
+    ) -> int:
+        """Remove duplicated documents in a collection, based on `field`.
+
+        Provide `field` as a dot-separated string for nested fields.
+
+        Returns the number of deleted documents.
+
+        Usage::
+            from common.connectors.mx_mongo import MongoDB
+            coll = MongoDB("dev_realestate.real_estate_v10")
+            coll.remove_duplicates("address.identification.addressId")
+        """
+        from ..handlers import tqdm
+        from ..parsers import flatten
+        from ..requests import thread
+
+        bar = tqdm(total=self.estimated_document_count(), disable=not use_tqdm)
+        batch_size = 10_000
+        count = 0
+        lock = Lock()
+
+        def count_and_delete(doc):
+            if self.count_documents({field: flatten(doc)[field]}) > 1:
+                self.delete_one({"_id": doc["_id"]})
+                nonlocal count
+                with lock:
+                    count += 1
+                    bar.update()
+            else:
+                with lock:
+                    bar.update()
+
+        thread(
+            function=count_and_delete,
+            data=self.find({}, {field: True}).batch_size(batch_size),
+            process_chunk_size=batch_size,
+        )
+        bar.close()
+        return count
+
+    def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None) -> InsertManyResult:
         if not documents:
             raise MongoDBError("Provide non-empty documents.")
         elif isinstance(documents, list) and isinstance(documents[0], dict):
@@ -101,12 +147,12 @@ class MxCollection(Collection):
                     else doc
                 ) for doc in documents
             )
-        super().insert_many(documents, ordered, bypass_document_validation, session)
+        return super().insert_many(documents, ordered, bypass_document_validation, session)
 
-    def insert_one(self, document, bypass_document_validation=False, session=None):
+    def insert_one(self, document, bypass_document_validation=False, session=None) -> InsertOneResult:
         if isinstance(document, dict) and document.get("geometry"):
             document = self.correct_geoshape(document)
-        super().insert_one(document, bypass_document_validation, session)
+        return super().insert_one(document, bypass_document_validation, session)
 
     @staticmethod
     def correct_geoshape(doc: dict, key: str = "geometry") -> dict:
@@ -131,7 +177,8 @@ class MxCollection(Collection):
         return doc
 
     def es(self) -> tuple[int, int]:
-        """Returns a named two-tuple with the document count of this collection and the corresponding Elasticsearch index."""
+        """Returns a named two-tuple with the document count
+        of this collection and the corresponding Elasticsearch index."""
         from .mx_elastic import ESClient
         return Count(self.estimated_document_count(), ESClient(self.full_name).count())
 
