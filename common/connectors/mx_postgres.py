@@ -8,7 +8,7 @@ from typing import Any, Optional
 import psycopg2.extras
 from psycopg2 import sql
 
-from common.secrets import get_secret
+from ..secrets import get_secret
 
 
 class PgSql:
