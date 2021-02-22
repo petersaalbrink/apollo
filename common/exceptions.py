@@ -17,6 +17,10 @@ class ESClientError(ConnectorError):
     """Exception for ESClient."""
 
 
+class PgSqlError(ConnectorError):
+    """Exception for ESClient."""
+
+
 class PhoneApiError(ApiError):
     """Exception for Phone Checker API."""
 
