@@ -40,6 +40,9 @@ class PgSql:
     def __exit__(self, *args, **kwargs):
         self.cursor.__exit__(*args, **kwargs)
         self.connection.__exit__(*args, **kwargs)
+        if any((args, kwargs)):
+            return False
+        return True
 
     def connect(self) -> PgSql:
         usr, pwd = get_secret("MX_PSQL")
