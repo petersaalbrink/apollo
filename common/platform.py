@@ -376,7 +376,7 @@ class FileTransferFTP:
         self._check_filename()
         self.connect()
         with open(self.filename, "rb") as f:
-            self.ftp.storbinary(f"STOR {self.filename}", f)
+            self.ftp.storbinary(f"STOR {self.insert_filename}", f)
         self.disconnect()
         return self
 
