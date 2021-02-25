@@ -17,17 +17,17 @@ class PgSql:
 
     Example:
         from common.connectors.mx_postgres import PgSql
-        with PgSql() as pg:
+        with PgSql("vgm") as pg:
             data = list(pg.select_all("vgm_account"))
 
     Example:
         from common.connectors.mx_postgres import PgSql
         query = "SELECT * FROM {} WHERE {} LIKE %s"
         table, column, value = "vgm_building", "vgo_building", "WTC%"
-        with PgSql() as pg:
+        with PgSql("vgm") as pg:
             data = list(pg.select(query, table, **{column: value}))
     """
-    def __init__(self, database: str = "vgm", server_side_cursor: bool = False):
+    def __init__(self, database: str, server_side_cursor: bool = False):
         self.connection: Optional[psycopg2.extras.DictConnection] = None
         self.cursor: Optional[psycopg2.extras.DictCursor] = None
         self.database = database

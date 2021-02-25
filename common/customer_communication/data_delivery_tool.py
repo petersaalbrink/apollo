@@ -46,7 +46,7 @@ def data_delivery_tool(
     else:
         folder_name = coded_input["folder_name"]
 
-    with ZipFile(f"{folder_name}.zip", "w", compression=ZIP_DEFLATED) as folder:
+    with ZipFile(f"{folder_name}.zip", "a", compression=ZIP_DEFLATED) as folder:
 
         # run
         if codebook:
