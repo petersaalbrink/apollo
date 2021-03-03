@@ -176,6 +176,9 @@ class MxCollection(Collection):
             if not geom_doc.is_valid:
                 doc[key] = shapely.geometry.mapping(geom_doc.buffer(0))
 
+        except KeyError:
+            pass
+
         finally:
             return doc
 
