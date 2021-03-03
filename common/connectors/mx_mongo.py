@@ -159,22 +159,28 @@ class MxCollection(Collection):
 
         # TODO: add to InsertOne and InsertMany
         # TODO: add to update_one, update_many, UpdateOne, UpdateMany (in the future)
+        # TODO: add possibility for nested keys (e.g., key="geometry.geoPoint")
 
         import shapely.geometry
 
-        geom_cls = getattr(shapely.geometry, doc[key]["type"])
+        try:
+            geom_cls = getattr(shapely.geometry, doc[key]["type"])
 
-        if geom_cls is shapely.geometry.MultiPolygon:
-            geom_doc = geom_cls([shapely.geometry.Polygon(x[0]) for x in doc[key]["coordinates"]])
-        elif geom_cls is shapely.geometry.Polygon:
-            geom_doc = geom_cls(doc[key]["coordinates"][0])
-        else:
+            if geom_cls is shapely.geometry.MultiPolygon:
+                geom_doc = geom_cls([shapely.geometry.Polygon(x[0]) for x in doc[key]["coordinates"]])
+            elif geom_cls is shapely.geometry.Polygon:
+                geom_doc = geom_cls(doc[key]["coordinates"][0])
+            else:
+                return doc
+
+            if not geom_doc.is_valid:
+                doc[key] = shapely.geometry.mapping(geom_doc.buffer(0))
+
+        except KeyError:
+            pass
+
+        finally:
             return doc
-
-        if not geom_doc.is_valid:
-            doc[key] = shapely.geometry.mapping(geom_doc.buffer(0))
-
-        return doc
 
     def es(self) -> tuple[int, int]:
         """Returns a named two-tuple with the document count
