@@ -63,7 +63,7 @@ class PgSql:
     def close(self):
         try:
             self.cursor.close()
-        except psycopg2.InterfaceError:
+        except self.Error:
             pass
         self.connection.close()
 
@@ -94,9 +94,13 @@ class PgSql:
     def execute(self, query: sql.Composed, args: Iterable[str] = None):
         try:
             self.cursor.execute(query, args)
-        except (psycopg2.ProgrammingError, psycopg2.InterfaceError):
+        except self.Error:
             self._reconnect_cursor()
-            self.cursor.execute(query, args)
+            try:
+                self.cursor.execute(query, args)
+            except self.Error:
+                self.connection.rollback()
+                raise
         self.query = self.cursor.query
         if self.query.split()[0].upper() != b"SELECT":
             self.connection.commit()
