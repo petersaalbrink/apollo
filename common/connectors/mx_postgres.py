@@ -27,6 +27,9 @@ class PgSql:
         with PgSql("vgm") as pg:
             data = list(pg.select(query, table, **{column: value}))
     """
+    Error = psycopg2.Error
+    sql = sql
+
     def __init__(self, database: str, server_side_cursor: bool = False):
         self.connection: Optional[psycopg2.extras.DictConnection] = None
         self.cursor: Optional[psycopg2.extras.DictCursor] = None
@@ -121,3 +124,6 @@ class PgSql:
 
     def select_all(self, table: str) -> Iterator[psycopg2.extras.DictRow]:
         yield from self.fetch(self.compose("SELECT * FROM {}", sql.Identifier(table)))
+
+    def truncate(self, table: str):
+        self.execute(self.compose("TRUNCATE TABLE {} ", sql.Identifier(table)))
