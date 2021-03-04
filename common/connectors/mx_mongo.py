@@ -13,6 +13,7 @@ from threading import Lock
 from typing import Union
 from urllib.parse import quote_plus
 
+from bson import CodecOptions
 from pymongo.database import Collection, Database
 from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
@@ -197,7 +198,8 @@ class MongoDB:
                 collection: str = None,
                 host: str = None,
                 client: bool = False,
-                **kwargs
+                tz_aware: bool = False,
+                **kwargs,
                 ) -> Union[MxClient, MxDatabase, MxCollection]:
         """Factory for Matrixian's MongoDB database access.
 
@@ -250,10 +252,16 @@ class MongoDB:
                                    f" name '{envv}' in file '{envfile}'")
             uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
 
+        if tz_aware:
+            from pendulum import timezone
+            codec_options = CodecOptions(tz_aware=True, tzinfo=timezone("Europe/Amsterdam"))
+        else:
+            codec_options = None
+
         mongo_client = MxClient(host=uri, connectTimeoutMS=None)
         if client:
             return mongo_client
-        mongo_db = MxDatabase(client=mongo_client, name=database)
+        mongo_db = MxDatabase(client=mongo_client, name=database, codec_options=codec_options)
         if collection:
             mongo_coll = MxCollection(database=mongo_db, name=collection)
             mongo_coll.test_connection()

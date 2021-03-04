@@ -109,15 +109,32 @@ class PgSql:
         self.execute(query, args)
         yield from self.cursor
 
-    def insert(self, table: str, args: Union[Sequence[Sized[Any]], Iterable[Iterable[Any]]], n_values: int = None):
+    def index(self, table: str, field: str, unique: bool = False):
+        self.execute(self.compose(
+            f"CREATE{' UNIQUE ' if unique else ' '}INDEX " "{} ON {} ({})",
+            sql.Identifier(field), sql.Identifier(table), sql.Identifier(field),
+        ))
+
+    def insert(
+            self,
+            table: str,
+            args: Union[Sequence[Sized[Any]], Iterable[Iterable[Any]]],
+            n_values: int = None,
+            ignore: bool = False,
+    ):
         if isinstance(args, Sequence) and isinstance(args[0], Sized):
             n_values = len(args[0])
         elif not n_values:
             raise PgSqlError("Could not read number of values from args; provide n_values.")
-        self.cursor.executemany(self.compose(
-            "INSERT INTO {} VALUES ({})", sql.Identifier(table),
-            sql.SQL(", ").join(sql.Placeholder() * n_values)
-        ), args)
+        composed = self.compose(
+            "INSERT INTO {} VALUES ({})" f"{' ON CONFLICT DO NOTHING' if ignore else ''}",
+            sql.Identifier(table), sql.SQL(", ").join(sql.Placeholder() * n_values),
+        )
+        try:
+            self.cursor.executemany(composed, args)
+        except self.Error:
+            self.connection.rollback()
+            raise
         self.connection.commit()
 
     def select(self, query: str, *args, **kwargs) -> Iterator[psycopg2.extras.DictRow]:
