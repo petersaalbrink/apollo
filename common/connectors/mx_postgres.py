@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = "PgSql",
 
 from collections.abc import Collection, Iterable, Iterator, Sequence, Sized
+from functools import partial
 from typing import Any, Optional, Union
 
 import psycopg2.extras
@@ -77,9 +78,10 @@ class PgSql:
         self.cursor.close()
         self._connect_cursor()
 
-    @staticmethod
-    def compose(query: str, *args, **kwargs) -> sql.Composed:
-        return sql.SQL(query).format(*args, **kwargs)
+    def compose(self, query: str, *args, **kwargs) -> sql.Composed:
+        composed = sql.SQL(query).format(*args, **kwargs)
+        composed.execute = partial(self.execute, composed)
+        return composed
 
     def create(self, table: str, args: Iterable[str]):
         self.execute(
