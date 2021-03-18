@@ -22,19 +22,18 @@ __all__ = (
 )
 
 import binascii
-from collections.abc import Iterable
-from ftplib import FTP, all_errors
+from collections.abc import Iterable, Sequence
 try:
     from functools import cached_property
 except ImportError:
     from cached_property import cached_property
 import io
 from pathlib import Path
-from typing import BinaryIO, List, Sequence, Union
+from typing import BinaryIO, Optional, Union
 
 from bson import ObjectId
 from Crypto.Cipher import AES
-from paramiko import AutoAddPolicy, SSHClient
+from paramiko import AutoAddPolicy, SFTPClient, SSHClient, SSHException, Transport
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
@@ -252,7 +251,7 @@ class FileTransferFTP:
 
         # Use as FTP object
         with ft as ftp:
-            print(ftp.nlst())
+            print(ftp.listdir())
     """
 
     def __init__(
@@ -310,9 +309,9 @@ class FileTransferFTP:
         self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
-        self.ftp = FTP()
+        self.ftp: Optional[SFTPClient] = None
 
-    def __enter__(self) -> FTP:
+    def __enter__(self) -> SFTPClient:
         self.connect()
         return self.ftp
 
@@ -328,11 +327,12 @@ class FileTransferFTP:
         return AES.new(self.key, AES.MODE_CBC, iv).decrypt(ciphertext).strip().decode()
 
     def connect(self):
-        self.ftp.connect(host=self.host[1], port=2121)
-        self.ftp.login(user=self.email, passwd=self.ftp_password)
+        transport = Transport((self.host[1], 2121))  # noqa
+        transport.connect(None, self.email, self.ftp_password)
+        self.ftp = SFTPClient.from_transport(transport)
 
     def disconnect(self):
-        self.ftp.quit()
+        self.ftp.close()
 
     @cached_property
     def insert_filename(self) -> str:
@@ -344,11 +344,14 @@ class FileTransferFTP:
         if not self.filename:
             raise FileTransferError("Provide a filename.")
 
-    def list_files(self, _connect: bool = True) -> List[str]:
+    def list_files(self, _connect: bool = True) -> list[str]:
         """List existing files in this user's Platform folder."""
         if _connect:
             self.connect()
-        data = self.ftp.nlst()
+        data = [
+            attr.filename for attr in
+            sorted(self.ftp.listdir_iter(), key=lambda attr: attr.st_mtime, reverse=True)
+        ]
         if _connect:
             self.disconnect()
         return data
@@ -357,8 +360,7 @@ class FileTransferFTP:
         """Download an existing Platform file to disk."""
         if _connect:
             self.connect()
-        with open(file, "wb") as f:
-            self.ftp.retrbinary(f"RETR {file}", f.write)
+        self.ftp.get(file, file)
         if _connect:
             self.disconnect()
         return self
@@ -375,8 +377,7 @@ class FileTransferFTP:
         """Upload a file to the Platform host."""
         self._check_filename()
         self.connect()
-        with open(self.filename, "rb") as f:
-            self.ftp.storbinary(f"STOR {self.insert_filename}", f)
+        self.ftp.get(self.filename, self.insert_filename)
         self.disconnect()
         return self
 
@@ -394,7 +395,7 @@ class FileTransferFTP:
         try:
             self.connect()
             self.disconnect()
-        except all_errors as e:
+        except SSHException as e:
             raise FileTransferError(f"Make sure you have access to the FTP server.") from e
 
     def transfer(self) -> FileTransferFTP:
