@@ -83,6 +83,9 @@ class PgSql:
         composed.execute = partial(self.execute, composed)
         return composed
 
+    def count(self, table: str) -> int:
+        return next(self.select("SELECT COUNT(*) FROM {}", table))["count"]
+
     def create(self, table: str, args: Iterable[str]):
         self.execute(
             self.compose("CREATE TABLE {} ", sql.Identifier(table))
