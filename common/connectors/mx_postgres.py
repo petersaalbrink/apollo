@@ -70,7 +70,7 @@ class PgSql:
 
     def _connect_cursor(self):
         if self.server_side_cursor:
-            self.cursor = self.connection.cursor("NamedCursor").__enter__()
+            self.cursor = self.connection.cursor("NamedCursor", withhold=True).__enter__()
         else:
             self.cursor = self.connection.cursor().__enter__()
 
