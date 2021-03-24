@@ -531,6 +531,7 @@ class MySQLClient:
         self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
+        self.set_session_variables(cursor, maximum_timeouts=True)
 
         try:
             cursor.execute(query, *args, **kwargs)
@@ -603,7 +604,7 @@ class MySQLClient:
         cnx = connect(**self.__config)
         cursor = cnx.cursor(buffered=False,
                             dictionary=self.dictionary)
-        self.set_session_variables(cursor)
+        self.set_session_variables(cursor, maximum_timeouts=True)
 
         cursor.execute(query, *args, **kwargs)
         for row in _tqdm(cursor, total=count):
