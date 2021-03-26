@@ -377,7 +377,7 @@ class FileTransferFTP:
         """Upload a file to the Platform host."""
         self._check_filename()
         self.connect()
-        self.ftp.get(self.filename, self.insert_filename)
+        self.ftp.put(self.filename, self.insert_filename)
         self.disconnect()
         return self
 

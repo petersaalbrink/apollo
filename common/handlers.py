@@ -195,7 +195,7 @@ def zip_file(
             compression=kwargs.get("compression", ZIP_DEFLATED),
             compresslevel=kwargs.get("compresslevel", None),
     ) as f:
-        f.write(file_to_zip)
+        f.write(file_to_zip, file_to_zip.name)
     if kwargs.get("remove", False):
         file_to_zip.unlink()
 
