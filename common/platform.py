@@ -106,7 +106,7 @@ class _FileTransfer:
             raise FileTransferError("User not found.")
         self.user_id = doc["_id"]
         self.username = doc["username"]
-        self.email = (doc["email"] or "").split("_unique_")[0]
+        self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
     def _check_filename(self):
@@ -134,12 +134,13 @@ class _FileTransfer:
         message = message.replace("FILENAME", self.insert_filename)
 
         # Prepare receivers
+        email = self.email.split("_unique_")[0]
         if isinstance(to_address, str):
-            to_address = (to_address, self.email)
+            to_address = (to_address, email)
         elif isinstance(to_address, Iterable):
-            to_address = (*to_address, self.email)
+            to_address = (*to_address, email)
         else:
-            to_address = self.email
+            to_address = email
 
         # Send email
         EmailClient().send_email(
