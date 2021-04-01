@@ -116,7 +116,7 @@ class ESClient(Elasticsearch):
                     envv = _hosts["address"]
                 else:
                     envv = _hosts["dev"]
-            elif host == "dev" and es_index.startswith("addressvalidation"):
+            elif host == "dev" and es_index and es_index.startswith("addressvalidation"):
                 envv = _hosts["address_dev"]
             elif host:
                 envv = _hosts.get(host)

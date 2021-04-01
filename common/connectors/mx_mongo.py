@@ -230,7 +230,7 @@ class MongoDB:
         if kwargs.pop("local", False) or host == "localhost":
             uri = "mongodb://localhost"
         else:
-            if host == "dev" and database.startswith("addressvalidation"):
+            if host == "dev" and database and database.startswith("addressvalidation"):
                 host = "address_dev"
             elif not host:
                 if database:
