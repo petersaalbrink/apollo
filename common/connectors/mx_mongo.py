@@ -24,6 +24,7 @@ from ..exceptions import MongoDBError
 
 _hosts = {
     "address": "MX_MONGO_ADDR",
+    "address_dev": "MX_MONGO_ADDR_DEV",
     "cdqc": "MX_MONGO_CDQC",
     "dev": "MX_MONGO_DEV",
     "prod": "MX_MONGO_PROD",
@@ -229,15 +230,20 @@ class MongoDB:
         if kwargs.pop("local", False) or host == "localhost":
             uri = "mongodb://localhost"
         else:
-            if not host:
-                host = "dev"
+            if host == "dev" and database.startswith("addressvalidation"):
+                host = "address_dev"
+            elif not host:
                 if database:
-                    if "addressvalidation" in database:
+                    if database.startswith("addressvalidation"):
                         host = "address"
-                    elif "production" in database:
+                    elif database.startswith("production"):
                         host = "prod"
                     elif database.startswith("cdqc"):
                         host = "cdqc"
+                    else:
+                        host = "dev"
+                else:
+                    host = "dev"
             elif host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
             host = _hosts[host]
