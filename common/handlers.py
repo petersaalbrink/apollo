@@ -182,7 +182,7 @@ def csv_write(data: Union[list[dict], dict],
 
 def zip_file(
         file_to_zip: Union[Path, str],
-        zip_name: str = None,
+        zip_name: Union[Path, str] = None,
         **kwargs,
 ):
     """Write a file to a zip archive."""

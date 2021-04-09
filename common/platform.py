@@ -34,6 +34,7 @@ from typing import BinaryIO, Optional, Union
 from bson import ObjectId
 from Crypto.Cipher import AES
 from paramiko import AutoAddPolicy, SFTPClient, SSHClient, SSHException, Transport
+from paramiko.channel import ChannelFile
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
@@ -63,7 +64,7 @@ class _FileTransfer:
     def __init__(
             self,
             username: str = None,
-            filename: str = None,
+            filename: Union[Path, str] = None,
             user_id: str = None,
             email: str = None,
             host: str = None,
@@ -156,7 +157,7 @@ class FileTransferDocker(_FileTransfer):
     def __init__(
             self,
             username: str = None,
-            filename: str = None,
+            filename: Union[Path, str] = None,
             user_id: str = None,
             email: str = None,
             host: str = None,
@@ -195,13 +196,13 @@ class FileTransferDocker(_FileTransfer):
         return f"{self.ftpath}/{self.user_id}"
 
     @staticmethod
-    def _check_process(stderr: BinaryIO):
+    def _check_process(stderr: ChannelFile):
         """Check if a process has completed successfully."""
         stderr = stderr.read().decode()
         if stderr[:30] != "[sudo] password for consucom: " or stderr[30:]:
             raise FileTransferError(stderr)
 
-    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[BinaryIO, BinaryIO]:
+    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[ChannelFile, ChannelFile]:
         """Create a process from a shell command."""
         stdin, stdout, stderr = self.client.exec_command(
             f"sudo -S {cmd}",
@@ -268,7 +269,7 @@ class FileTransferFTP(_FileTransfer):
     def __init__(
             self,
             username: str = None,
-            filename: str = None,
+            filename: Union[Path, str] = None,
             user_id: str = None,
             email: str = None,
             host: str = None,
