@@ -642,7 +642,10 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
     def db(self) -> tuple[int, int]:
         """Returns a named two-tuple with the document count of the corresponding MongoDB collection and this index."""
         from .mx_mongo import Count, MongoDB
-        return Count(MongoDB(self.es_index).estimated_document_count(), self.count())
+        db, coll = self.es_index.split(".")
+        mapping = {name.lower(): name for name in MongoDB(db).list_collection_names()}
+        coll = mapping[coll]
+        return Count(MongoDB(f"{db}.{coll}").estimated_document_count(), self.count())
 
     def update_alias(
             self,

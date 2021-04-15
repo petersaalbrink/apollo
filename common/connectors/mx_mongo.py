@@ -188,7 +188,7 @@ class MxCollection(Collection):
         """Returns a named two-tuple with the document count
         of this collection and the corresponding Elasticsearch index."""
         from .mx_elastic import ESClient
-        return Count(self.estimated_document_count(), ESClient(self.full_name).count())
+        return Count(self.estimated_document_count(), ESClient(self.full_name.lower()).count())
 
 
 class MongoDB:
