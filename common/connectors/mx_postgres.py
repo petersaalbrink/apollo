@@ -78,7 +78,7 @@ class PgSql:
         self.cursor.close()
         self._connect_cursor()
 
-    def compose(self, query: str, *args, **kwargs) -> sql.Composed:
+    def compose(self, query: str, *args, **kwargs) -> Composed:
         composed = sql.SQL(query).format(*args, **kwargs)
         composed.execute = partial(self.execute, composed)
         return composed
@@ -153,3 +153,8 @@ class PgSql:
 
     def truncate(self, table: str):
         self.execute(self.compose("TRUNCATE TABLE {} ", sql.Identifier(table)))
+
+
+class Composed(sql.Composed):
+    def execute(self):
+        """Execute a composed query."""

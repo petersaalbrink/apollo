@@ -19,13 +19,15 @@ from random import sample
 from typing import Any, Iterator, Optional, Pattern, Type, Union
 
 from mysql.connector.cursor import MySQLCursor
-from mysql.connector import (HAVE_CEXT,
-                             connect,
-                             MySQLConnection,
-                             ClientFlag,
-                             DatabaseError,
-                             InterfaceError,
-                             OperationalError)
+from mysql.connector import (
+    HAVE_CEXT,
+    connect,
+    MySQLConnection,
+    ClientFlag,
+    DatabaseError,
+    InterfaceError,
+    OperationalError,
+)
 from pandas import NaT, Timestamp, Timedelta, isna
 
 from ..env import getenv, commondir, envfile, _write_pem  # noqa
@@ -258,8 +260,10 @@ class MySQLClient:
         while True:
             with suppress(OperationalError):
                 self.cnx = connect(**self.__config)
-                self.cursor = self.cnx.cursor(buffered=self.buffered,
-                                              dictionary=self.dictionary)
+                self.cursor = self.cnx.cursor(
+                    buffered=self.buffered,
+                    dictionary=self.dictionary,
+                )
                 self.set_session_variables()
                 break
         if conn:
@@ -298,8 +302,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.execute(query, *args, **kwargs)
-        if any(query.strip().upper().startswith(s) for s in
-               ("INSERT", "UPDATE", "DELETE")):
+        if any(st in query.upper() for st in ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
 
@@ -317,8 +320,7 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.executemany(query, data, *args, **kwargs)
-        if any(query.strip().upper().startswith(s) for s in
-               ("INSERT", "UPDATE", "DELETE")):
+        if any(st in query.upper() for st in ("INSERT", "UPDATE", "DELETE")):
             self.cnx.commit()
         self._set_cursor_properties()
 
@@ -1201,8 +1203,10 @@ class MySQLClient:
             sql.query(table=table, postcode="1014AK", select_fields='KvKnummer')
             sql.query(table=table, postcode="1014AK", select_fields=['KvKnummer', 'plaatsnaam'])
             """
-        if table and (isinstance(table, Query)
-                      or table.strip().upper().startswith("SELECT")):
+        if table and (
+                isinstance(table, Query)
+                or table.strip().upper().startswith("SELECT")
+        ):
             query = table
         if query:
             return self._execute_query(query)

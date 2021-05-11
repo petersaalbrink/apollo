@@ -24,6 +24,7 @@ from ..exceptions import MongoDBError
 
 _hosts = {
     "address": "MX_MONGO_ADDR",
+    "address_dev": "MX_MONGO_ADDR_DEV",
     "cdqc": "MX_MONGO_CDQC",
     "dev": "MX_MONGO_DEV",
     "prod": "MX_MONGO_PROD",
@@ -187,7 +188,7 @@ class MxCollection(Collection):
         """Returns a named two-tuple with the document count
         of this collection and the corresponding Elasticsearch index."""
         from .mx_elastic import ESClient
-        return Count(self.estimated_document_count(), ESClient(self.full_name).count())
+        return Count(self.estimated_document_count(), ESClient(self.full_name.lower()).count())
 
 
 class MongoDB:
@@ -229,15 +230,20 @@ class MongoDB:
         if kwargs.pop("local", False) or host == "localhost":
             uri = "mongodb://localhost"
         else:
-            if not host:
-                host = "dev"
+            if host == "dev" and database and database.startswith("addressvalidation"):
+                host = "address_dev"
+            elif not host:
                 if database:
-                    if "addressvalidation" in database:
+                    if database.startswith("addressvalidation"):
                         host = "address"
-                    elif "production" in database:
+                    elif database.startswith("production"):
                         host = "prod"
                     elif database.startswith("cdqc"):
                         host = "cdqc"
+                    else:
+                        host = "dev"
+                else:
+                    host = "dev"
             elif host not in _hosts:
                 raise MongoDBError(f"Host `{host}` not recognized")
             host = _hosts[host]

@@ -43,6 +43,7 @@ _config = {
 }
 _hosts = {
     "address": "MX_ELASTIC_ADDR_IP",
+    "address_dev": "MX_ELASTIC_ADDR_DEV_IP",
     "cdqc": "MX_ELASTIC_CDQC_IP",
     "dev": "MX_ELASTIC_DEV_IP",
     "prod": "MX_ELASTIC_PROD_IP",
@@ -109,17 +110,22 @@ class ESClient(Elasticsearch):
             if es_index and not host:
                 if es_index.startswith("cdqc"):
                     envv = _hosts["cdqc"]
-                elif "production_" in es_index:
+                elif es_index.startswith("production"):
                     envv = _hosts["prod"]
-                elif "addressvalidation" in es_index:
+                elif es_index.startswith("addressvalidation"):
                     envv = _hosts["address"]
                 else:
                     envv = _hosts["dev"]
+            elif host == "dev" and es_index and es_index.startswith("addressvalidation"):
+                envv = _hosts["address_dev"]
             elif host:
                 envv = _hosts.get(host)
             else:
                 if dev:
-                    envv = _hosts["dev"]
+                    if es_index.startswith("addressvalidation"):
+                        envv = _hosts["address_dev"]
+                    else:
+                        envv = _hosts["dev"]
                 else:
                     envv = _hosts["prod"]
             self._host, self._port = getenv(envv), _port
@@ -636,7 +642,10 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
     def db(self) -> tuple[int, int]:
         """Returns a named two-tuple with the document count of the corresponding MongoDB collection and this index."""
         from .mx_mongo import Count, MongoDB
-        return Count(MongoDB(self.es_index).estimated_document_count(), self.count())
+        db, coll = self.es_index.split(".")
+        mapping = {name.lower(): name for name in MongoDB(db).list_collection_names()}
+        coll = mapping[coll]
+        return Count(MongoDB(f"{db}.{coll}").estimated_document_count(), self.count())
 
     def update_alias(
             self,

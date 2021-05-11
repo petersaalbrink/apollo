@@ -22,7 +22,7 @@ __all__ = (
 )
 
 import binascii
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 try:
     from functools import cached_property
 except ImportError:
@@ -34,6 +34,7 @@ from typing import BinaryIO, Optional, Union
 from bson import ObjectId
 from Crypto.Cipher import AES
 from paramiko import AutoAddPolicy, SFTPClient, SSHClient, SSHException, Transport
+from paramiko.channel import ChannelFile
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
@@ -43,7 +44,7 @@ from .secrets import get_secret
 from .env import getenv
 
 
-class FileTransferDocker:
+class _FileTransfer:
     """Upload and download files to/from the Matrixian Platform.
 
     Example usage::
@@ -60,13 +61,13 @@ class FileTransferDocker:
             ft.list_files().pop()
         )
     """
-
     def __init__(
             self,
             username: str = None,
-            filename: str = None,
+            filename: Union[Path, str] = None,
             user_id: str = None,
             email: str = None,
+            host: str = None,
     ):
         """Create a FileTransfer object to upload/download files.
 
@@ -82,10 +83,17 @@ class FileTransferDocker:
 
         # Prepare parameters
         self.filename = filename
-        self.fthost = "consucom"
-        self.ftpath = f"/var/lib/docker/volumes/filetransfer_live/_data"
+
+        host = host or "prod"
+        if host == "prod":
+            self.host = "production_api.user", "ftp.platform.matrixiangroup.com"
+        elif host == "dev":
+            self.host = "dev_api.user", "ftp.develop.platform.matrixiangroup.com"
+        else:
+            raise FileTransferError("Host should be 'prod' or 'dev'.")
 
         # Find user details
+        self.db = MongoDB(self.host[0])
         if user_id:
             q = {"_id": ObjectId(user_id)}
         elif username:
@@ -95,14 +103,80 @@ class FileTransferDocker:
         else:
             raise FileTransferError("Provide either a name, ID or email for the user.")
         doc = MongoDB("production_api.user", host="prod").find_one(q)
+        if not doc:
+            raise FileTransferError("User not found.")
         self.user_id = doc["_id"]
         self.username = doc["username"]
         self.email = doc["email"]
+        self.encrypted_ftp_password = doc["ftpPassword"]
+
+    def _check_filename(self):
+        """Check if a filename is provided."""
+        if not self.filename:
+            raise FileTransferError("Provide a filename.")
+
+    @cached_property
+    def insert_filename(self) -> str:
+        """Provide the file name needed for uploads."""
+        return Path(self.filename).name
+
+    def notify(
+            self,
+            to_address: Union[str, list[str], tuple[str, ...]] = None,
+            username: str = None
+    ) -> _FileTransfer:
+        """Notify the user of the new Platform upload."""
+
+        # Prepare message
+        template = Path(__file__).parent / "etc/email.html"
+        with open(template) as f:
+            message = f.read()
+        message = message.replace("USERNAME", username or self.username)
+        message = message.replace("FILENAME", self.insert_filename)
+
+        # Prepare receivers
+        email = self.email.split("_unique_")[0]
+        if isinstance(to_address, str):
+            to_address = (to_address, email)
+        elif isinstance(to_address, Iterable):
+            to_address = (*to_address, email)
+        else:
+            to_address = email
+
+        # Send email
+        EmailClient().send_email(
+            to_address=to_address,
+            subject="Nieuw bestand in Filetransfer",
+            message=message,
+        )
+
+        return self
+
+
+class FileTransferDocker(_FileTransfer):
+    def __init__(
+            self,
+            username: str = None,
+            filename: Union[Path, str] = None,
+            user_id: str = None,
+            email: str = None,
+            host: str = None,
+    ):
+        super().__init__(
+            username,
+            filename,
+            user_id,
+            email,
+            host,
+        )
 
         # Connect
         self._usr, self._pwd = get_secret("MX_PLATFORM_HOST")
         self.client = SSHClient()
         self.client.set_missing_host_key_policy(AutoAddPolicy())
+
+        self.fthost = "consucom"
+        self.ftpath = f"/var/lib/docker/volumes/filetransfer_live/_data"
 
     def _connect(self):
         self.client.connect(
@@ -117,28 +191,18 @@ class FileTransferDocker:
         self.client.close()
 
     @cached_property
-    def insert_filename(self) -> str:
-        """Provide the file name needed for uploads."""
-        return Path(self.filename).name
-
-    @cached_property
     def filepath(self) -> str:
         """Provide the full directory path needed for uploads."""
         return f"{self.ftpath}/{self.user_id}"
 
-    def _check_filename(self):
-        """Check if a filename is provided."""
-        if not self.filename:
-            raise FileTransferError("Provide a filename.")
-
     @staticmethod
-    def _check_process(stderr: BinaryIO):
+    def _check_process(stderr: ChannelFile):
         """Check if a process has completed successfully."""
         stderr = stderr.read().decode()
         if stderr[:30] != "[sudo] password for consucom: " or stderr[30:]:
             raise FileTransferError(stderr)
 
-    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[BinaryIO, BinaryIO]:
+    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[ChannelFile, ChannelFile]:
         """Create a process from a shell command."""
         stdin, stdout, stderr = self.client.exec_command(
             f"sudo -S {cmd}",
@@ -200,114 +264,28 @@ class FileTransferDocker:
         self._disconnect()
         return self
 
-    def notify(
-            self,
-            to_address: Union[str, list[str], tuple[str, ...]] = None,
-            username: str = None
-    ) -> FileTransferDocker:
-        """Notify the user of the new Platform upload."""
 
-        # Prepare message
-        template = Path(__file__).parent / "etc/email.html"
-        with open(template) as f:
-            message = f.read()
-        message = message.replace("USERNAME", username or self.username)
-        message = message.replace("FILENAME", self.insert_filename)
-
-        # Prepare receivers
-        if isinstance(to_address, str):
-            to_address = (to_address, self.email)
-        elif isinstance(to_address, Iterable):
-            to_address = (*to_address, self.email)
-        else:
-            to_address = self.email
-
-        # Send email
-        EmailClient().send_email(
-            to_address=to_address,
-            subject="Nieuw bestand in Filetransfer",
-            message=message,
-        )
-
-        return self
-
-
-class FileTransferFTP:
-    """Upload and download files to/from the Matrixian Platform.
-
-    Example usage::
-        ft = FileTransfer(
-            username="Data Team",
-            filename="somefile.csv",
-        )
-
-        # Upload "somefile.csv"
-        ft.transfer().notify()
-
-        # Download "somefile.csv"
-        ft.download(
-            ft.list_files().pop()
-        )
-
-        # Use as FTP object
-        with ft as ftp:
-            print(ftp.listdir())
-    """
-
+class FileTransferFTP(_FileTransfer):
     def __init__(
             self,
             username: str = None,
-            filename: str = None,
+            filename: Union[Path, str] = None,
             user_id: str = None,
             email: str = None,
-            **kwargs,
+            host: str = None,
     ):
-        """Create a FileTransfer object to upload/download files.
+        super().__init__(
+            username,
+            filename,
+            user_id,
+            email,
+            host,
+        )
 
-        To be able to connect to an account, you need to provide a
-        username, a user_id or a email.
-
-        To be able to upload a file, you need to provide a filename.
-        """
-
-        # Check
-        if not user_id and not username and not email:
-            raise FileTransferError("Provide either a name, ID, or email for the user.")
-
-        # Prepare parameters
-        self.filename = filename
         self.key = getenv("MX_CRYPT_PASSWORD").encode()
         if not self.key:
             raise FileTransferError(
                 "Missing environment variable 'MX_CRYPT_PASSWORD' (FTP password decrypt key)")
-        host = kwargs.pop("host", "prod")
-        if host == "prod":
-            self.host = "production_api.user", "ftp.platform.matrixiangroup.com"
-        elif host == "dev":
-            self.host = "dev_api.user", "ftp.develop.platform.matrixiangroup.com"
-        else:
-            raise FileTransferError("Host should be 'prod' or 'dev'.")
-
-        # Connect to MongoDB
-        self.db = MongoDB(self.host[0])
-        self.test_mongo()
-
-        # Find user details
-        if user_id:
-            q = {"_id": ObjectId(user_id)}
-        elif username:
-            q = {"username": username}
-        elif email:
-            q = {"email": email}
-        else:
-            raise FileTransferError("Provide either a name, ID or email for the user.")
-        doc = self.db.find_one(q)
-        if not doc:
-            raise FileTransferError("User not found.")
-        self.user_id = doc["_id"]
-        self.username = doc["username"]
-        self.email = doc["email"]
-        self.encrypted_ftp_password = doc["ftpPassword"]
 
         self.ftp: Optional[SFTPClient] = None
 
@@ -333,16 +311,6 @@ class FileTransferFTP:
 
     def disconnect(self):
         self.ftp.close()
-
-    @cached_property
-    def insert_filename(self) -> str:
-        """Provide the file name needed for uploads."""
-        return Path(self.filename).name
-
-    def _check_filename(self):
-        """Check if a filename is provided."""
-        if not self.filename:
-            raise FileTransferError("Provide a filename.")
 
     def list_files(self, _connect: bool = True) -> list[str]:
         """List existing files in this user's Platform folder."""
@@ -401,37 +369,6 @@ class FileTransferFTP:
     def transfer(self) -> FileTransferFTP:
         """Upload the specified file to the specified Platform folder."""
         self.upload()
-        return self
-
-    def notify(
-            self,
-            to_address: Union[str, Sequence[str]] = None,
-            username: str = None
-    ) -> FileTransferFTP:
-        """Notify the user of the new Platform upload."""
-
-        # Prepare message
-        template = Path(__file__).parent / "etc/email.html"
-        with open(template) as f:
-            message = f.read()
-        message = message.replace("USERNAME", username or self.username)
-        message = message.replace("FILENAME", self.insert_filename)
-
-        # Prepare receivers
-        if isinstance(to_address, str):
-            to_address = (to_address, self.email)
-        elif isinstance(to_address, Sequence):
-            to_address = (*to_address, self.email)
-        else:
-            to_address = self.email
-
-        # Send email
-        EmailClient().send_email(
-            to_address=to_address,
-            subject="Nieuw bestand in Filetransfer",
-            message=message,
-        )
-
         return self
 
 
