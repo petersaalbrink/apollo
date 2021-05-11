@@ -69,6 +69,7 @@ __all__ = (
     "get_logger",
     "keep_trying",
     "pip_upgrade",
+    "profile",
     "read_json",
     "read_json_line",
     "read_txt",
@@ -92,6 +93,8 @@ from itertools import islice
 import logging
 from pathlib import Path
 import pkg_resources
+from cProfile import Profile
+from pstats import SortKey, Stats
 from subprocess import run
 import sys
 from time import perf_counter, time
@@ -957,3 +960,22 @@ def assert_never(x: NoReturn) -> NoReturn:
     See https://github.com/python/typing/issues/735
     """
     raise AssertionError(f"Invalid value: {x!r}")
+
+
+def profile(function: Callable):
+    """Decorator for function profiling.
+
+    Stores a file called "profile.pstat" to the current working directory.
+    """
+    @wraps(function)
+    def profiled(*args, **kwargs):
+        pr = Profile(builtins=False, subcalls=False)
+        pr.enable()
+        return_value = function(*args, **kwargs)
+        pr.disable()
+        ps = Stats(pr).sort_stats(SortKey.NFL)
+        ps.print_stats()
+        ps.dump_stats("profile.pstat")
+        return return_value
+
+    return profiled
