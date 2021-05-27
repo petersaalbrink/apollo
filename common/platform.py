@@ -23,6 +23,7 @@ __all__ = (
 
 import binascii
 from collections.abc import Iterable
+from datetime import datetime
 try:
     from functools import cached_property
 except ImportError:
@@ -312,13 +313,19 @@ class FileTransferFTP(_FileTransfer):
     def disconnect(self):
         self.ftp.close()
 
-    def list_files(self, _connect: bool = True) -> list[str]:
+    def list_files(
+            self,
+            with_timestamp: bool = False,
+            _connect: bool = True,
+    ) -> Union[list[str], list[tuple[str, datetime]]]:
         """List existing files in this user's Platform folder."""
         if _connect:
             self.connect()
         data = [
-            attr.filename for attr in
-            sorted(self.ftp.listdir_iter(), key=lambda attr: attr.st_mtime, reverse=True)
+            (attr.filename, datetime.fromtimestamp(attr.st_mtime))
+            if with_timestamp else attr.filename
+            for attr in
+            sorted(self.ftp.listdir_iter(), key=lambda a: a.st_mtime, reverse=True)
         ]
         if _connect:
             self.disconnect()
