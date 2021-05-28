@@ -56,6 +56,12 @@ ERROR_CODES = {
     556: "Domain does not accept mail",
 }
 
+with open(PATH / "disposable_providers.txt") as f:
+    _disposable_providers = [x.rstrip().lower() for x in f]
+with open(PATH / "free_providers.txt") as f:
+    _free_providers = [x.rstrip().lower() for x in f]
+_db = MongoDB("cdqc")
+
 
 class _EmailValidator:
     english_tlds = {"com", "icu", "info", "net", "org", "tk", "uk", "xyz"}
@@ -63,10 +69,10 @@ class _EmailValidator:
     email_regex = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
     syntax_regex = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6}")
     at_words_regex = re.compile(r"[a-zA-Z]*@[a-zA-Z]*")
-    disposable_providers = [x.rstrip().lower() for x in open(PATH / "disposable_providers.txt")]
-    free_providers = [x.rstrip().lower() for x in open(PATH / "free_providers.txt")]
-    mongo_cache = MongoDB("cdqc.email_checker_cache")
-    mongo_mx = MongoDB("cdqc.email_checker_mx_records")
+    disposable_providers = _disposable_providers
+    free_providers = _free_providers
+    mongo_cache = _db["email_checker_cache"]
+    mongo_mx = _db["email_checker_mx_records"]
     td = timedelta(days=90)
 
     def __init__(

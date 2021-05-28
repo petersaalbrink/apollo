@@ -28,7 +28,8 @@ class Constant:
     adults_nl = 14_000_000
     yearly_deceased = 151_885
     population_size = adults_nl + (yearly_deceased * 20)
-    db_count = ESClient("cdqc.person_data").count()
+    with ESClient("cdqc.person_data") as _es:
+        db_count = _es.count()
     max_proportion_initials: float = es_initials({"sort": {"proportion": "desc"}})["proportion"]
     max_proportion_lastname: float = es_lastnames({"sort": {"regular.proportion": "desc"}})["regular"]["proportion"]
     mean_proportion_lastname = (max_proportion_lastname + es_lastnames(

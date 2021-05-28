@@ -494,8 +494,9 @@ class Names:
     All data pertains to the Netherlands, and is loaded using Elasticsearch.
     """
 
-    def __init__(self):
-        self.es = ESClient(Constant.ND_INDEX)
+    @property
+    def es(self):
+        return ESClient(Constant.ND_INDEX)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}"
@@ -506,9 +507,11 @@ class Names:
 
         The output can be used to clean last name data.
         """
-        return {doc["_source"]["affix"] for doc in self.es.findall(
-            {"query": {"bool": {"must": {"term": {"data": "affixes"}}}}}
-        )}
+        with self.es as es:
+            return {
+                doc["_source"]["affix"] for doc in
+                es.findall({"query": {"term": {"data": "affixes"}}})
+            }
 
     @cached_property
     def first_names(self) -> dict[str, str]:
@@ -520,9 +523,11 @@ class Names:
 
         The output can be used to fill missing gender data.
         """
-        return {doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in  # noqa
-                self.es.findall(
-                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})}
+        with self.es as es:
+            return {
+                doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in
+                es.findall({"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})
+            }
 
     @cached_property
     def titles(self) -> set[str]:
@@ -530,9 +535,11 @@ class Names:
 
         The output can be used to clean last name data.
         """
-        return set(doc["_source"]["title"] for doc in  # noqa
-                   self.es.findall(
-                       {"query": {"bool": {"must": {"term": {"data": "titles"}}}}}))
+        with self.es as es:
+            return {
+                doc["_source"]["title"] for doc in
+                es.findall({"query": {"term": {"data": "titles"}}})
+            }
 
     @cached_property
     def surnames(self) -> dict[str, int]:
@@ -540,9 +547,11 @@ class Names:
 
         The output can be used for data and matching quality calculations.
         """
-        return {doc["_source"]["surname"]: doc["_source"]["number"]  # noqa
-                for doc in self.es.findall(
-                {"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})}
+        with self.es as es:
+            return {
+                doc["_source"]["surname"]: doc["_source"]["number"] for doc in
+                es.findall({"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})
+            }
 
 
 Constant.NAMES = Names()
