@@ -154,6 +154,15 @@ class MySQLClient:
     Please be aware that MySQLClient does not provide any protection
     against SQL injection.
     """
+    _after_execute_statements = (
+        "INSERT ",
+        "UPDATE ",
+        "DELETE ",
+        "INSERT\n",
+        "UPDATE\n",
+        "DELETE\n",
+    )
+
     def __init__(self,
                  database: str = None,
                  table: str = None,
@@ -292,9 +301,12 @@ class MySQLClient:
             except AttributeError:
                 self._cursor_row_count = None
 
-    def execute(self,
-                query: Union[Query, str],
-                *args, **kwargs):
+    def execute(
+            self,
+            query: Union[Query, str],
+            *args,
+            **kwargs,
+    ):
         """Execute and (if necessary) commit a query on the MySQL instance.
 
         :param query: Statement to execute in the connected cursor.
@@ -302,14 +314,15 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.execute(query, *args, **kwargs)
-        if any(st in query.upper() for st in ("INSERT", "UPDATE", "DELETE")):
-            self.cnx.commit()
-        self._set_cursor_properties()
+        self._after_execute(query)
 
-    def executemany(self,
-                    query: Union[Query, str],
-                    data: Iterable[Iterable[Any]],
-                    *args, **kwargs):
+    def executemany(
+            self,
+            query: Union[Query, str],
+            data: Iterable[Iterable[Any]],
+            *args,
+            **kwargs,
+    ):
         """Execute and (if necessary) commit a query many times in MySQL.
 
         This method can be used to insert a data set into MySQL.
@@ -320,7 +333,11 @@ class MySQLClient:
         :meth:`MySQLClient.cursor.execute`.
         """
         self.cursor.executemany(query, data, *args, **kwargs)
-        if any(st in query.upper() for st in ("INSERT", "UPDATE", "DELETE")):
+        self._after_execute(query)
+
+    def _after_execute(self, query: Union[Query, str]):
+        query = query.upper()
+        if any(st in query for st in self._after_execute_statements):
             self.cnx.commit()
         self._set_cursor_properties()
 
