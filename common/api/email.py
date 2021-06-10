@@ -21,6 +21,7 @@ from babel import Locale, UnknownLocaleError
 import dns.resolver as resolve
 from dns.exception import DNSException
 from pymailcheck import suggest
+from requests.exceptions import RequestException
 
 from ..connectors.mx_mongo import MongoDB
 from ..requests import get
@@ -402,11 +403,17 @@ def check_email(
 
     Optionally, set safe_to_send to True for boolean output.
     """
-    response = get(
-        f"{URL}{email}",
-        text_only=True,
-        timeout=30,
-    )
+    try:
+        response = get(
+            f"{URL}{email}",
+            text_only=True,
+            timeout=30,
+        )
+    except RequestException:
+        response = {
+            "email": email,
+            "safe_to_send": False,
+        }
     if safe_to_send:
         return response["safe_to_send"]
     return response
