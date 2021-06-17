@@ -22,6 +22,7 @@ import dns.resolver as resolve
 from dns.exception import DNSException
 from pymailcheck import suggest
 from requests.exceptions import RequestException
+from urllib3.exceptions import ReadTimeoutError
 
 from ..connectors.mx_mongo import MongoDB
 from ..requests import get
@@ -409,7 +410,7 @@ def check_email(
             text_only=True,
             timeout=30,
         )
-    except RequestException:
+    except (ConnectionError, ReadTimeoutError, RequestException):
         response = {
             "email": email,
             "safe_to_send": False,
