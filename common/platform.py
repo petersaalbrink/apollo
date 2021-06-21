@@ -98,7 +98,7 @@ class _FileTransfer:
         if user_id:
             q = {"_id": ObjectId(user_id)}
         elif username:
-            q = {"username": username}
+            q = {"firstName": username}
         elif email:
             q = {"email": email}
         else:
@@ -107,7 +107,7 @@ class _FileTransfer:
         if not doc:
             raise FileTransferError("User not found.")
         self.user_id = doc["_id"]
-        self.username = doc["username"]
+        self.username = doc["firstName"]
         self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
