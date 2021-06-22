@@ -7,16 +7,15 @@ https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+cla
 from __future__ import annotations
 
 __all__ = (
+    "__version__",
     "Address",
     "ApiError",
     "Checks",
-    # "Cleaner",
     "CommonError",
     "ConnectorError",
     "Credentials",
-    # "Data",
     "DataError",
-    "DistributionPlot",
+    # "DistributionPlot",
     "ESClient",
     "ESClientError",
     "EmailClient",
@@ -28,24 +27,21 @@ __all__ = (
     "Log",
     "Match",
     "MatchError",
-    # "MatchMetrics",
     "MongoDB",
     "MongoDBError",
     "MySQLClient",
     "MySQLClientError",
     "Names",
-    # "NamesData",
     "NoMatch",
     "PandasSQL",
     "ParseError",
     "Person",
-    # "PersonData",
     "PersonsError",
     "PgSql",
     "PhoneApiError",
-    "PlotMx",
+    # "PlotMx",
     "Query",
-    "RadarPlot",
+    # "RadarPlot",
     "RequestError",
     "SQLClient",
     "SQLtoMongo",
@@ -94,11 +90,10 @@ __all__ = (
     "parse_name",
     "parsers",
     "partition",
-    # "persondata",
     "persons",
     "pip_upgrade",
     "platform",
-    "plot_stacked_bar",
+    # "plot_stacked_bar",
     "post",
     "preload_db",
     "profile",
@@ -124,14 +119,14 @@ __all__ = (
     "tqdm",
     "trange",
     "validate",
-    "visualizations",
+    # "visualizations",
     "zip_file",
 )
 
 from importlib import import_module
-from .etc.version import (
-    __version__,
-)
+from types import ModuleType
+
+from .etc.version import __version__
 
 _module_mapping = {
     "api": [
@@ -212,13 +207,6 @@ _module_mapping = {
         "partition",
         "reverse_geocode",
     ],
-    "persondata": [
-        "Cleaner",
-        "Data",
-        "MatchMetrics",
-        "NamesData",
-        "PersonData",
-    ],
     "persons": [
         "Address",
         "Match",
@@ -269,7 +257,7 @@ _module_mapping = {
 }
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> ModuleType:
     if name in _module_mapping:
         return import_module(f".{name}", __name__)
     for module, symbols in _module_mapping.items():
