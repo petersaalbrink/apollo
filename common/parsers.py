@@ -92,6 +92,7 @@ from datetime import datetime
 from functools import lru_cache
 from re import compile, findall
 from typing import Any, Callable, Iterable, TypeVar
+from warnings import warn
 
 from dateutil.parser import parse
 from numpy import zeros
@@ -278,17 +279,39 @@ def dateformat(date: str) -> str:
     Example::
         dateformat("28/08/2014") == "%d/%m/%Y"
     """
-    for div in "/-":
+
+    dt = parse(date)
+
+    for div in "-/":
         if div in date:
             break
     else:
-        raise ParseError(f"Couldn't find date divider in {date}")
-    year_first = date.find(f"{parse(date).year}") == 0
+        if len(date) == 8:
+            div = ""
+        else:
+            raise ParseError(f"Couldn't find date divider in {date!r}")
+
+    day_first = date.find(f"{dt.day:02}") == 0
+    month_first = date.find(f"{dt.month:02}") == 0
+    year_first = date.find(f"{dt.year}") == 0
+
+    one = sum((day_first, month_first, year_first))
+
+    if one == 0:
+        raise ParseError(f"Couldn't parse date format of {date!r}")
+    elif one > 1:
+        warn(
+            f"Couldn't parse order of day and month in {date!r}"
+            f"; assuming day first, then month."
+        )
+        month_first = False
+
     if year_first:
-        fmt = f"%Y{div}%m{div}%d"
+        return f"%Y{div}%m{div}%d"
+    elif month_first:
+        return f"%m{div}%d{div}%Y"
     else:
-        fmt = f"%d{div}%m{div}%Y"
-    return fmt
+        return f"%d{div}%m{div}%Y"
 
 
 def expand(data: list[dict[str, Any]], sort: bool = True) -> list[dict[str, Any]]:
