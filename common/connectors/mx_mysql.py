@@ -23,11 +23,10 @@ from mysql.connector import (
     ClientFlag,
     DatabaseError,
     InterfaceError,
-    MySQLConnection,
     OperationalError,
     connect,
 )
-from mysql.connector.cursor import MySQLCursor
+from mysql.connector.abstracts import MySQLConnectionAbstract, MySQLCursorAbstract
 from pandas import NaT, Timedelta, Timestamp, isna
 
 from ..env import _write_pem, commondir, envfile, getenv  # noqa
@@ -237,8 +236,8 @@ class MySQLClient:
         self.dictionary = dictionary
         self.use_pure = use_pure if HAVE_CEXT else True
 
-        self.cnx: MySQLConnection | None = None
-        self.cursor: MySQLCursor | None = None
+        self.cnx: MySQLConnectionAbstract | None = None
+        self.cursor: MySQLCursorAbstract | None = None
         self.executed_query: str | None = None
         self._cursor_columns: list[str] | None = None
         self._cursor_row_count: int | None = None
@@ -261,7 +260,9 @@ class MySQLClient:
         args = f"{self.database}{f'.{self.table_name}' if self.table_name else ''}"
         return f"MySQLClient({args})"
 
-    def connect(self, conn: bool = False) -> MySQLCursor | MySQLConnection:
+    def connect(
+        self, conn: bool = False
+    ) -> MySQLCursorAbstract | MySQLConnectionAbstract:
         """Connect to MySQL server.
 
         :param conn: Whether or not to return a connection object
@@ -286,14 +287,14 @@ class MySQLClient:
 
     def disconnect(self) -> None:
         """Disconnect from MySQL server."""
-        assert isinstance(self.cursor, MySQLCursor)
-        assert isinstance(self.cnx, MySQLConnection)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
+        assert isinstance(self.cnx, MySQLConnectionAbstract)
         self.cursor.close()
         self.cnx.close()
 
     def _set_cursor_properties(self) -> None:
         """Property setter for cursor-related attributes."""
-        if isinstance(self.cursor, MySQLCursor):
+        if isinstance(self.cursor, MySQLCursorAbstract):
             self._cursor_columns = self.cursor.column_names
             self.executed_query = self.cursor.statement
             if self.buffered:
@@ -310,7 +311,7 @@ class MySQLClient:
         :param args: and :param kwargs: will be passed onto
         :meth:`MySQLClient.cursor.execute`.
         """
-        assert isinstance(self.cursor, MySQLCursor)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
         self.cursor.execute(query, *args, **kwargs)
         self._after_execute(query)
 
@@ -326,20 +327,20 @@ class MySQLClient:
         :param query: Statement to execute in the connected cursor.
         :param data: The data array (or "sequence of parameters") to insert.
         """
-        assert isinstance(self.cursor, MySQLCursor)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
         self.cursor.executemany(query, data)
         self._after_execute(query)
 
     def _after_execute(self, query: Query | str) -> None:
         query = query.upper()
         if any(st in query for st in self._after_execute_statements):
-            assert isinstance(self.cnx, MySQLConnection)
+            assert isinstance(self.cnx, MySQLConnectionAbstract)
             self.cnx.commit()
         self._set_cursor_properties()
 
     def fetchall(self) -> list[dict[str, Any] | tuple[Any, ...]]:
         """Returns all rows of a query result set."""
-        assert isinstance(self.cursor, MySQLCursor)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
         return self.cursor.fetchall()
 
     def fetchmany(
@@ -347,12 +348,12 @@ class MySQLClient:
         size: int | None = None,
     ) -> list[dict[str, Any] | tuple[Any, ...]]:
         """Returns the next set of rows of a query result."""
-        assert isinstance(self.cursor, MySQLCursor)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
         return self.cursor.fetchmany(size)
 
     def fetchone(self) -> dict[str, Any] | tuple[Any, ...]:
         """Returns next row of a query result set."""
-        assert isinstance(self.cursor, MySQLCursor)
+        assert isinstance(self.cursor, MySQLCursorAbstract)
         return self.cursor.fetchone()
 
     def exists(self) -> bool:
@@ -469,7 +470,7 @@ class MySQLClient:
 
     def set_session_variables(
         self,
-        cursor: MySQLCursor | None = None,
+        cursor: MySQLCursorAbstract | None = None,
         *,
         variables: dict[str, str] | None = None,
         maximum_timeouts: bool = False,
@@ -501,7 +502,7 @@ class MySQLClient:
         if cursor:
             cursor.execute(query)
         else:
-            assert isinstance(self.cursor, MySQLCursor)
+            assert isinstance(self.cursor, MySQLCursorAbstract)
             self.cursor.execute(query)
 
     def chunk(
@@ -547,8 +548,8 @@ class MySQLClient:
         self.__config["use_pure"] = True
         self.connect()
         cnx, cursor = self.cnx, self.cursor
-        assert isinstance(cnx, MySQLConnection)
-        assert isinstance(cursor, MySQLCursor)
+        assert isinstance(cnx, MySQLConnectionAbstract)
+        assert isinstance(cursor, MySQLCursorAbstract)
         self.set_session_variables(cursor, maximum_timeouts=True)
 
         try:
