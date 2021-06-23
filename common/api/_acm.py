@@ -30,10 +30,9 @@ class ACM:
         "https://www.acm.nl/nl/onderwerpen/telecommunicatie"
         "/telefoonnummers/nummers-doorzoeken/resultaat"
     )
+    headers = {"Range": "bytes=0-6144"}
     lock = Lock()
     TZ = timezone("Europe/Amsterdam")
-    proxies: dict[str, str] | None
-    session: Session
 
     def __init__(self) -> None:
         self.n_errors = {
@@ -49,31 +48,47 @@ class ACM:
                 tzinfo=self.TZ,
             )
         )
-        self.set_attrs()
+        self._proxies: dict[str, str] | None = None
+        self._session: Session | None = None
 
-    def set_attrs(self) -> None:
-        if self.provider == self.PROXIWARE:
-            self.proxies = {
-                "http": "nl.proxiware.com:12000",
-                "https": "nl.proxiware.com:12000",
-            }
-        elif self.provider == self.LUMINATI:
-            self.proxies = get_proxies()["proxies"]
-        self.session = get_session()
+    @property
+    def proxies(self) -> dict[str, str]:
+        if self._proxies is None:
+            if self.provider == self.PROXIWARE:
+                self._proxies = {
+                    "http": "nl.proxiware.com:12000",
+                    "https": "nl.proxiware.com:12000",
+                }
+            elif self.provider == self.LUMINATI:
+                self._proxies = get_proxies()["proxies"]
+        assert isinstance(self._proxies, dict)
+        return self._proxies
+
+    @property
+    def session(self) -> Session:
+        if self._session is None:
+            self._session = get_session()
+        assert isinstance(self._session, Session)
+        return self._session
+
+    def reset_attrs(self) -> None:
+        self._proxies = None
+        self._session = None
 
     def acm_get(self, params: dict[str, str]) -> Response:
         return self.session.get(
             url=self.URL,
-            headers={
-                "Range": "bytes=0-6144",
-            },
+            headers=self.headers,
             proxies=self.proxies,
             params=params,
         )
 
     def acm_get_no_proxies(self, params: dict[str, str]) -> Response:
-        self.proxies = None
-        return self.acm_get(params=params)
+        return self.session.get(
+            url=self.URL,
+            headers=self.headers,
+            params=params,
+        )
 
     def _get_response(self, params: dict[str, str]) -> Response:
 
@@ -84,7 +99,7 @@ class ACM:
 
                 if self.MAX_REACHED in response.text:
                     self.n_errors[self.provider] += 1
-                    self.set_attrs()
+                    self.reset_attrs()
                 else:
                     self.n_errors[self.provider] = 0
                     break
@@ -92,7 +107,7 @@ class ACM:
             except ProxyError:
                 self.n_errors[self.provider] += 1
                 self.provider = self.provider[::-1]
-                self.set_attrs()
+                self.reset_attrs()
 
         else:
             response = self.acm_get_no_proxies(params=params)
