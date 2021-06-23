@@ -1,18 +1,18 @@
 Matrixian Codeboek
 
-Dit codeboek bevat informatie over de structuur en inhoud van het databestand. 
-Deze informatie bevindt zich in de tabbladen van dit Excel bestand. 
+Dit codeboek bevat informatie over de structuur en inhoud van het databestand.
+Deze informatie bevindt zich in de tabbladen van dit Excel bestand.
 
 
 -Data_overzicht-
 
-In dit tabblad staat een tabel met daarin de metadata van het aangeleverde bestand. 
-Uitleg van de verschillende velden: 
+In dit tabblad staat een tabel met daarin de metadata van het aangeleverde bestand.
+Uitleg van de verschillende velden:
 
 column_name: Kolomnaam
 col_data_type: Datatype
 null_values: Aantal lege velden
-%_of_nulls: Percentage van lege velden 
+%_of_nulls: Percentage van lege velden
 unique_values_count: Aantal unieke waarden
 count: Aantal rijen
 mean: Gemiddelde (Continue variabele)
@@ -26,25 +26,25 @@ max: Grootste waarde (Continue variabele)
 
 -Data_profiel-
 
-In dit tabblad staat voor elke kolom een tabel met de metadata zoals omschreven in tabblad Data_overzicht. 
+In dit tabblad staat voor elke kolom een tabel met de metadata zoals omschreven in tabblad Data_overzicht.
 Naast deze informatie staat ook een ondersteunende grafiek.
 
 *Categorische Waarde:
-Horizontale staafdiagram waarbij de variable op de x-as staat en de frequentie van de variable op de y-as. 
+Horizontale staafdiagram waarbij de variable op de x-as staat en de frequentie van de variable op de y-as.
 Het maximale aantal variable dat wordt weergegeven is 15.
 Voor het maken van deze diagram worden ontbrekende waardes niet meegenomen.
 
 *Boolean Waarde:
-Verticale staafdiagram waarbij de variable op de x-as staat en de frequentie van de variable op de y-as. 
+Verticale staafdiagram waarbij de variable op de x-as staat en de frequentie van de variable op de y-as.
 Voor het maken van deze diagram worden ontbrekende waardes niet meegenomen.
 
 *Continue Waarde:
-1) Distributiegrafiek: hierin is de verdeling te zien van de continue waardes. 
+1) Distributiegrafiek: hierin is de verdeling te zien van de continue waardes.
 2) Boxplot zonder uitschieters: een grafische weergave van de vijf-getallensamenvatting. Deze vijf-getallensamenvatting bestaat uit het minimum, het eerste kwartiel, de mediaan (of tweede kwartiel),
-   het derde kwartiel en het maximum van de waargenomen data. 
+   het derde kwartiel en het maximum van de waargenomen data.
 3) Boxplot met uitschieters: Deze plot is het zelfde als de voorgaande boxplot maar hier worden de uitschieters weergegeven door een diamant symbool.
    Uitschieter: Een waarde die 1,5 keer groter is dan de afstand tussen het eerste kwartiel en het derde kwartiel (1,5xIKA).
-   
+
 
 -Data_omschrijving-
 

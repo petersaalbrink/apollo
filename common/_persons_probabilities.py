@@ -3,37 +3,51 @@ from __future__ import annotations
 from collections import namedtuple
 from functools import lru_cache, partial
 from itertools import combinations
-from typing import Any, Union
+from typing import Any
 
 from .connectors.mx_elastic import ESClient
 from .exceptions import PersonsError
 
 es_initials = partial(
     ESClient("cdqc.person_data_initials_occurrence").find,
-    size=1, source_only=True, _source="proportion",
+    size=1,
+    source_only=True,
+    _source="proportion",
 )
 es_lastnames = partial(
     ESClient("cdqc.person_data_lastname_occurrence").find,
-    size=1, source_only=True, _source=["regular", "fuzzy"],
+    size=1,
+    source_only=True,
+    _source=["regular", "fuzzy"],
 )
 es_firstnames = partial(
     ESClient("cdqc.person_data_firstname_occurrence").find,
-    size=1, source_only=True, _source="count",
+    size=1,
+    source_only=True,
+    _source="count",
 )
 NameCounts = namedtuple("NameCounts", ("first", "last"))
 
 
 class Constant:
-    alpha = .05
+    alpha = 0.05
     adults_nl = 14_000_000
     yearly_deceased = 151_885
     population_size = adults_nl + (yearly_deceased * 20)
     with ESClient("cdqc.person_data") as _es:
         db_count = _es.count()
-    max_proportion_initials: float = es_initials({"sort": {"proportion": "desc"}})["proportion"]
-    max_proportion_lastname: float = es_lastnames({"sort": {"regular.proportion": "desc"}})["regular"]["proportion"]
-    mean_proportion_lastname = (max_proportion_lastname + es_lastnames(
-        {"sort": {"regular.proportion": "asc"}})["regular"]["proportion"]) / 2
+    _result = es_initials({"sort": {"proportion": "desc"}})
+    assert isinstance(_result, dict)
+    max_proportion_initials: float = _result["proportion"]
+    _result = es_lastnames({"sort": {"regular.proportion": "desc"}})
+    assert isinstance(_result, dict)
+    max_proportion_lastname: float = _result["regular"]["proportion"]
+    _result = es_lastnames({"sort": {"regular.proportion": "asc"}})
+    assert isinstance(_result, dict)
+    mean_proportion_lastname = (
+        max_proportion_lastname + _result["regular"]["proportion"]
+    ) / 2
+    del _result
     max_age = 90
     min_age = 18
     dob_fp = 1 / (365.25 * (max_age - min_age))
@@ -45,56 +59,72 @@ class Constant:
     addresses_per_person = ((yearly_movements * average_lifespan) / inhabitants_nl) + 2
     fuzzy_addresses_per_person = addresses_per_person * 44
     address_fp = (addresses_per_person ** 2) / number_of_residential_addresses
-    fuzzy_address_fp = (fuzzy_addresses_per_person ** 2) / number_of_residential_addresses
+    fuzzy_address_fp = (
+        fuzzy_addresses_per_person ** 2
+    ) / number_of_residential_addresses
     postcode_fp = (addresses_per_person ** 2) / number_of_postcodes
     mobile_total_distributed = 55_000_000
     mobile_yearly_reused = 100_000
     phone_number_of_years = 10
-    mobile_reuse_p = (mobile_yearly_reused * phone_number_of_years) / mobile_total_distributed
+    mobile_reuse_p = (
+        mobile_yearly_reused * phone_number_of_years
+    ) / mobile_total_distributed
     mobile_fp = (1 / 2) * mobile_reuse_p
     landline_total_distributed = 70_000_000
     landline_yearly_reused = 400_000
-    landline_reuse_p = (landline_yearly_reused * phone_number_of_years) / landline_total_distributed
+    landline_reuse_p = (
+        landline_yearly_reused * phone_number_of_years
+    ) / landline_total_distributed
     landline_fp = (1 / 2) * landline_reuse_p
 
 
-def set_alpha(alpha: float = .05) -> bool:
+def set_alpha(alpha: float = 0.05) -> bool:
     Constant.alpha = alpha
     return True
 
 
 def set_population_size(oldest_client_record_in_years: int = 20) -> bool:
-    Constant.population_size = Constant.adults_nl + (Constant.yearly_deceased * oldest_client_record_in_years)
+    Constant.population_size = Constant.adults_nl + (
+        Constant.yearly_deceased * oldest_client_record_in_years
+    )
     return True
 
 
 def set_number_of_residential_addresses() -> bool:
     Constant.number_of_residential_addresses = ESClient(
-        "real_estate_alias", host="prod").distinct_count(
+        "real_estate_alias", host="prod"
+    ).distinct_count(
         field="address.identification.addressId",
-        find={"match": {"houseDetails.usePurpose": "woonfunctie"}})
+        find={"match": {"houseDetails.usePurpose": "woonfunctie"}},
+    )
     return True
 
 
 def set_number_of_postcodes() -> bool:
     Constant.number_of_postcodes = ESClient(
-        "real_estate_alias", host="prod").distinct_count(
+        "real_estate_alias", host="prod"
+    ).distinct_count(
         field="address.identification.postalCode",
-        find={"match": {"houseDetails.usePurpose": "woonfunctie"}})
+        find={"match": {"houseDetails.usePurpose": "woonfunctie"}},
+    )
     return True
 
 
-@lru_cache()
+@lru_cache
 def get_es_lastname(lastname: str) -> dict[str, dict[str, float]]:
-    return es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
+    result = es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
+    assert isinstance(result, dict)
+    return result
 
 
-@lru_cache()
+@lru_cache
 def get_es_firstname(firstname: str) -> dict[str, float]:
-    return es_firstnames({"query": {"term": {"firstname.keyword": firstname}}})
+    result = es_firstnames({"query": {"term": {"firstname.keyword": firstname}}})
+    assert isinstance(result, dict)
+    return result
 
 
-@lru_cache()
+@lru_cache
 def get_name_counts(name: str) -> NameCounts:
     try:
         first = get_es_firstname(name)["count"] or 0
@@ -107,7 +137,7 @@ def get_name_counts(name: str) -> NameCounts:
     return NameCounts(first, last)
 
 
-@lru_cache()
+@lru_cache
 def default_proportion_lastname() -> dict[str, float]:
     return {
         "regular": Constant.mean_proportion_lastname,
@@ -115,44 +145,44 @@ def default_proportion_lastname() -> dict[str, float]:
     }
 
 
-@lru_cache()
+@lru_cache
 def proportion_lastname(lastname: str) -> dict[str, float]:
     if not lastname:
         return default_proportion_lastname()
     count = get_es_lastname(lastname)
     try:
         return {
-            "regular": count["regular"]["proportion"] or Constant.mean_proportion_lastname,
+            "regular": count["regular"]["proportion"]
+            or Constant.mean_proportion_lastname,
             "fuzzy": count["fuzzy"]["proportion"] or Constant.mean_proportion_lastname,
         }
     except TypeError:
         return default_proportion_lastname()
 
 
-@lru_cache()
+@lru_cache
 def proportions_lastnames(lastnames: tuple[str, ...]) -> dict[str, float]:
     return {
-        count: sum(
-            get_es_lastname(name)[count]["count"]
-            for name in lastnames
-        ) / Constant.db_count
+        count: sum(get_es_lastname(name)[count]["count"] for name in lastnames)
+        / Constant.db_count
         for count in ("regular", "fuzzy")
     }
 
 
-@lru_cache()
+@lru_cache
 def proportion_initial(initial: str) -> float:
     try:
-        return (
-            es_initials({"query": {"term": {"initials.keyword": initial}}})["proportion"]
-            or Constant.max_proportion_initials
-        )
+        result = es_initials({"query": {"term": {"initials.keyword": initial}}})
+        assert isinstance(result, dict)
+        return result["proportion"] or Constant.max_proportion_initials
     except TypeError:
         return Constant.max_proportion_initials
 
 
-@lru_cache()
-def get_proportions_lastname(lastname: str) -> dict[Union[str, tuple[str, ...]], dict[str, float]]:
+@lru_cache
+def get_proportions_lastname(
+    lastname: str,
+) -> dict[str | tuple[str, ...], dict[str, float]]:
     """Get counts for all parts of the lastname."""
     if lastname:
         if " " in lastname:
@@ -169,31 +199,38 @@ def get_proportions_lastname(lastname: str) -> dict[Union[str, tuple[str, ...]],
         return {"": {"": Constant.max_proportion_lastname}}
 
 
-@lru_cache()
+@lru_cache
 def get_proportions_initials(initials: str) -> dict[str, float]:
     if initials:
-        return {initial: proportion_initial(initial) for initial in {initials[0], initials}}
+        return {
+            initial: proportion_initial(initial) for initial in {initials[0], initials}
+        }
     else:
         return {"": Constant.max_proportion_initials}
 
 
-@lru_cache()
-def estimated_people_with_lastname(lastname: str):
+@lru_cache
+def estimated_people_with_lastname(lastname: str) -> float:
     return proportion_lastname(lastname)["regular"] * Constant.population_size
 
 
-@lru_cache()
+@lru_cache
 def base_calculations(
-        lastname: str,
-        initials: str,
-) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
-    @lru_cache()
-    def is_partial(part: Union[str, tuple]) -> bool:
+    lastname: str,
+    initials: str,
+) -> dict[tuple[str | tuple[str, ...], ...], float]:
+    @lru_cache
+    def is_partial(part: str | tuple[Any, ...]) -> bool:
         return " " in lastname and isinstance(part, str) and " " not in part
 
     return {
-        (name, ("" if is_partial(name) else initial), situation):
-            Constant.population_size * l_proportion * (1 if is_partial(name) else i_proportion)
+        (
+            name,
+            ("" if is_partial(name) else initial),
+            situation,
+        ): Constant.population_size
+        * l_proportion
+        * (1 if is_partial(name) else i_proportion)
         for name, l_proportions in get_proportions_lastname(lastname).items()
         for situation, l_proportion in l_proportions.items()
         for initial, i_proportion in {
@@ -203,42 +240,43 @@ def base_calculations(
     }
 
 
-@lru_cache()
+@lru_cache
 def full_calculation_fp(
-        lastname: str,
-        initials: str,
-        date_of_birth: bool = None,
-        fuzzy_address: bool = None,
-        address: bool = None,
-        postcode: bool = None,
-        mobile: bool = None,
-        number: bool = None,
-) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
+    lastname: str,
+    initials: str,
+    date_of_birth: bool | None = None,
+    fuzzy_address: bool | None = None,
+    address: bool | None = None,
+    postcode: bool | None = None,
+    mobile: bool | None = None,
+    number: bool | None = None,
+) -> dict[tuple[str | tuple[str, ...], ...], float]:
     if postcode and address:
         raise PersonsError("Choose postcode or full address.")
 
-    @lru_cache()
-    def not_partial(part: Union[str, tuple], *_) -> bool:
+    @lru_cache
+    def not_partial(part: str | tuple[Any, ...], *_: Any) -> bool:
         return not (" " in lastname and isinstance(part, str) and " " not in part)
 
     return {
-        base: p * (Constant.dob_fp if (date_of_birth and not_partial(*base)) else 1)
-                * (Constant.fuzzy_address_fp if fuzzy_address else 1)
-                * (Constant.address_fp if address else 1)
-                * (Constant.postcode_fp if postcode else 1)
-                * (Constant.mobile_fp if (mobile and not_partial(*base)) else 1)
-                * (Constant.landline_fp if number else 1)
+        base: p
+        * (Constant.dob_fp if (date_of_birth and not_partial(*base)) else 1)
+        * (Constant.fuzzy_address_fp if fuzzy_address else 1)
+        * (Constant.address_fp if address else 1)
+        * (Constant.postcode_fp if postcode else 1)
+        * (Constant.mobile_fp if (mobile and not_partial(*base)) else 1)
+        * (Constant.landline_fp if number else 1)
         for base, p in base_calculations(lastname, initials).items()
     }
 
 
-@lru_cache()
+@lru_cache
 def extra_fields_calculation(
-        lastname: str,
-        initials: str,
-        must_have_address: bool = False,
-        **kwargs: Any,
-) -> dict[tuple[Union[str, tuple[str, ...]], ...], float]:
+    lastname: str,
+    initials: str,
+    must_have_address: bool = False,
+    **kwargs: Any,
+) -> dict[tuple[str | tuple[str, ...], ...], float]:
     """Calculate which combinations of extra fields are valid.
 
     Query builder should check if the base_calculation_fp < Constant.alpha,
@@ -263,21 +301,22 @@ def extra_fields_calculation(
     if all(p_fp < Constant.alpha for p_fp in bases.values()):
         return bases
 
-    kws = [kw for kw, arg in kwargs.items() if arg]
+    kws_selection = [kw for kw, arg in kwargs.items() if arg]
     kws_combinations = (
         {kw: True for kw in kw_combi}
-        for i in range(1, len(kws) + 1)
-        for kw_combi in combinations(kws, i)
+        for i in range(1, len(kws_selection) + 1)
+        for kw_combi in combinations(kws_selection, i)
         if not ("address" in kw_combi and "fuzzy_address" in kw_combi)
     )
     if must_have_address:
         kws_combinations = (
-            kw_combi for kw_combi in kws_combinations
+            kw_combi
+            for kw_combi in kws_combinations
             if "address" in kw_combi or "fuzzy_address" in kw_combi
         )
 
-    @lru_cache()
-    def is_partial(part: Union[str, tuple], *_) -> bool:
+    @lru_cache
+    def is_partial(part: str | tuple[Any, ...], *_: Any) -> bool:
         return " " in lastname and isinstance(part, str) and " " not in part
 
     calculations = {}
@@ -295,11 +334,11 @@ def extra_fields_calculation(
                     tmp["address"] = tmp.pop("fuzzy_address")
                 else:
                     tmp = kws
-                if not any((
-                        (*base, *v) in valid_combinations
-                        for i in range(1, len(tmp) + 1)
-                        for v in combinations(tmp, i)
-                )):
+                if not any(
+                    (*base, *v) in valid_combinations
+                    for i in range(1, len(tmp) + 1)
+                    for v in combinations(tmp, i)
+                ):
                     if is_partial(*base):
                         kws.pop("mobile", None)
                         kws.pop("date_of_birth", None)

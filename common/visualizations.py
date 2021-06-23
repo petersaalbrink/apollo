@@ -39,29 +39,47 @@ __all__ = (
     "plot_stacked_bar",
 )
 
-import numpy as np
-from matplotlib import rc
-import matplotlib.path as path
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, LogNorm
-import seaborn as sns
+from typing import Any
 
-mx_colors = {'dark_green': "#0E5C59", 'green': "#05AB89", 'light_green': "#9AD2B1",
-             'blue_green': '#52BBB5', 'light_purple': '#C975AA', 'purple': "#C94397"}
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from matplotlib import patches, path, rc
+from matplotlib.colors import ListedColormap, LogNorm
+from numpy import ndarray
+
+mx_colors = {
+    "dark_green": "#0E5C59",
+    "green": "#05AB89",
+    "light_green": "#9AD2B1",
+    "blue_green": "#52BBB5",
+    "light_purple": "#C975AA",
+    "purple": "#C94397",
+}
 mx_cmap = ListedColormap(sns.color_palette(mx_colors.values()).as_hex())
-plt.style.use('seaborn')
+plt.style.use("seaborn")
 
 
 class PlotMx:
     """Make plots, Matrixian style!"""
-    def __init__(self):
-        self.size = None
 
-    def makefig(self, xlabel='No label', ylabel='No label', dpi=50, figsize=(8, 8), grid=True, size=16, title=''):
+    def __init__(self) -> None:
+        self.size: int = 16
+
+    def makefig(
+        self,
+        xlabel: str = "No label",
+        ylabel: str = "No label",
+        dpi: int = 50,
+        figsize: tuple[int, int] = (8, 8),
+        grid: bool = True,
+        size: int | None = None,
+        title: str = "",
+    ) -> PlotMx:
         """Pre-set the figure with its figure size, labels, grid, sizes, and title name."""
 
-        self.size = size
+        if size is not None:
+            self.size = size
         plt.figure(figsize=figsize, dpi=dpi)
         plt.grid(grid)
         plt.xticks(size=self.size)
@@ -72,27 +90,39 @@ class PlotMx:
 
         return self
 
-    def histogram(self, x=None, y=None, TwoD=None, bins=20, color=mx_colors['dark_green']):
+    def histogram(
+        self,
+        x: Any,
+        y: Any,
+        two_d: bool = False,
+        bins: int = 20,
+        color: str = mx_colors["dark_green"],
+    ) -> PlotMx:
         """Make a histogram.
 
         Make sure to call the makefig method first.
 
         x       ->  Insert your x-axis data
         y       ->  Insert your y-axis data
-        TwoD    ->  You can choose for a TwoD plot where you can make a histogram density.
+        two_d   ->  You can choose for a TwoD plot where you can make a histogram density.
         color   ->  color can be changed but is by default matrixian dark green
         bins    ->  by default set on 20
         """
-        if TwoD:
+        if two_d:
             plt.hist2d(x, y, norm=LogNorm(), bins=bins, cmap=mx_cmap)
             cbar = plt.colorbar(orientation="horizontal", pad=0.15)
-            cbar.ax.set_ylabel('Counts', size=self.size)
+            cbar.ax.set_ylabel("Counts", size=self.size)
         else:
             plt.hist(x, color=color, bins=bins)
 
         return self
 
-    def spaghetti(self, x=None, y=None, color=mx_colors['dark_green']):
+    def spaghetti(
+        self,
+        x: Any,
+        y: Any,
+        color: str = mx_colors["dark_green"],
+    ) -> PlotMx:
         """Make a line plot.
 
         x       ->  Insert your x-axis data
@@ -102,7 +132,15 @@ class PlotMx:
         plt.plot(x, y, color=color)
         return self
 
-    def bar(self, x=None, y=None, names=None, horizontal=False, width=0.25, color=None):
+    def bar(
+        self,
+        x: Any,
+        y: Any,
+        names: list[str] | None = None,
+        horizontal: bool = False,
+        width: float = 0.25,
+        color: str | list[str] | None = None,
+    ) -> PlotMx:
         """Make a barplot.
 
         x           ->  Insert your x-axis data
@@ -114,27 +152,24 @@ class PlotMx:
                         By default these are matrixian purple and matrixian green
         """
 
-        # TODO: add annotation
-
         if not color:
-            color = [mx_colors['purple'], mx_colors['green']]
-        if not isinstance(color, list):
+            color = [mx_colors["purple"], mx_colors["green"]]
+        if isinstance(color, str):
             color = [color]
         if len(color) == 1:
-            color = [color] * 2
+            color = [*color, *color]
 
         if not names:
             names = []
         x_pos = [i for i, _ in enumerate(names)]
         if y:
+            ind = np.arange(len(x))  # the x locations for the groups
             if horizontal:
-                ind = np.arange(len(x))  # the x locations for the groups
                 plt.barh(ind - width / 2, x, width, color=color[0])
                 plt.barh(ind + width / 2, y, width, color=color[1])
                 plt.yticks(x_pos, names, size=self.size)
                 plt.xticks(size=self.size)
             else:
-                ind = np.arange(len(x))  # the x locations for the groups
                 plt.bar(ind - width / 2, x, width, color=color[0])
                 plt.bar(ind + width / 2, y, width, color=color[1])
                 plt.xticks(x_pos, names, size=self.size)
@@ -170,7 +205,12 @@ class DistributionPlot:
         4. plot.histogram()
     """
 
-    def __init__(self, x: list = None, fieldname: str = None, grid: bool = None):
+    def __init__(
+        self,
+        x: list[Any],
+        fieldname: str | None = None,
+        grid: bool = False,
+    ):
         self.x = x
         self.fieldname = fieldname
         self.grid = grid
@@ -178,27 +218,27 @@ class DistributionPlot:
         self.xtick_labels = self.ytick_labels = None
 
         # Visualization defaults
-        self.color_bars = '#20b2aa'
+        self.color_bars = "#20b2aa"
         self.color_baredges = "black"
 
         # Initialize the figure
         self.fig = self.ax = plt.subplots()
-        plt.gca().spines['right'].set_visible(False)
-        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines["right"].set_visible(False)
+        plt.gca().spines["top"].set_visible(False)
         plt.grid(self.grid)
 
-    def histogram(self, color_bars: str = None, color_baredges: str = None) -> dict:
-        # Set the layout
-        layout_dict = {
-            "color_bars": (color_bars, self.color_bars),
-            "color_baredges": (color_baredges, self.color_baredges)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def histogram(
+        self,
+        color_bars: str | None = None,
+        color_baredges: str | None = None,
+    ) -> dict[str, Any]:
         # Plot the histogram
-        plt.hist(self.x, density=False, facecolor=layout_dict["color_bars"],
-                 edgecolor=layout_dict["color_baredges"])
+        plt.hist(
+            self.x,
+            density=False,
+            facecolor=color_bars or self.color_bars,
+            edgecolor=color_baredges or self.color_baredges,
+        )
 
         # Plot the labels
         plt.title("Histogram")
@@ -216,28 +256,34 @@ class DistributionPlot:
 
         return ticks
 
-    def bar_chart(self, color_bars: str = None, color_baredges: str = None) -> dict:
-        # Set the layout
-        layout_dict = {
-            "color_bars": (color_bars, self.color_bars),
-            "color_baredges": (color_baredges, self.color_baredges)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def bar_chart(
+        self,
+        color_bars: str | None = None,
+        color_baredges: str | None = None,
+    ) -> dict[str, Any]:
         # Prepare the data for the bar chart
         keys, counts = np.unique(self.x, return_counts=True)
         total_counts = sum(counts)
 
         # Plot the bar chart
-        plt.bar(keys, counts, color=layout_dict["color_bars"], edgecolor=layout_dict["color_baredges"])
+        plt.bar(
+            keys,
+            counts,
+            color=color_bars or self.color_bars,
+            edgecolor=color_baredges or self.color_baredges,
+        )
 
         # Plot the ticks
         plt.xticks(keys)
 
         # Plot the percentages
         for index, data in enumerate(counts):
-            plt.text(x=index, y=data, s=f"{data / total_counts * 100:.2f}%", fontdict=dict(fontsize=10))
+            plt.text(
+                x=index,
+                y=data,
+                s=f"{data / total_counts * 100:.2f}%",
+                fontdict={"fontsize": 10},
+            )
 
         # Plot the labels
         plt.title("Bar Chart")
@@ -255,7 +301,7 @@ class DistributionPlot:
 
         return ticks
 
-    def save(self, name_figure: str = None):
+    def save(self, name_figure: str | None = None) -> None:
         if not name_figure:
             name_figure = self.name_figure
 
@@ -280,11 +326,17 @@ class RadarPlot:
         plot.add_labels()
     """
 
-    def __init__(self, row: list = None, fieldnames: List[str] = None, maximum: List[int] = None):
+    def __init__(
+        self,
+        row: list[Any],
+        fieldnames: list[str],
+        maximum: list[int],
+    ):
         self.row = np.array(row)
         self.fieldnames = fieldnames
         self.maximum = maximum
-        self.fig = self.axes = None
+        self.axes: plt.Axes | None = None
+        self.fig: plt.Figure | None = None
         self.name_figure = "figure"
 
         # Initialize layout of the figure
@@ -308,27 +360,35 @@ class RadarPlot:
         self.size_ticklabels = 10
         self.size_fieldnamelabels = 14
 
-    def create_grid(self, size_figure: tuple = None, color_background: str = None, color_grid: str = None,
-                    color_axes: str = None, linewidth_grid: int = None, linestyle_grid: str = None,
-                    linewidth_axes: int = None):
-        layout_dict = {
-            "size_figure": (size_figure, self.size_figure),
-            "color_background": (color_background, self.color_background),
-            "color_grid": (color_grid, self.color_grid),
-            "color_axes": (color_axes, self.color_axes),
-            "linewidth_grid": (linewidth_grid, self.linewidth_grid),
-            "linestyle_grid": (linestyle_grid, self.linestyle_grid),
-            "linewidth_axes": (linewidth_axes, self.linewidth_axes)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def create_grid(
+        self,
+        size_figure: tuple[Any, Any] | None = None,
+        color_background: str | None = None,
+        color_grid: str | None = None,
+        color_axes: str | None = None,
+        linewidth_grid: int | None = None,
+        linestyle_grid: str | None = None,
+        linewidth_axes: int | None = None,
+    ) -> None:
         # Choose some nice colors for the grid
-        rc('axes', fc=layout_dict["color_background"], ec=layout_dict["color_axes"], lw=layout_dict["linewidth_axes"])
-        rc('grid', c=layout_dict["color_grid"], lw=layout_dict["linewidth_grid"], ls=layout_dict["linestyle_grid"])
+        rc(
+            "axes",
+            fc=color_background or self.color_background,
+            ec=color_axes or self.color_axes,
+            lw=linewidth_axes or self.linewidth_axes,
+        )
+        rc(
+            "grid",
+            c=color_grid or self.color_grid,
+            lw=linewidth_grid or self.linewidth_grid,
+            ls=linestyle_grid or self.linestyle_grid,
+        )
 
         # Make figure background the same colors as axes
-        self.fig = plt.figure(figsize=layout_dict["size_figure"], facecolor=layout_dict["color_background"])
+        self.fig = plt.figure(
+            figsize=size_figure or self.size_figure,
+            facecolor=color_background or self.color_background,
+        )
 
         # Use a polar axes
         self.axes = plt.subplot(111, polar=True)
@@ -336,78 +396,75 @@ class RadarPlot:
         # Set axes limits
         plt.ylim(0, 5)
 
-    def set_ticks(self, lim: int = None):
-        layout_dict = {
-            "limit": (lim, self.limit)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def set_ticks(self, lim: int | None = None) -> tuple[np.ndarray, int]:
         # Set y ticks from lima to limb
-        plt.yticks(np.linspace(1, layout_dict["limit"], layout_dict["limit"]), [])
+        plt.yticks(np.linspace(1, lim or self.limit, lim or self.limit), [])
         t = np.arange(0, 2 * np.pi, 2 * np.pi / len(self.fieldnames))
 
         # Set ticks to the number of categories (in radians)
         plt.xticks(t, [])
 
-        return [t, layout_dict["limit"]]
+        return t, lim or self.limit
 
-    def add_plot(self, color_polygon: str = None, linewidth_polygon: int = None, alpha_polygon: int = None,
-                 size_points: int = None, linewidth_points: int = None, color_points: str = None,
-                 edgecolor_points: str = None):
-
-        layout_dict = {
-            "color_polygon": (color_polygon, self.color_polygon),
-            "alpha_polygon": (alpha_polygon, self.alpha_polygon),
-            "linewidth_polygon": (linewidth_polygon, self.linewidth_polygon),
-            "color_points": (color_points, self.color_points),
-            "edgecolor_points": (edgecolor_points, self.edgecolor_points),
-            "linewidth_points": (linewidth_points, self.linewidth_points),
-            "size_points": (size_points, self.size_points)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def add_plot(
+        self,
+        color_polygon: str | None = None,
+        linewidth_polygon: int | None = None,
+        alpha_polygon: int | None = None,
+        size_points: int | None = None,
+        linewidth_points: int | None = None,
+        color_points: str | None = None,
+        edgecolor_points: str | None = None,
+    ) -> ndarray:
         axes_values = np.array(
-            [self.row[i] / self.maximum[i] * self.set_ticks()[1] for i in range(len(self.fieldnames))]
+            [
+                self.row[i] / self.maximum[i] * self.set_ticks()[1]
+                for i in range(len(self.fieldnames))
+            ]
         )
 
         # Draw polygon representing values
         points = [(x, y) for x, y in zip(self.set_ticks()[0], axes_values)]
         points.append(points[0])
-        points = np.array(points)
-        codes = [path.Path.MOVETO, ] + \
-                [path.Path.LINETO, ] * (len(axes_values) - 1) + \
-                [path.Path.CLOSEPOLY]
+        point_array = np.array(points)
+        codes = (
+            [path.Path.MOVETO]
+            + [path.Path.LINETO] * (len(axes_values) - 1)
+            + [path.Path.CLOSEPOLY]
+        )
 
-        _path = path.Path(points, codes)
-        _patch = patches.PathPatch(_path, fill=True, color=layout_dict["color_polygon"],
-                                   linewidth=layout_dict["linewidth_polygon"], alpha=layout_dict["alpha_polygon"])
+        _path = path.Path(point_array, codes)  # noqa
+        _patch = patches.PathPatch(
+            _path,
+            fill=True,
+            color=color_polygon or self.color_polygon,
+            linewidth=linewidth_polygon or self.linewidth_polygon,
+            alpha=alpha_polygon or self.alpha_polygon,
+        )
+        assert isinstance(self.axes, plt.Axes)
         self.axes.add_patch(_patch)
-        _patch = patches.PathPatch(_path, fill=False, linewidth=layout_dict["linewidth_polygon"])
+        _patch = patches.PathPatch(
+            _path, fill=False, linewidth=linewidth_polygon or self.linewidth_polygon
+        )
         self.axes.add_patch(_patch)
 
         # Draw circles at value points
         plt.scatter(
-            points[:, 0],
-            points[:, 1],
-            linewidth=layout_dict["linewidth_points"],
-            s=layout_dict["size_points"],
-            facecolor=layout_dict["color_points"],
-            edgecolor=layout_dict["edgecolor_points"],
-            zorder=2
+            point_array[:, 0],
+            point_array[:, 1],
+            linewidth=linewidth_points or self.linewidth_points,
+            s=size_points or self.size_points,
+            facecolor=color_points or self.color_points,
+            edgecolor=edgecolor_points or self.edgecolor_points,
+            zorder=2,
         )
-        return points
+        return point_array
 
-    def add_labels(self, size_fieldnamelabels: int = None, size_ticklabels: int = None):
-
-        layout_dict = {
-            "size_fieldnamelabels": (size_fieldnamelabels, self.size_fieldnamelabels),
-            "size_ticklabels": (size_ticklabels, self.size_ticklabels)
-        }
-
-        layout_dict = {key: item[0] if item[0] else item[1] for key, item in layout_dict.items()}
-
+    def add_labels(
+        self,
+        size_fieldnamelabels: int | None = None,
+        size_ticklabels: int | None = None,
+    ) -> None:
         for index, value in enumerate(self.fieldnames):
             # Call (the position of) the points
             points = self.add_plot()
@@ -422,23 +479,44 @@ class RadarPlot:
                 ha = "right"
 
             # Draw the fieldname labels
-            plt.text(angle_rad, 5.5, value, size=layout_dict["size_fieldnamelabels"], horizontalalignment=ha,
-                     verticalalignment="center")
+            plt.text(
+                angle_rad,
+                5.5,
+                value,
+                size=size_fieldnamelabels or self.size_fieldnamelabels,
+                horizontalalignment=ha,
+                verticalalignment="center",
+            )
 
             # Draw tick labels on the y axes
-            plt.text(angle_rad, points[:, 1][index] + 0.2, f"{self.row[index]:.2f}",
-                     size=layout_dict["size_ticklabels"], horizontalalignment=ha, verticalalignment="center")
+            plt.text(
+                angle_rad,
+                points[:, 1][index] + 0.2,
+                f"{self.row[index]:.2f}",
+                size=size_ticklabels or self.size_ticklabels,
+                horizontalalignment=ha,
+                verticalalignment="center",
+            )
 
-    def save(self, name_figure: str = None):
+    def save(self, name_figure: str | None = None) -> None:
         if not name_figure:
             name_figure = self.name_figure
 
         plt.savefig(fname=name_figure, bbox_inches="tight", format="png")
 
 
-def plot_stacked_bar(data, series_labels, *, category_labels=None,
-                     show_values=False, value_format="{}", y_label=None,
-                     colors=None, grid=True, reverse=False):
+def plot_stacked_bar(
+    data: np.ndarray | list[list[Any]],
+    series_labels: list[str],
+    *,
+    category_labels: list[str] | None = None,
+    show_values: bool = False,
+    value_format: str = "{}",
+    y_label: str | None = None,
+    colors: list[str] | None = None,
+    grid: bool = True,
+    reverse: bool = False,
+) -> None:
     """Plots a stacked bar chart with the data and labels provided.
 
     Arguments:
@@ -495,17 +573,24 @@ def plot_stacked_bar(data, series_labels, *, category_labels=None,
 
     if reverse:
         data = np.flip(data, axis=1)
-        category_labels = reversed(category_labels)
+        assert isinstance(category_labels, list)
+        category_labels.reverse()
 
     if colors:
         for i, row_data in enumerate(data):
-            axes.append(plt.bar(ind, row_data, bottom=cum_size,
-                                label=series_labels[i], color=colors[i]))
+            axes.append(
+                plt.bar(
+                    ind,
+                    row_data,
+                    bottom=cum_size,
+                    label=series_labels[i],
+                    color=colors[i],
+                )
+            )
             cum_size += row_data
     else:
         for i, row_data in enumerate(data):
-            axes.append(plt.bar(ind, row_data, bottom=cum_size,
-                                label=series_labels[i]))
+            axes.append(plt.bar(ind, row_data, bottom=cum_size, label=series_labels[i]))
             cum_size += row_data
 
     if category_labels:
@@ -523,6 +608,10 @@ def plot_stacked_bar(data, series_labels, *, category_labels=None,
         for axis in axes:
             for bar in axis:
                 w, h = bar.get_width(), bar.get_height()
-                plt.text(bar.get_x() + w / 2, bar.get_y() + h / 2,
-                         value_format.format(h), ha="center",
-                         va="center")
+                plt.text(
+                    bar.get_x() + w / 2,
+                    bar.get_y() + h / 2,
+                    value_format.format(h),
+                    ha="center",
+                    va="center",
+                )

@@ -12,6 +12,8 @@ This module also contains a `get_token` function, which returns headers
 containing an access token for the Matrixian Platform.
 """
 
+from __future__ import annotations
+
 __all__ = (
     "Credentials",
     "change_secret",
@@ -20,19 +22,22 @@ __all__ = (
     "getenv",
 )
 
-from base64 import b64encode, b64decode
+from base64 import b64decode, b64encode
 from collections import namedtuple
 from contextlib import suppress
 from json import loads
 from pathlib import Path
 from re import compile
+
 from requests import post
+
 try:
-    from getpass import getpass
     import termios  # noqa
+    from getpass import getpass
+
     _ = termios.tcgetattr, termios.tcsetattr
 except (ImportError, AttributeError):
-    getpass = input
+    getpass = input  # type: ignore
 from .env import getenv
 
 Credentials = namedtuple("Credentials", ("usr", "pwd"))
@@ -77,16 +82,17 @@ def change_secret(name: str) -> Credentials:
         re = compile(r"=.*\n")
         file = Path(Path.home() / ".common/.env")
         with open(file) as f:
-            curr_data = [line for line in f]
-        new_data = [re.sub(f"={usr}\n", line)
-                    if line.startswith(f"{name}_USR")
-                    else line for line in curr_data]
-        new_data = [re.sub(f"={pwd}\n", line)
-                    if line.startswith(f"{name}_PWD")
-                    else line for line in new_data]
+            curr_data = list(f)
+        new_data = [
+            re.sub(f"={usr}\n", line) if line.startswith(f"{name}_USR") else line
+            for line in curr_data
+        ]
+        new_data = [
+            re.sub(f"={pwd}\n", line) if line.startswith(f"{name}_PWD") else line
+            for line in new_data
+        ]
         if curr_data == new_data:
-            new_data.extend([f"{name}_USR={usr}\n",
-                             f"{name}_PWD={pwd}\n"])
+            new_data.extend([f"{name}_USR={usr}\n", f"{name}_PWD={pwd}\n"])
         with open(file, "w") as f:
             f.writelines(new_data)
 
@@ -127,14 +133,15 @@ def get_secret(name: str) -> Credentials:
     return secret
 
 
-def get_token() -> dict:
+def get_token() -> dict[str, str]:
     """Return headers with an access token for the Matrixian Platform."""
     usr, pwd = get_secret("MX_PLATFORM_DATA")
     while True:
         with suppress(KeyError):
-            posted = post("https://api.matrixiangroup.com/token",
-                          data={"username": usr,
-                                "password": pwd})
+            posted = post(
+                "https://api.matrixiangroup.com/token",
+                data={"username": usr, "password": pwd},
+            )
             token = loads(posted.text)["access_token"]
             break
     return {

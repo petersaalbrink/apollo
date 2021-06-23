@@ -6,26 +6,29 @@ __all__ = (
 )
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from contextlib import suppress
-from typing import Callable, NewType, Union, Type
-from tqdm import tqdm
+from typing import Any, NewType
 
-from pandas import read_sql
+from pandas import DataFrame, read_sql
 from pymongo import IndexModel, UpdateMany, UpdateOne
 from pymongo.errors import OperationFailure
 from sqlalchemy import create_engine
+from tqdm import tqdm
 
-from ..connectors import EmailClient, MongoDB, MySQLClient
+from ..connectors.mx_email import EmailClient
+from ..connectors.mx_mongo import MongoDB, MxCollection
+from ..connectors.mx_mysql import MySQLClient
 from ..exceptions import ConnectorError
 
 
 class MappingsBase(ABC):
     @abstractmethod
-    def document(self, d: dict) -> dict:
+    def document(self, d: dict[str, Any]) -> dict[str, Any]:
         pass
 
     @abstractmethod
-    def delete(self, d: dict) -> str:
+    def delete(self, d: dict[str, Any]) -> str:
         pass
 
 
@@ -34,14 +37,14 @@ Mappings = NewType("Mappings", MappingsBase)
 
 class SQLtoMongo:
     def __init__(
-            self,
-            *,
-            mongo_database: str,
-            mongo_collection: str,
-            sql_database: str,
-            sql_table: str,
-            mappings: Mappings = None,
-            **kwargs,
+        self,
+        *,
+        mongo_database: str,
+        mongo_collection: str,
+        sql_database: str,
+        sql_table: str,
+        mappings: Mappings | None = None,
+        **kwargs: Any,
     ):
         """Create an object to perform MySQL-to-MongoDB operations.
 
@@ -57,24 +60,30 @@ class SQLtoMongo:
             table=sql_table,
         )
         config = self.sql.__dict__["_MySQLClient__config"]
-        conn_args = {k: v for k, v in config.items() if k in ["ssl_ca", "ssl_cert", "ssl_key"]}
+        conn_args = {
+            k: v for k, v in config.items() if k in ["ssl_ca", "ssl_cert", "ssl_key"]
+        }
         self.engine = create_engine(
             f"mysql+mysqlconnector://{config['user']}:{config['password']}@{config['host']}/{sql_database}",
-            connect_args={**conn_args, "buffered": False})
+            connect_args={**conn_args, "buffered": False},
+        )
         self.mappings = mappings
-        self.query = None
-        self.matched_count = self.number_of_insertions = self.number_of_updates = self.number_of_deletions = 0
+        self.query: str | None = None
+        self.matched_count = (
+            self.number_of_insertions
+        ) = self.number_of_updates = self.number_of_deletions = 0
         self.chunksize = kwargs.pop("chunksize", 1_000)
         self.date_columns = kwargs.pop("date_columns", None)
         self.index_columns = kwargs.pop("index_columns", None)
 
-    def create_indexes(self, names: list[str]):
+    def create_indexes(self, names: list[str]) -> None:
         """Create indexes in the MongoDB collection.
 
         The name of the (nested) field is set as the index name.
         """
+        assert isinstance(self.coll, MxCollection)
         indexes = [
-            IndexModel([(name, 1)], name=name.split('.')[-1])
+            IndexModel([(name, 1)], name=name.split(".")[-1])
             for name in names
             if name.split(".")[-1] not in self.coll.index_information().keys()
         ]
@@ -82,18 +91,24 @@ class SQLtoMongo:
             self.coll.create_indexes(indexes=indexes)
 
     def delete(
-            self,
-            *,
-            filter: dict = None,
-            field: str = None,
-            preprocessing: Callable = None,
-    ):
-        if (filter and field) or (filter and preprocessing) or (not filter and not field):
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        field: str | None = None,
+        preprocessing: Callable[[DataFrame], DataFrame] | None = None,
+    ) -> None:
+        if (
+            (filter and field)
+            or (filter and preprocessing)
+            or (not filter and not field)
+        ):
             raise ConnectorError("Use filter OR field/processing.")
+        assert isinstance(self.coll, MxCollection)
         if filter:
             result = self.coll.delete_many(filter=filter)
             self.number_of_deletions += result.deleted_count
         else:
+            assert isinstance(self.mappings, MappingsBase)
             for chunk in self.generator_df:
                 if preprocessing:
                     chunk = preprocessing(chunk)
@@ -101,7 +116,7 @@ class SQLtoMongo:
                 result = self.coll.delete_many(filter={field: {"$in": chunk}})
                 self.number_of_deletions += result.deleted_count
 
-    def _set_session_variables(self):
+    def _set_session_variables(self) -> None:
         # We set these session variables to avoid error 2013 (Lost connection)
         for var, val in (
             ("MAX_EXECUTION_TIME", "31536000000"),  # ms, can be higher
@@ -113,7 +128,7 @@ class SQLtoMongo:
             self.engine.execute(f"SET SESSION {var}={val}")
 
     @property
-    def generator_df(self):
+    def generator_df(self) -> DataFrame:
         self._set_session_variables()
         try:
             return read_sql(
@@ -121,7 +136,7 @@ class SQLtoMongo:
                 con=self.engine,
                 chunksize=self.chunksize,
                 parse_dates=self.date_columns,
-                index_col=self.index_columns
+                index_col=self.index_columns,
             )
         except Exception as e:
             if not self.query:
@@ -129,16 +144,18 @@ class SQLtoMongo:
             raise
 
     def insert(
-            self,
-            *,
-            preprocessing: Callable = None,
-    ):
+        self,
+        *,
+        preprocessing: Callable[[DataFrame], DataFrame] | None = None,
+    ) -> None:
         """Insert new documents from MySQL into MongoDB.
 
         Documents are selected from MySQL using :attr: `SQLtoMongo.query`,
         and then mapped using :attr: `SQLtoMongo.mappings.document`.
         This assumes the :class: `Mappings` object has a :meth: `Mappings.document`.
         """
+        assert isinstance(self.coll, MxCollection)
+        assert isinstance(self.mappings, MappingsBase)
         for chunk in self.generator_df:
             if preprocessing:
                 chunk = preprocessing(chunk)
@@ -146,28 +163,35 @@ class SQLtoMongo:
             result = self.coll.insert_many(chunk)
             self.number_of_insertions += len(result.inserted_ids)
 
-    def notify(self, to_address: Union[list[str], str], title: str = "Update succeeded", name: str = ""):
+    def notify(
+        self,
+        to_address: list[str] | str,
+        title: str = "Update succeeded",
+        name: str = "",
+    ) -> None:
         if name:
             name = f"{name}\n\n"
-        total = sum(self.__getattribute__(n) for n in dir(self) if n.startswith("number"))
+        total = sum(
+            self.__getattribute__(n) for n in dir(self) if n.startswith("number")
+        )
         EmailClient().send_email(
             to_address=to_address,
             subject=title,
             message=f"MongoDB update ran successfully!\n\n"
-                    f"{name}"
-                    f"Number of matched documents: {self.matched_count}\n"
-                    f"Number of updated documents: {self.number_of_updates}\n"
-                    f"Number of deleted documents: {self.number_of_deletions}\n"
-                    f"Number of inserted documents: {self.number_of_insertions}\n"
-                    f"Total number of documents affected: {total}"
+            f"{name}"
+            f"Number of matched documents: {self.matched_count}\n"
+            f"Number of updated documents: {self.number_of_updates}\n"
+            f"Number of deleted documents: {self.number_of_deletions}\n"
+            f"Number of inserted documents: {self.number_of_insertions}\n"
+            f"Total number of documents affected: {total}",
         )
 
     def set_query(
-            self,
-            *,
-            query_name: str = None,
-            query: str = None,
-    ):
+        self,
+        *,
+        query_name: str | None = None,
+        query: str | None = None,
+    ) -> None:
         """Set the query for the MySQL SELECT operation.
 
         If :param query_name: is None, this will default to all rows and all columns.
@@ -184,29 +208,34 @@ class SQLtoMongo:
         elif not query_name:
             self.query = f"SELECT * FROM {self.sql.database}.{self.sql.table_name}"
         else:
+            assert isinstance(self.coll, MxCollection)
+            coll = MongoDB(f"{self.coll.database.name}.queries")
+            assert isinstance(coll, MxCollection)
             try:
-                self.query = MongoDB(f"{self.coll.database.name}.queries").find_one({"name": query_name})["query"]
+                self.query = coll.find_one({"name": query_name})["query"]
             except KeyError as e:
                 raise ConnectorError(f"Could not find query '{query_name}'") from e
 
     def update(
-            self,
-            *,
-            filter: Callable,
-            update: Callable,
-            preprocessing: Callable = None,
-            progress_bar: bool = False,
-            update_cls: Union[Type[UpdateMany], Type[UpdateOne]] = UpdateOne,
-            upsert: bool = False,
-    ):
+        self,
+        *,
+        filter: Callable[[dict[str, Any]], dict[str, Any]],
+        update: Callable[[dict[str, Any]], dict[str, Any]],
+        preprocessing: Callable[[DataFrame], DataFrame] | None = None,
+        progress_bar: bool = False,
+        update_cls: type[UpdateMany] | type[UpdateOne] = UpdateOne,  # noqa
+        upsert: bool = False,
+    ) -> None:
+        assert isinstance(self.coll, MxCollection)
         for chunk in tqdm(self.generator_df, disable=not progress_bar):
             if preprocessing:
                 chunk = preprocessing(chunk)
-            chunk = [update_cls(
-                filter(d),
-                update(d),
-                upsert=upsert,
-            )
+            chunk = [
+                update_cls(
+                    filter(d),
+                    update(d),
+                    upsert=upsert,
+                )
                 for d in chunk.to_dict("records")
             ]
             result = self.coll.bulk_write(requests=chunk)

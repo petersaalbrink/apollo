@@ -1,23 +1,22 @@
-__all__ = (
-    "SQLClient",
-)
+from __future__ import annotations
 
-# Environment variables
-from common.env import getenv, commondir
+__all__ = ("SQLClient",)
+
+from typing import Any
+
+from sqlalchemy import MetaData, Table, create_engine
+from sqlalchemy.sql.base import ImmutableColumnCollection
+
+from common.env import commondir, getenv
 from common.secrets import get_secret
-
-# Connections
-from sqlalchemy import create_engine, Table
-
-# SQL Alchemy
-from sqlalchemy import MetaData
 
 
 class SQLClient:
     """
     Client for connecting to Matrixian's MySQL database.
 
-    This client combines SQLAlchemy and MySQL Connector. For now, the class includes two additional functions:
+    This client combines SQLAlchemy and MySQL Connector. For now, the class includes two
+    additional functions:
     1. Counting the total amount of rows in a table
     2. Getting the types and length of the columns as specified in SQL
 
@@ -33,7 +32,13 @@ class SQLClient:
            _count = sql.count()
 
     """
-    def __init__(self, database: str = None, table: str = None, **kwargs):
+
+    def __init__(
+        self,
+        database: str | None = None,
+        table: str | None = None,
+        **kwargs: Any,
+    ):
         self.database = database
         self.table = table
 
@@ -53,11 +58,9 @@ class SQLClient:
         }
         connect_args = {
             **self.__ssl,
-            **dict(
-                raise_on_warnings=kwargs.get("raise_on_warnings", False),
-                buffered=kwargs.get("buffered", False),
-                use_pure=kwargs.get("use_pure", True)
-            )
+            "raise_on_warnings": kwargs.get("raise_on_warnings", False),
+            "buffered": kwargs.get("buffered", False),
+            "use_pure": kwargs.get("use_pure", True),
         }
 
         # Create the engine
@@ -66,18 +69,14 @@ class SQLClient:
     def count(self) -> int:
         """This function returns the total row count of an SQL table"""
         md = MetaData(bind=self.engine)
-        _table = Table(self.table, meta=md, autoload=True, autoload_with=self.engine)
-        return _table.count().scalar()
+        table = Table(self.table, meta=md, autoload=True, autoload_with=self.engine)
+        return table.count().scalar()
 
-    def get_dtypes(self) -> dict:
+    def get_dtypes(self) -> dict[str, Any]:
         """This function returns the dtypes from SQL in dictionary form"""
         md = MetaData(bind=self.engine)
-        _table = Table(self.table, meta=md, autoload=True, autoload_with=self.engine)
-        dtypes = {col.name: col.type for col in _table.c}
+        table = Table(self.table, meta=md, autoload=True, autoload_with=self.engine)
+        columns = table.columns
+        assert isinstance(columns, ImmutableColumnCollection)
+        dtypes = {col.name: col.type for col in columns}
         return dtypes
-
-
-if __name__ == '__main__':
-    sql = SQLClient(database="avix", table="region_mapping")
-    sql.get_dtypes()
-

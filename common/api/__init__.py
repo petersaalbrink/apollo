@@ -15,6 +15,7 @@ __all__ = (
 )
 
 from importlib import import_module
+from types import ModuleType
 
 _module_mapping = {
     "address": [
@@ -30,7 +31,7 @@ _module_mapping = {
 }
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> ModuleType:
     if name in _module_mapping:
         return import_module(f".{name}", __name__)
     for module, symbols in _module_mapping.items():

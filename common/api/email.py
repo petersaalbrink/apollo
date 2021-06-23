@@ -6,30 +6,31 @@ __all__ = (
     "validate_email",
 )
 
-from concurrent.futures import ThreadPoolExecutor
+import re
+import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from copy import copy
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-import re
 from smtplib import SMTP, SMTPServerDisconnected
 from threading import Thread
-import traceback
-from typing import Optional, Union
+from typing import Any
 
-from babel import Locale, UnknownLocaleError
 import dns.resolver as resolve
+from babel import Locale, UnknownLocaleError
 from dns.exception import DNSException
 from pymailcheck import suggest
 from requests.exceptions import RequestException
 from urllib3.exceptions import ReadTimeoutError
 
-from ..connectors.mx_mongo import MongoDB
+from ..connectors.mx_mongo import MongoDB, MxDatabase
 from ..requests import get
 
 PATH = Path(__file__).parents[1] / "etc"
 LIVE = "136.144.203.100"
-URL = f"http://{LIVE}:4000/email?email="
+URL = f"http://{LIVE}:4000/email?email="  # noqa
 
 ERROR_CODES = {
     421: "Service not available, closing transmission channel",
@@ -73,16 +74,17 @@ class _EmailValidator:
     at_words_regex = re.compile(r"[a-zA-Z]*@[a-zA-Z]*")
     disposable_providers = _disposable_providers
     free_providers = _free_providers
+    assert isinstance(_db, MxDatabase)
     mongo_cache = _db["email_checker_cache"]
     mongo_mx = _db["email_checker_mx_records"]
     td = timedelta(days=90)
 
     def __init__(
-            self,
-            email: str,
-            check_accept_all: bool,
-            use_cache: bool,
-            debug: bool,
+        self,
+        email: str,
+        check_accept_all: bool,
+        use_cache: bool,
+        debug: bool,
     ):
         self.CHECK_ACCEPT_ALL = check_accept_all
         self.USE_CACHE = use_cache
@@ -92,7 +94,7 @@ class _EmailValidator:
 
         self.START = dt.now()
 
-        self.OUTPUT_DICT = {
+        self.OUTPUT_DICT: dict[str, Any] = {
             "accept_all": False,
             "corrected": False,
             "disposable": False,
@@ -114,9 +116,9 @@ class _EmailValidator:
             "time": None,
             "user": None,
         }
-        self._futures = []
+        self._futures: list[Future[None]] = []
 
-    def parse_and_correct(self):
+    def parse_and_correct(self) -> None:
 
         emails = self.email_regex.findall(self.EMAIL)
         if emails:
@@ -139,7 +141,7 @@ class _EmailValidator:
                     self.EMAIL = f"{self.EMAIL[:-len(tld)]}.{tld}"
                     self.OUTPUT_DICT["corrected"] = True
 
-    def check_syntax(self):
+    def check_syntax(self) -> None:
         matched = self.syntax_regex.match(self.EMAIL)
         if not matched or len(self.EMAIL.strip()) > 320:
             raise ValueError
@@ -153,7 +155,9 @@ class _EmailValidator:
         else:
             server.set_debuglevel(0)
 
-        server.connect(self.OUTPUT_DICT["mx_record"])
+        mx_record = self.OUTPUT_DICT["mx_record"]
+        assert isinstance(mx_record, str)
+        server.connect(mx_record)
 
         server.helo()
         server.mail("my@from.addr.ess")
@@ -162,7 +166,7 @@ class _EmailValidator:
 
         return code, message.decode().lower()
 
-    def check_accept_all(self):
+    def check_accept_all(self) -> None:
         if not self.CHECK_ACCEPT_ALL:
             return
 
@@ -172,7 +176,7 @@ class _EmailValidator:
             self.OUTPUT_DICT["accept_all"] = True
             self.OUTPUT_DICT["safe_to_send"] = False
 
-    def check_user(self):
+    def check_user(self) -> None:
 
         code, message = self._connect(self.EMAIL)
 
@@ -182,18 +186,18 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "OK"
             self.OUTPUT_DICT["qualification"] = "OK"
         elif (
-                "4.1.8" in message
-                or "5.1.8" in message
-                or "5.7.1" in message
-                or "authentication required" in message
-                or "block" in message
-                or "list" in message
-                or "not yet authorized" in message
-                or "relay access denied" in message
-                or "relay not permitted" in message
-                or "relaying denied from" in message
-                or "sender address rejected" in message
-                or "sender verify failed" in message
+            "4.1.8" in message
+            or "5.1.8" in message
+            or "5.7.1" in message
+            or "authentication required" in message
+            or "block" in message
+            or "list" in message
+            or "not yet authorized" in message
+            or "relay access denied" in message
+            or "relay not permitted" in message
+            or "relaying denied from" in message
+            or "sender address rejected" in message
+            or "sender verify failed" in message
         ):
             self.OUTPUT_DICT["status"] = "WARNING"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
@@ -202,16 +206,19 @@ class _EmailValidator:
             self.OUTPUT_DICT["status"] = "USELESS"
             self.OUTPUT_DICT["qualification"] = f"Not Permitted ({code})"
 
-    def _parse_user_name(self, user: str):
+    def _parse_user_name(self, user: str) -> None:
         from ..persons import parse_name  # importing here to avoid circular import
-        parsed = parse_name(user)
-        self.OUTPUT_DICT["name"].update({
-            "first": parsed.first,
-            "gender": parsed.gender,
-            "last": parsed.last,
-        })
 
-    def parse_user_domain_country(self, executor: ThreadPoolExecutor):
+        parsed = parse_name(user)
+        self.OUTPUT_DICT["name"].update(
+            {
+                "first": parsed.first,
+                "gender": parsed.gender,
+                "last": parsed.last,
+            }
+        )
+
+    def parse_user_domain_country(self, executor: ThreadPoolExecutor) -> None:
         split_address = self.EMAIL.split("@")
 
         # Parse user
@@ -229,44 +236,54 @@ class _EmailValidator:
             except (ValueError, UnknownLocaleError):
                 pass
 
-    def check_disposable(self):
+    def check_disposable(self) -> None:
         if self.OUTPUT_DICT["domain"].lower() in self.disposable_providers:
             self.OUTPUT_DICT["disposable"] = True
             self.OUTPUT_DICT["safe_to_send"] = False
 
-    def check_free(self):
+    def check_free(self) -> None:
         if self.OUTPUT_DICT["domain"].lower() in self.free_providers:
             self.OUTPUT_DICT["free"] = True
 
-    def time_spent(self, ret: bool = False) -> Optional[str]:
+    def time_spent(self, ret: bool = False) -> str | None:
         if ret:
             return str(int((dt.now() - self.START).total_seconds() * 1000))
         else:
-            self.OUTPUT_DICT["time"] = str(int((dt.now() - self.START).total_seconds() * 1000))
+            self.OUTPUT_DICT["time"] = str(
+                int((dt.now() - self.START).total_seconds() * 1000)
+            )
+            return None
 
-    def search_cache(self) -> Optional[dict]:
+    def search_cache(self) -> dict[str, Any] | None:
         if self.USE_CACHE:
-            result = self.mongo_cache.find_one({
-                "email": self.EMAIL,
-                "created_at": {"$gte": dt.now() - self.td},
-            })
+            result = self.mongo_cache.find_one(
+                {
+                    "email": self.EMAIL,
+                    "created_at": {"$gte": dt.now() - self.td},
+                }
+            )
 
             if result and "output" in result and result["output"]:
                 result["output"]["time"] = self.time_spent(True)
                 return result["output"]
+        return None
 
-    def save_request(self):
+    def save_request(self) -> None:
         if self.USE_CACHE:
-            self.mongo_cache.insert_one({
-                "email": self.ORIGINAL_EMAIL,
-                "check_accept_all": self.CHECK_ACCEPT_ALL,
-                "output": self.OUTPUT_DICT,
-                "created_at": dt.now()
-            })
+            self.mongo_cache.insert_one(
+                {
+                    "email": self.ORIGINAL_EMAIL,
+                    "check_accept_all": self.CHECK_ACCEPT_ALL,
+                    "output": self.OUTPUT_DICT,
+                    "created_at": dt.now(),
+                }
+            )
 
-    def get_mx_records(self):
+    def get_mx_records(self) -> None:
 
-        cached_mx_records = self.mongo_mx.find_one({"domain": self.OUTPUT_DICT["domain"]})
+        cached_mx_records = self.mongo_mx.find_one(
+            {"domain": self.OUTPUT_DICT["domain"]}
+        )
 
         if cached_mx_records:
             self.OUTPUT_DICT["mx_record"] = cached_mx_records["mx_records"][0]
@@ -277,13 +294,15 @@ class _EmailValidator:
             if mx_records:
                 self.OUTPUT_DICT["mx_record"] = mx_records[0]
 
-            self.mongo_mx.insert_one({
-                "domain": self.OUTPUT_DICT["domain"],
-                "mx_records": mx_records,
-                "accept_all": False
-            })
+            self.mongo_mx.insert_one(
+                {
+                    "domain": self.OUTPUT_DICT["domain"],
+                    "mx_records": mx_records,
+                    "accept_all": False,
+                }
+            )
 
-    def validate_email(self) -> dict:
+    def validate_email(self) -> dict[str, Any]:
         with ThreadPoolExecutor() as executor:
             try:
 
@@ -337,48 +356,54 @@ class _EmailValidator:
             except ValueError:
                 if self.DEBUG:
                     traceback.print_exc()
-                self.OUTPUT_DICT.update({
-                    "email": self.EMAIL,
-                    "qualification": "Invalid e-mail address format",
-                    "safe_to_send": False,
-                    "status": "MANREV",
-                    "time": self.time_spent(True),
-                })
+                self.OUTPUT_DICT.update(
+                    {
+                        "email": self.EMAIL,
+                        "qualification": "Invalid e-mail address format",
+                        "safe_to_send": False,
+                        "status": "MANREV",
+                        "time": self.time_spent(True),
+                    }
+                )
                 return self.OUTPUT_DICT
 
             except (DNSException, OSError, SMTPServerDisconnected):
                 if self.DEBUG:
                     traceback.print_exc()
-                self.OUTPUT_DICT.update({
-                    "email": self.EMAIL,
-                    "qualification": "SMTP Invalid",
-                    "safe_to_send": False,
-                    "status": "USELESS",
-                    "time": self.time_spent(True),
-                })
+                self.OUTPUT_DICT.update(
+                    {
+                        "email": self.EMAIL,
+                        "qualification": "SMTP Invalid",
+                        "safe_to_send": False,
+                        "status": "USELESS",
+                        "time": self.time_spent(True),
+                    }
+                )
                 return self.OUTPUT_DICT
 
             except Exception:  # noqa
                 if self.DEBUG:
                     traceback.print_exc()
-                self.OUTPUT_DICT.update({
-                    "email": self.EMAIL,
-                    "qualification": "Exception",
-                    "safe_to_send": False,
-                    "status": "EXCEPTION",
-                    "success": False,
-                    "time": self.time_spent(True),
-                })
+                self.OUTPUT_DICT.update(
+                    {
+                        "email": self.EMAIL,
+                        "qualification": "Exception",
+                        "safe_to_send": False,
+                        "status": "EXCEPTION",
+                        "success": False,
+                        "time": self.time_spent(True),
+                    }
+                )
                 return self.OUTPUT_DICT
 
 
 def validate_email(
-        email: str,
-        check_accept_all: bool,
-        use_cache: bool,
-        debug: bool = False,
-        try_again: bool = False,
-):
+    email: str,
+    check_accept_all: bool,
+    use_cache: bool,
+    debug: bool = False,
+    try_again: bool = False,
+) -> dict[str, Any]:
     response = _EmailValidator(
         email=email,
         check_accept_all=check_accept_all,
@@ -395,11 +420,11 @@ def validate_email(
     return response
 
 
-@lru_cache()
+@lru_cache
 def check_email(
-        email: str,
-        safe_to_send: bool = False,
-) -> Union[dict, bool]:
+    email: str,
+    safe_to_send: bool = False,
+) -> dict[str, Any] | bool:
     """Use Matrixian's Email Checker API to validate an email address.
 
     Optionally, set safe_to_send to True for boolean output.
@@ -415,6 +440,7 @@ def check_email(
             "email": email,
             "safe_to_send": False,
         }
+    assert isinstance(response, dict)
     if safe_to_send:
         return response["safe_to_send"]
     return response

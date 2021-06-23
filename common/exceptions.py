@@ -1,6 +1,9 @@
 """Module that contains exceptions used by other common modules."""
 
 
+from __future__ import annotations
+
+
 class CommonError(Exception):
     """Base exception for all common modules."""
 

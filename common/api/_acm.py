@@ -1,71 +1,81 @@
-from datetime import datetime
-from functools import lru_cache, partial
-from threading import Lock
+from __future__ import annotations
 
-try:  # python3.8
-    from functools import cached_property
-except ImportError:  # python3.7
-    from cached_property import cached_property
+from datetime import datetime
+from threading import Lock
+from typing import TYPE_CHECKING, Any
 
 from bs4 import BeautifulSoup
 from bson.codec_options import CodecOptions
-from pendulum import timezone
-from requests import Response
+from pendulum.tz import timezone
+from pymongo.collection import Collection
+from requests import Response, Session
 from requests.exceptions import ProxyError
 
 from ..connectors.mx_mongo import MongoDB
 from ..exceptions import PhoneApiError
 from ..requests import get_proxies, get_session
 
+if TYPE_CHECKING:
+    from .phone import PhoneApiResponse
+
 
 class ACM:
     LUMINATI = "01"
     PROXIWARE = "10"
     MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
-    NOT_PORTED = "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
-    URL = "https://www.acm.nl/nl/onderwerpen/telecommunicatie/telefoonnummers/nummers-doorzoeken/resultaat"
+    NOT_PORTED = (
+        "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
+    )
+    URL = (
+        "https://www.acm.nl/nl/onderwerpen/telecommunicatie"
+        "/telefoonnummers/nummers-doorzoeken/resultaat"
+    )
     lock = Lock()
     TZ = timezone("Europe/Amsterdam")
+    proxies: dict[str, str] | None
+    session: Session
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.n_errors = {
             self.LUMINATI: 0,
             self.PROXIWARE: 0,
         }
         self.provider = self.LUMINATI
-
-    @cached_property
-    def db(self):
-        return MongoDB("cdqc.phonenumbers").with_options(
+        coll = MongoDB("cdqc.phonenumbers")
+        assert isinstance(coll, Collection)
+        self.db = coll.with_options(
             codec_options=CodecOptions(
                 tz_aware=True,
                 tzinfo=self.TZ,
-            ))
+            )
+        )
+        self.set_attrs()
 
-    @property
-    @lru_cache()
-    def acm_get(self):
+    def set_attrs(self) -> None:
         if self.provider == self.PROXIWARE:
-            proxies = {
+            self.proxies = {
                 "http": "nl.proxiware.com:12000",
                 "https": "nl.proxiware.com:12000",
             }
         elif self.provider == self.LUMINATI:
-            proxies = get_proxies()["proxies"]
-        else:
-            raise PhoneApiError(self.provider)
-        return partial(get_session().get, url=self.URL, headers={
-            "Range": "bytes=0-6144",
-        }, proxies=proxies)
+            self.proxies = get_proxies()["proxies"]
+        self.session = get_session()
 
-    @property
-    @lru_cache()
-    def acm_get_no_proxies(self):
-        return partial(get_session().get, url=self.URL, headers={
-            "Range": "bytes=0-6144",
-        })
+    def acm_get(self, params: dict[str, str]) -> Response:
+        return self.session.get(
+            url=self.URL,
+            headers={
+                "Range": "bytes=0-6144",
+            },
+            proxies=self.proxies,
+            params=params,
+        )
 
-    def _get_response(self, params: dict) -> Response:
+    def acm_get_no_proxies(self, params: dict[str, str]) -> Response:
+        self.proxies = None
+        return self.acm_get(params=params)
+
+    def _get_response(self, params: dict[str, str]) -> Response:
 
         while not all(n > 1 for n in self.n_errors.values()):
 
@@ -74,7 +84,7 @@ class ACM:
 
                 if self.MAX_REACHED in response.text:
                     self.n_errors[self.provider] += 1
-                    ACM.acm_get.fget.cache_clear()  # noqa
+                    self.set_attrs()
                 else:
                     self.n_errors[self.provider] = 0
                     break
@@ -82,7 +92,7 @@ class ACM:
             except ProxyError:
                 self.n_errors[self.provider] += 1
                 self.provider = self.provider[::-1]
-                ACM.acm_get.fget.cache_clear()  # noqa
+                self.set_attrs()
 
         else:
             response = self.acm_get_no_proxies(params=params)
@@ -91,7 +101,7 @@ class ACM:
 
         return response
 
-    def acm_request(self, number: int) -> dict:
+    def acm_request(self, number: int) -> dict[str, str]:
 
         params = {
             "query": f"0{number}",
@@ -118,24 +128,32 @@ class ACM:
                     raise PhoneApiError(result.text) from e
             except IndexError as e:
                 raise PhoneApiError(result.text) from e
-            data = {"Nummerportering": params["query"], "Laatste portering": "", "Huidige aanbieder": ""}
+            data = {
+                "Nummerportering": params["query"],
+                "Laatste portering": "",
+                "Huidige aanbieder": "",
+            }
 
         return data
 
-    def enrich_doc(self, number_data: dict) -> dict:
+    def enrich_doc(self, number_data: dict[str, Any]) -> dict[str, Any]:
 
-        acm_data = self.acm_request(number_data["national_number"])
+        number = number_data["national_number"]
+        assert isinstance(number, int)
+        acm_data = self.acm_request(number)
 
         number_data["current_carrier"] = acm_data["Huidige aanbieder"]
         number_data["date_portation"] = (
-            self.TZ.convert(datetime.strptime(acm_data["Laatste portering"], "%d-%m-%Y"))
+            self.TZ.convert(
+                datetime.strptime(acm_data["Laatste portering"], "%d-%m-%Y")
+            )
             if acm_data["Laatste portering"]
             else None
         )
 
         return number_data
 
-    def find_doc(self, phone_obj):
+    def find_doc(self, phone_obj: PhoneApiResponse) -> dict[str, Any]:
 
         doc = self.db.find_one({"national_number": phone_obj.national_number})
 
@@ -145,16 +163,18 @@ class ACM:
 
             self.db.update_one(
                 {"_id": doc["_id"]},
-                {"$set": {
-                    "current_carrier": doc["current_carrier"],
-                    "date_portation": doc["date_portation"],
-                    "acm_scraped": True,
-                }},
+                {
+                    "$set": {
+                        "current_carrier": doc["current_carrier"],
+                        "date_portation": doc["date_portation"],
+                        "acm_scraped": True,
+                    }
+                },
             )
 
         return doc
 
-    def get_acm_data(self, phone_obj):
+    def get_acm_data(self, phone_obj: PhoneApiResponse) -> PhoneApiResponse:
 
         doc = self.find_doc(phone_obj)
 
@@ -163,7 +183,9 @@ class ACM:
             phone_obj.country_iso2 = doc["country_iso2"]
             phone_obj.country_iso3 = doc["country_iso3"]
             phone_obj.country_name = doc["country_name"]
-            phone_obj.current_carrier = doc["current_carrier"] or doc["original_carrier"]
+            phone_obj.current_carrier = (
+                doc["current_carrier"] or doc["original_carrier"]
+            )
             phone_obj.date_allocation = doc["date_allocation"]
             phone_obj.date_cooldown = doc["date_cooldown"]
             phone_obj.date_mutation = doc["date_mutation"]

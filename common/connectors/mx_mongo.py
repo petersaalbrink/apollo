@@ -5,19 +5,22 @@ from __future__ import annotations
 __all__ = (
     "Count",
     "MongoDB",
+    "MxClient",
+    "MxCollection",
+    "MxDatabase",
 )
 
 from collections import namedtuple
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from threading import Lock
-from typing import Union
+from typing import Any
 from urllib.parse import quote_plus
 
 from bson import CodecOptions
 from pymongo.database import Collection, Database
 from pymongo.errors import ServerSelectionTimeoutError
 from pymongo.mongo_client import MongoClient
-from pymongo.operations import InsertOne, UpdateOne, UpdateMany
+from pymongo.operations import InsertOne, UpdateMany, UpdateOne
 from pymongo.results import InsertManyResult, InsertOneResult
 
 from ..exceptions import MongoDBError
@@ -42,14 +45,14 @@ class MxDatabase(Database):
 
 
 class MxCollection(Collection):
-    def test_connection(self):
+    def test_connection(self) -> None:
         """Test connection by getting a document."""
         try:
             self.find_one({}, {"_id": True})
         except ServerSelectionTimeoutError as e:
             raise MongoDBError("Are you contected with a Matrixian network?") from e
 
-    def find_last(self) -> dict:
+    def find_last(self) -> dict[str, Any]:
         """Return the last document in a collection.
 
         Usage::
@@ -60,7 +63,7 @@ class MxCollection(Collection):
         """
         return next(self.find().sort([("_id", -1)]).limit(1))
 
-    def find_duplicates(self) -> list[dict]:
+    def find_duplicates(self) -> list[dict[str, Any]]:
         """Return duplicated documents in a collection.
 
         Usage::
@@ -69,26 +72,34 @@ class MxCollection(Collection):
             docs = MongoDB.find_duplicates(db)
             print(docs)
         """
-        return list(self.aggregate([
-            {"$unwind": "$birth"},
-            {"$unwind": "$address"},
-            {"$unwind": "$address.current"},
-            {"$group": {"_id": {
-                "lastname": "$lastname",
-                "dateOfRecord": "$dateOfRecord",
-                "birth": "$birth.date",
-                "address": "$address.current.postalCode",
-            },
-                "uniqueIds": {"$addToSet": "$_id"},
-                "count": {"$sum": 1}
-            }},
-            {"$match": {"count": {"$gt": 1}}}
-        ], allowDiskUse=True))
+        return list(
+            self.aggregate(
+                [
+                    {"$unwind": "$birth"},
+                    {"$unwind": "$address"},
+                    {"$unwind": "$address.current"},
+                    {
+                        "$group": {
+                            "_id": {
+                                "lastname": "$lastname",
+                                "dateOfRecord": "$dateOfRecord",
+                                "birth": "$birth.date",
+                                "address": "$address.current.postalCode",
+                            },
+                            "uniqueIds": {"$addToSet": "$_id"},
+                            "count": {"$sum": 1},
+                        }
+                    },
+                    {"$match": {"count": {"$gt": 1}}},
+                ],
+                allowDiskUse=True,
+            )
+        )
 
     def remove_duplicates(
-            self,
-            field: str,
-            use_tqdm: bool = False,
+        self,
+        field: str,
+        use_tqdm: bool = False,
     ) -> int:
         """Remove duplicated documents in a collection, based on `field`.
 
@@ -110,7 +121,7 @@ class MxCollection(Collection):
         count = 0
         lock = Lock()
 
-        def count_and_delete(doc):
+        def count_and_delete(doc: dict[str, Any]) -> None:
             if self.count_documents({field: flatten(doc)[field]}) > 1:
                 self.delete_one({"_id": doc["_id"]})
                 nonlocal count
@@ -129,35 +140,56 @@ class MxCollection(Collection):
         bar.close()
         return count
 
-    def insert_many(self, documents, ordered=True, bypass_document_validation=False, session=None) -> InsertManyResult:
-        if not documents:
-            raise MongoDBError("Provide non-empty documents.")
-        elif isinstance(documents, list) and isinstance(documents[0], dict):
+    def insert_many(
+        self,
+        documents: list[dict[str, Any]],
+        ordered: bool = True,
+        bypass_document_validation: bool = False,
+        session: Any = None,
+    ) -> InsertManyResult:
+        _documents: list[dict[str, Any]] | Generator[dict[str, Any], None, None]
+        if isinstance(documents, list) and documents and isinstance(documents[0], dict):
             # If `documents` is a list, we have to do the type and key checking only once
             if documents[0].get("geometry"):
-                documents = [self.correct_geoshape(doc, "geometry") for doc in documents]
+                _documents = (
+                    self.correct_geoshape(doc, "geometry") for doc in documents
+                )
             elif documents[0].get("location"):
-                documents = [self.correct_geoshape(doc, "location") for doc in documents]
+                _documents = (
+                    self.correct_geoshape(doc, "location") for doc in documents
+                )
+            else:
+                _documents = documents
         elif isinstance(documents, Iterable):
-            # Otherwise do it doc-wise but lazily
-            documents = (
+            # Otherwise, do it doc-wise but lazily
+            _documents = (
                 self.correct_geoshape(doc, "geometry")
                 if (isinstance(doc, dict) and doc.get("geometry"))
                 else (
                     self.correct_geoshape(doc, "location")
                     if (isinstance(doc, dict) and doc.get("location"))
                     else doc
-                ) for doc in documents
+                )
+                for doc in documents
             )
-        return super().insert_many(documents, ordered, bypass_document_validation, session)
+        else:
+            raise MongoDBError("Provide non-empty documents.")
+        return super().insert_many(
+            _documents, ordered, bypass_document_validation, session
+        )
 
-    def insert_one(self, document, bypass_document_validation=False, session=None) -> InsertOneResult:
+    def insert_one(
+        self,
+        document: dict[str, Any],
+        bypass_document_validation: bool = False,
+        session: Any = None,
+    ) -> InsertOneResult:
         if isinstance(document, dict) and document.get("geometry"):
             document = self.correct_geoshape(document)
         return super().insert_one(document, bypass_document_validation, session)
 
     @staticmethod
-    def correct_geoshape(doc: dict, key: str = "geometry") -> dict:
+    def correct_geoshape(doc: dict[str, Any], key: str = "geometry") -> dict[str, Any]:
 
         # TODO: add to InsertOne and InsertMany
         # TODO: add to update_one, update_many, UpdateOne, UpdateMany (in the future)
@@ -169,7 +201,9 @@ class MxCollection(Collection):
             geom_cls = getattr(shapely.geometry, doc[key]["type"])
 
             if geom_cls is shapely.geometry.MultiPolygon:
-                geom_doc = geom_cls([shapely.geometry.Polygon(x[0]) for x in doc[key]["coordinates"]])
+                geom_doc = geom_cls(
+                    [shapely.geometry.Polygon(x[0]) for x in doc[key]["coordinates"]]
+                )
             elif geom_cls is shapely.geometry.Polygon:
                 geom_doc = geom_cls(doc[key]["coordinates"][0])
             else:
@@ -181,27 +215,30 @@ class MxCollection(Collection):
         except KeyError:
             pass
 
-        finally:
-            return doc
+        return doc
 
     def es(self) -> tuple[int, int]:
         """Returns a named two-tuple with the document count
         of this collection and the corresponding Elasticsearch index."""
         from .mx_elastic import ESClient
-        return Count(self.estimated_document_count(), ESClient(self.full_name.lower()).count())
+
+        return Count(
+            self.estimated_document_count(), ESClient(self.full_name.lower()).count()
+        )
 
 
 class MongoDB:
     """Factory for a Matrixian MongoDB client, database, or collection object."""
 
-    def __new__(cls,
-                database: str = None,
-                collection: str = None,
-                host: str = None,
-                client: bool = False,
-                tz_aware: bool = False,
-                **kwargs,
-                ) -> Union[MxClient, MxDatabase, MxCollection]:
+    def __new__(  # type: ignore
+        cls,
+        database: str | None = None,
+        collection: str | None = None,
+        host: str | None = None,
+        client: bool = False,
+        tz_aware: bool = False,
+        **kwargs: Any,
+    ) -> MxClient | MxDatabase | MxCollection:
         """Factory for Matrixian's MongoDB database access.
 
         Creates a MxClient, MxDatabase, or MxCollection object.
@@ -222,7 +259,9 @@ class MongoDB:
             raise MongoDBError("Please provide a database name as well.")
         elif database and "." in database:
             if collection:
-                raise MongoDBError("Provide database.collection paired or individually, not both.")
+                raise MongoDBError(
+                    "Provide database.collection paired or individually, not both."
+                )
             database, collection = database.split(".")
         elif not database and not collection and not client:
             client = True
@@ -249,25 +288,35 @@ class MongoDB:
             host = _hosts[host]
             from ..env import getenv
             from ..secrets import get_secret
+
             usr, pwd = get_secret(host)
             envv = f"{host}_IP"
             host = getenv(envv)
             if not host:
                 from ..env import envfile
-                raise MongoDBError(f"Make sure a host is configured for variable"
-                                   f" name '{envv}' in file '{envfile}'")
+
+                raise MongoDBError(
+                    f"Make sure a host is configured for variable"
+                    f" name '{envv}' in file '{envfile}'"
+                )
             uri = f"mongodb://{quote_plus(usr)}:{quote_plus(pwd)}@{host}"
 
         if tz_aware:
-            from pendulum import timezone
-            codec_options = CodecOptions(tz_aware=True, tzinfo=timezone("Europe/Amsterdam"))
+            from pendulum.tz import timezone
+
+            codec_options = CodecOptions(
+                tz_aware=True,
+                tzinfo=timezone("Europe/Amsterdam"),
+            )
         else:
             codec_options = None
 
         mongo_client = MxClient(host=uri, connectTimeoutMS=None)
         if client:
             return mongo_client
-        mongo_db = MxDatabase(client=mongo_client, name=database, codec_options=codec_options)
+        mongo_db = MxDatabase(
+            client=mongo_client, name=database, codec_options=codec_options
+        )
         if collection:
             mongo_coll = MxCollection(database=mongo_db, name=collection)
             mongo_coll.test_connection()
@@ -276,16 +325,28 @@ class MongoDB:
             return mongo_db
 
     @staticmethod
-    def InsertOne(document):  # noqa
+    def InsertOne(document: dict[str, Any]) -> InsertOne:  # noqa
         """Convience method for `InsertOne`."""
         return InsertOne(document)
 
     @staticmethod
-    def UpdateOne(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+    def UpdateOne(  # noqa
+        filter: dict[str, Any],  # noqa
+        update: dict[str, Any],
+        upsert: bool = False,
+        collation: Any = None,
+        array_filters: list[dict[str, Any]] | None = None,
+    ) -> UpdateOne:
         """Convience method for `UpdateOne`."""
         return UpdateOne(filter, update, upsert, collation, array_filters)
 
     @staticmethod
-    def UpdateMany(filter, update, upsert=False, collation=None, array_filters=None):  # noqa
+    def UpdateMany(  # noqa
+        filter: dict[str, Any],  # noqa
+        update: dict[str, Any],
+        upsert: bool = False,
+        collation: Any = None,
+        array_filters: list[dict[str, Any]] | None = None,
+    ) -> UpdateMany:
         """Convience method for `UpdateMany`."""
         return UpdateMany(filter, update, upsert, collation, array_filters)

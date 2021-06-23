@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-__all__ = (
-    "ESClient",
-)
+__all__ = ("ESClient",)
 
+from collections.abc import Sequence
 from logging import debug
-from typing import Any, Dict, Iterator, List, Union
+from typing import Any, Iterator
 
 from elasticsearch.client import Elasticsearch
 from elasticsearch.exceptions import ElasticsearchException, TransportError
@@ -17,23 +16,6 @@ from ..env import envfile, getenv
 from ..exceptions import ESClientError
 from ..handlers import tqdm
 from ..secrets import get_secret
-
-# Types
-Location = Union[
-    List[Union[str, float]],
-    Dict[str, Union[str, float]]
-]
-DictAny = Dict[str, Any]
-NestedDict = Dict[str, DictAny]
-Query = Union[
-    NestedDict,
-    List[NestedDict]
-]
-Result = Union[
-    List[NestedDict],
-    NestedDict,
-    DictAny,
-]
 
 # Globals
 _config = {
@@ -80,10 +62,7 @@ class ESClient(Elasticsearch):
     `distinct_values`: Return distinct values in a certain field.
     """
 
-    def __init__(self,
-                 es_index: str = None,
-                 **kwargs
-                 ):
+    def __init__(self, es_index: str | None = None, **kwargs: Any):
         """Client for Matrixian's Elasticsearch databases.
 
         Provide an index (database.collection), and based on the name
@@ -104,7 +83,7 @@ class ESClient(Elasticsearch):
         host = kwargs.pop("host", None)
         dev = kwargs.pop("dev", True)
         if local or host == "localhost":
-            self._host, self._port = "localhost", "9200"
+            self._host, self._port = "localhost", 9200
             del _config["http_auth"]
         else:
             if es_index and not host:
@@ -116,42 +95,49 @@ class ESClient(Elasticsearch):
                     envv = _hosts["address"]
                 else:
                     envv = _hosts["dev"]
-            elif host == "dev" and es_index and es_index.startswith("addressvalidation"):
+            elif (
+                host == "dev" and es_index and es_index.startswith("addressvalidation")
+            ):
                 envv = _hosts["address_dev"]
             elif host:
-                envv = _hosts.get(host)
+                envv = _hosts.get(host, "")
             else:
                 if dev:
-                    if es_index.startswith("addressvalidation"):
+                    if es_index and es_index.startswith("addressvalidation"):
                         envv = _hosts["address_dev"]
                     else:
                         envv = _hosts["dev"]
                 else:
                     envv = _hosts["prod"]
-            self._host, self._port = getenv(envv), _port
+            self._host, self._port = getenv(envv, ""), _port
             if not self._host:
-                raise ESClientError(f"Make sure a host is configured for variable"
-                                    f" name '{envv}' in file '{envfile}'")
+                raise ESClientError(
+                    f"Make sure a host is configured for variable"
+                    f" name '{envv}' in file '{envfile}'"
+                )
             if not _config["http_auth"]:
                 _config["http_auth"] = get_secret("MX_ELASTIC")  # noqa
         hosts = [{"host": self._host, "port": self._port}]
         _config["maxsize"] = kwargs.pop("maxsize", 32)
-        super().__init__(hosts, **_config)
+        super().__init__(hosts, **_config)  # type: ignore
         self.es_index = es_index
         self.size = kwargs.pop("size", 20)
         self.retry_on_timeout = kwargs.pop("retry_on_timeout", True)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(host='{self._host}', port='{self._port}', index='{self.es_index}')"
+        return (
+            f"{self.__class__.__name__}"
+            f"(host='{self._host}', port='{self._port}', index='{self.es_index}')"
+        )
 
     def __str__(self) -> str:
-        return f"http://{self._host}:{self._port}/{self.es_index}/_stats"
+        return f"http://{self._host}:{self._port}/{self.es_index}/_stats"  # noqa
 
     def find(
-            self,
-            query: Query = None,
-            **kwargs,
-    ) -> Result:
+        self,
+        query: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Perform an Elasticsearch query, and return the hits. Like `search`, but better.
 
         Uses .search() method on class attribute .es_index with size=10_000. Will try again on errors.
@@ -181,8 +167,6 @@ class ESClient(Elasticsearch):
             size = kwargs.pop("size", 1)
             result = self.search(index=index, size=size, body={}, **kwargs)
             return result
-        if isinstance(query, dict):
-            query = (query,)
         if first_only and not source_only:
             source_only = True
         if source_only and not hits_only:
@@ -191,46 +175,38 @@ class ESClient(Elasticsearch):
         if with_id:
             debug("Returning hits only if with_id is True, with _source flattened")
             hits_only, source_only, first_only = True, False, False
-        if "size" in query[0]:
-            size = query[0].pop("size")
+        if "size" in query:
+            size = query.pop("size")
         else:
             size = kwargs.pop("size", self.size)
-        results = []
-        for q in query:
-            if not q:
-                results.append([])
-                continue
-            while True:
-                try:
-                    result = self.search(index=index, size=size, body=q, **kwargs)
-                    break
-                except (OSError, HTTPWarning, TransportError) as e:
-                    if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
-                        raise
-                except ElasticsearchException as e:
-                    raise ESClientError(q) from e
-            if size != 0:
-                if hits_only:
-                    result = result["hits"]["hits"]
-                if with_id:
-                    result = [{**doc, **doc.pop("_source")} for doc in result]
-                if source_only:
-                    result = [doc["_source"] for doc in result]
-                if (first_only or size == 1) and result:
-                    result = result[0]
-            results.append(result)
-        if len(results) == 1:
-            results = results[0]
-        return results
+        while True:
+            try:
+                result = self.search(index=index, size=size, body=query, **kwargs)
+                break
+            except (OSError, HTTPWarning, TransportError) as e:
+                if not (self.retry_on_timeout and "timeout" in f"{e}".lower()):
+                    raise
+            except ElasticsearchException as e:
+                raise ESClientError(query) from e
+        if size != 0:
+            if hits_only:
+                result = result["hits"]["hits"]
+            if with_id:
+                result = [{**doc, **doc.pop("_source")} for doc in result]
+            if source_only:
+                result = [doc["_source"] for doc in result]
+            if (first_only or size == 1) and result:
+                result = result[0]
+        return result
 
     def geo_distance(
-            self,
-            *,
-            address_id: str = None,
-            location: Location = None,
-            distance: str = "10m",
-            **kwargs,
-    ) -> Result:
+        self,
+        *,
+        address_id: str | None = None,
+        location: tuple[float, float] | list[float] | dict[str, float] | None = None,
+        distance: str = "10m",
+        **kwargs: Any,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Find all real estate objects or addresses within distance of
         address_id or location.
 
@@ -251,21 +227,48 @@ class ESClient(Elasticsearch):
 
         if not any((address_id, location)) or all((address_id, location)):
             raise ESClientError("Provide either an address_id or a location")
+        assert isinstance(self.es_index, str)
 
         if address_id:
+            query: dict[str, Any]
             if "realestate.realestate" in self.es_index:
-                query = {"query": {"bool": {"must": {
-                    "match": {"avmData.locationData.address_id.keyword": address_id}}}}}
+                query = {
+                    "query": {
+                        "match": {"avmData.locationData.address_id.keyword": address_id}
+                    }
+                }
                 result = self.find(query=query, size=1, _source="geometry")
-                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+                assert isinstance(result, dict)
+                location = (
+                    result["geometry"]["latitude"],
+                    result["geometry"]["longitude"],
+                )
             elif "real_estate" in self.es_index:
-                query = {"query": {"bool": {"must": {
-                    "match": {"address.identification.addressId.keyword": address_id}}}}}
+                query = {
+                    "query": {
+                        "match": {
+                            "address.identification.addressId.keyword": address_id
+                        }
+                    }
+                }
                 result = self.find(query=query, size=1, _source="geometry")
-                location = (result["geometry"]["latitude"], result["geometry"]["longitude"])
+                assert isinstance(result, dict)
+                location = (
+                    result["geometry"]["latitude"],
+                    result["geometry"]["longitude"],
+                )
             elif "addressvalidation" in self.es_index:
-                query = {"query": {"bool": {"must": {"match": {"fullAddressLine": address_id}}}}}
-                result = self.find(query=query, size=1, _source="details.geometry.coordinates")
+                query = {
+                    "query": {
+                        "bool": {"must": {"match": {"fullAddressLine": address_id}}}
+                    }
+                }
+                result = self.find(
+                    query=query,
+                    size=1,
+                    _source="details.geometry.coordinates",
+                )
+                assert isinstance(result, dict)
                 location = (
                     result["details"]["geometry"]["coordinates"][1],
                     result["details"]["geometry"]["coordinates"][0],
@@ -273,10 +276,12 @@ class ESClient(Elasticsearch):
             else:
                 raise NotImplementedError(f"{self.es_index}")
 
-        try:
+        if isinstance(location, dict):
             location = dict(zip(("latitude", "longitude"), location.values()))
-        except AttributeError:
+        elif isinstance(location, Sequence):
             location = dict(zip(("latitude", "longitude"), location))
+        else:
+            raise ESClientError(type(location))
 
         if "realestate.realestate" in self.es_index:
             query = {
@@ -287,15 +292,24 @@ class ESClient(Elasticsearch):
                                 "distance": distance,
                                 "geometry.geoPoint": {
                                     "lat": location["latitude"],
-                                    "lon": location["longitude"]
-                                }}}}},
-                "sort": [{
-                    "_geo_distance": {
-                        "geometry.geoPoint": {
-                            "lat": location["latitude"],
-                            "lon": location["longitude"]},
-                        "order": "asc"
-                    }}]}
+                                    "lon": location["longitude"],
+                                },
+                            }
+                        }
+                    }
+                },
+                "sort": [
+                    {
+                        "_geo_distance": {
+                            "geometry.geoPoint": {
+                                "lat": location["latitude"],
+                                "lon": location["longitude"],
+                            },
+                            "order": "asc",
+                        }
+                    }
+                ],
+            }
         elif "real_estate" in self.es_index:
             query = {
                 "query": {
@@ -306,15 +320,23 @@ class ESClient(Elasticsearch):
                                 "geometry.geoPoint.coordinates": [
                                     location["longitude"],
                                     location["latitude"],
-                                ]}}}},
-                "sort": [{
-                    "_geo_distance": {
-                        "geometry.geoPoint.coordinates": [
-                            location["longitude"],
-                            location["latitude"],
-                        ],
-                        "order": "asc"
-                    }}]}
+                                ],
+                            }
+                        }
+                    }
+                },
+                "sort": [
+                    {
+                        "_geo_distance": {
+                            "geometry.geoPoint.coordinates": [
+                                location["longitude"],
+                                location["latitude"],
+                            ],
+                            "order": "asc",
+                        }
+                    }
+                ],
+            }
         elif "addressvalidation" in self.es_index:
             query = {
                 "query": {
@@ -325,15 +347,23 @@ class ESClient(Elasticsearch):
                                 "details.geometry.coordinates": [
                                     location["longitude"],
                                     location["latitude"],
-                                ]}}}},
-                "sort": [{
-                    "_geo_distance": {
-                        "details.geometry.coordinates": [
-                            location["longitude"],
-                            location["latitude"],
-                        ],
-                        "order": "asc"
-                    }}]}
+                                ],
+                            }
+                        }
+                    }
+                },
+                "sort": [
+                    {
+                        "_geo_distance": {
+                            "details.geometry.coordinates": [
+                                location["longitude"],
+                                location["latitude"],
+                            ],
+                            "order": "asc",
+                        }
+                    }
+                ],
+            }
         else:
             raise NotImplementedError(f"{self.es_index}")
 
@@ -343,11 +373,11 @@ class ESClient(Elasticsearch):
         return self.findall(query=query, **kwargs)
 
     def findall(
-            self,
-            query: Query,
-            index: str = None,
-            **kwargs,
-    ) -> Result:
+        self,
+        query: dict[str, Any],
+        index: str | None = None,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
         """Used for Elasticsearch queries that return more than 10k documents.
         Returns all results at once.
 
@@ -402,11 +432,11 @@ class ESClient(Elasticsearch):
         return data
 
     def scrollall(
-            self,
-            query: Query = None,
-            index: str = None,
-            **kwargs,
-    ) -> Iterator[Result]:
+        self,
+        query: dict[str, Any] | None = None,
+        index: str | None = None,
+        **kwargs: Any,
+    ) -> Iterator[dict[str, Any]]:
         """Used for Elasticsearch queries that return more than 10k documents.
         Returns an iterator of documents.
 
@@ -442,7 +472,7 @@ class ESClient(Elasticsearch):
         total = self.count(body=query, index=index)
         bar = tqdm(total=total, disable=not use_tqdm)
 
-        def _return(_data):
+        def _return(_data: Any) -> Any:
             if hits_only:
                 _data = _data["hits"]["hits"]
             if with_id:
@@ -457,7 +487,7 @@ class ESClient(Elasticsearch):
             size=chunk_size,
             _source=field,
             body=query,
-            **kwargs
+            **kwargs,
         )
         sid, scroll_size = data["_scroll_id"], len(data["hits"]["hits"])
         if as_chunks:
@@ -477,11 +507,12 @@ class ESClient(Elasticsearch):
 
         bar.close()
 
-    def query(self,
-              field: str = None,
-              value: Any = None,
-              **kwargs
-              ) -> Result:
+    def query(
+        self,
+        field: str | None = None,
+        value: Any = None,
+        **kwargs: Any,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Perform a simple Elasticsearch query, and return the hits.
 
         Uses .find() method instead of regular .search()
@@ -507,6 +538,7 @@ class ESClient(Elasticsearch):
             "first_only": kwargs.pop("first_only", False),
             "with_id": kwargs.pop("with_id", False),
         }
+        q: dict[str, Any]
 
         if field and value:
             q = {"query": {"bool": {"must": [{"match": {field: value}}]}}}
@@ -524,7 +556,11 @@ class ESClient(Elasticsearch):
             q = {"query": {"bool": {"must": {"match": args}}}}
             return self.find(q, **find_kwargs)
         elif len(args) > 1:
-            q = {"query": {"bool": {"must": [{"match": {k: v}} for k, v in args.items()]}}}
+            q = {
+                "query": {
+                    "bool": {"must": [{"match": {k: v}} for k, v in args.items()]}
+                }
+            }
             return self.find(q, **find_kwargs)
         else:
             return self.find(**find_kwargs)
@@ -534,13 +570,14 @@ class ESClient(Elasticsearch):
         """The total number of documents within the index."""
         return self.indices.stats(index=self.es_index)["_all"]["total"]["docs"]["count"]
 
-    def count(self,
-              body=None,
-              index=None,
-              doc_type=None,
-              find: dict[str, dict] = None,
-              **kwargs
-              ) -> int:
+    def count(
+        self,
+        body: dict[str, Any] | None = None,
+        index: str | None = None,
+        doc_type: str | None = None,
+        find: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> int:
         """Count the number of documents a query will return."""
         if index is None:
             index = self.es_index
@@ -551,14 +588,12 @@ class ESClient(Elasticsearch):
         count = super().count(body=body, index=index, doc_type=doc_type, **kwargs)
         return count["count"]
 
-    def distinct_count(self,
-                       field: str,
-                       find: dict[str, dict] = None
-                       ) -> int:
+    def distinct_count(self, field: str, find: dict[str, Any] | None = None) -> int:
         """Provide a count of distinct values in a certain field.
 
         See:
-https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        https://www.elastic.co/guide/en/elasticsearch/reference/current
+        /search-aggregations-bucket-composite-aggregation.html
         """
 
         if not find:
@@ -570,12 +605,15 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                 "aggs": {
                     field: {
                         "composite": {
-                            "sources": [
-                                {field: {"terms": {"field": field}}}
-                            ], "size": 10_000
-                        }}}}
+                            "sources": [{field: {"terms": {"field": field}}}],
+                            "size": 10_000,
+                        }
+                    }
+                },
+            }
             try:
-                result: dict[str, Any] = self.find(query, size=0)
+                result = self.find(query, size=0)
+                assert isinstance(result, dict)
                 break
             except TransportError as e:
                 if "fielddata" in f"{e}" and field[-8:] != ".keyword":
@@ -592,17 +630,18 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
             n_buckets += len(buckets)
             query["aggs"][field]["composite"]["after"] = agg["after_key"]
             result = self.find(query, size=0)
+            assert isinstance(result, dict)
 
         return n_buckets
 
-    def distinct_values(self,
-                        field: str,
-                        find: dict[str, dict] = None
-                        ) -> list[Any]:
+    def distinct_values(
+        self, field: str, find: dict[str, Any] | None = None
+    ) -> list[Any]:
         """Return distinct values in a certain field.
 
         See:
-https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-composite-aggregation.html
+        https://www.elastic.co/guide/en/elasticsearch/reference/current
+        /search-aggregations-bucket-composite-aggregation.html
         """
 
         if not find:
@@ -614,12 +653,15 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
                 "aggs": {
                     "q": {
                         "composite": {
-                            "sources": [
-                                {"q": {"terms": {"field": field}}}
-                            ], "size": 10_000
-                        }}}}
+                            "sources": [{"q": {"terms": {"field": field}}}],
+                            "size": 10_000,
+                        }
+                    }
+                },
+            }
             try:
-                response: dict[str, Any] = self.find(query, size=0)
+                response = self.find(query, size=0)
+                assert isinstance(response, dict)
                 break
             except TransportError as e:
                 if "fielddata" in f"{e}" and field[-8:] != ".keyword":
@@ -636,24 +678,32 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
             result += values
             query["aggs"]["q"]["composite"]["after"] = agg["after_key"]
             response = self.find(query, size=0)
+            assert isinstance(response, dict)
 
         return result
 
     def db(self) -> tuple[int, int]:
-        """Returns a named two-tuple with the document count of the corresponding MongoDB collection and this index."""
-        from .mx_mongo import Count, MongoDB
+        """Returns a named two-tuple with the document count of the corresponding MongoDB
+        collection and this index.
+        """
+        from .mx_mongo import Count, MongoDB, MxCollection, MxDatabase
+
+        assert isinstance(self.es_index, str)
         db, coll = self.es_index.split(".")
-        mapping = {name.lower(): name for name in MongoDB(db).list_collection_names()}
-        coll = mapping[coll]
-        return Count(MongoDB(f"{db}.{coll}").estimated_document_count(), self.count())
+        db_client = MongoDB(db)
+        assert isinstance(db_client, MxDatabase)
+        mapping = {name.lower(): name for name in db_client.list_collection_names()}
+        coll_client = db_client[mapping[coll]]
+        assert isinstance(coll_client, MxCollection)
+        return Count(coll_client.estimated_document_count(), self.count())
 
     def update_alias(
-            self,
-            remove_index: str = None,
-            remove_alias: str = None,
-            add_index: str = None,
-            add_alias: str = None,
-    ) -> dict:
+        self,
+        remove_index: str | None = None,
+        remove_alias: str | None = None,
+        add_index: str | None = None,
+        add_alias: str | None = None,
+    ) -> dict[str, Any]:
         """Update aliases on Elasticsearch.
 
         Provide both remove_index and remove_alias for alias removal.
@@ -672,15 +722,23 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregati
         """
         actions = []
         if remove_index and remove_alias:
-            actions.append({"remove": {
-                "index": remove_index,
-                "alias": remove_alias,
-            }})
+            actions.append(
+                {
+                    "remove": {
+                        "index": remove_index,
+                        "alias": remove_alias,
+                    }
+                }
+            )
         if add_index and add_alias:
-            actions.append({"add": {
-                "index": add_index,
-                "alias": add_alias,
-            }})
+            actions.append(
+                {
+                    "add": {
+                        "index": add_index,
+                        "alias": add_alias,
+                    }
+                }
+            )
         if not actions:
             raise ESClientError("Always provide both index and alias names.")
         return self.indices.update_aliases(body={"actions": actions})

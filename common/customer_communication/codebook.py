@@ -1,27 +1,38 @@
+from __future__ import annotations
+
 import os
+from collections.abc import Iterable
 from pathlib import Path
-import pandas as pd
-import numpy as np
+from zipfile import ZipFile
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
-from common import MySQLClient
+from pandas import DataFrame
+from pandas.io.excel._xlsxwriter import XlsxWriter  # noqa
+
+from common.connectors.mx_mysql import MySQLClient
 
 
-def clean_c(c):
+def clean_c(c: str) -> str:
     for char in (" ", "-", "_", ".", ",", "!", "@", "#"):
         c = c.replace(char, "").lower()
     return c
 
 
 class DataProfileBuilder:
-    def __init__(self, data):
+    def __init__(self, data: DataFrame):
         self.data = data
         self.no_of_rows = len(self.data.columns)
-        self.df_mem = self.data.memory_usage(deep=True).sum() / 1024 ** 2
-        self.data_qlt_df = self.desc = self.mem_used_dtypes = self.data_desc_df = None
+        self.df_mem = self.data.memory_usage(deep=True).sum() / 1024 ** 2  # noqa
+        self.data_qlt_df: DataFrame | None = None
+        self.desc: DataFrame | None = None
+        self.mem_used_dtypes: DataFrame | None = None
+        self.data_desc_df: DataFrame | None = None
         self.columns = list(self.data.columns)
 
-    def memory_calc(self):
+    def memory_calc(self) -> None:
         """Used for calculating the memory usages of a single column, currently not shown in output."""
         self.mem_used_dtypes = pd.DataFrame(
             self.data.memory_usage(deep=True) / 1024 ** 2
@@ -29,7 +40,7 @@ class DataProfileBuilder:
         self.mem_used_dtypes.rename(columns={0: "memory"}, inplace=True)
         self.mem_used_dtypes.drop("Index", axis=0, inplace=True)
 
-    def construct_dq_df(self):
+    def construct_dq_df(self) -> None:
         # Create empty DF for metadata
         self.data_qlt_df = pd.DataFrame(
             index=np.arange(0, self.no_of_rows),
@@ -42,6 +53,7 @@ class DataProfileBuilder:
                 "column_dtype",
             ),
         )
+        assert isinstance(self.mem_used_dtypes, DataFrame)
 
         # Add rows to the data_qlt_df dataframe
         for ind, cols in enumerate(self.data.columns):
@@ -57,7 +69,7 @@ class DataProfileBuilder:
                 cols + "~" + str(self.data[cols].dtype),
             ]
 
-    def descriptive_stats(self):
+    def descriptive_stats(self) -> None:
         raw_num_df = self.data.describe().T.round(2)
         self.data_qlt_df = pd.merge(
             self.data_qlt_df,
@@ -67,20 +79,22 @@ class DataProfileBuilder:
             right_index=True,
         )
 
-    def stats_filler(self):
-        # Calculate percentage of non-null values over total number of values
-        self.data_qlt_df["%_of_non_nulls"] = (
-                                                     self.data_qlt_df["non_null_values"] / self.data.shape[0]
-                                             ) * 100
+    def stats_filler(self) -> None:
+        assert isinstance(self.data_qlt_df, DataFrame)
 
         # Calculate percentage of non-null values over total number of values
         self.data_qlt_df["%_of_non_nulls"] = (
-                                                     self.data_qlt_df["non_null_values"] / self.data.shape[0]
-                                             ) * 100
+            self.data_qlt_df["non_null_values"] / self.data.shape[0]
+        ) * 100
+
+        # Calculate percentage of non-null values over total number of values
+        self.data_qlt_df["%_of_non_nulls"] = (
+            self.data_qlt_df["non_null_values"] / self.data.shape[0]
+        ) * 100
 
         # Calculate null values for the column
         self.data_qlt_df["null_values"] = (
-                self.data.shape[0] - self.data_qlt_df["non_null_values"]
+            self.data.shape[0] - self.data_qlt_df["non_null_values"]
         )
 
         # Calculate percentage of null values over total number of values
@@ -89,7 +103,7 @@ class DataProfileBuilder:
         # Calculate percentage of each column memory usage compared
         # to total memory used by raw data datframe
         self.data_qlt_df["%_of_total_memory"] = (
-                self.data_qlt_df["col_memory"] / self.data_qlt_df["col_memory"].sum() * 100
+            self.data_qlt_df["col_memory"] / self.data_qlt_df["col_memory"].sum() * 100
         )
 
         # Calculate the total memory used by a given group of data type
@@ -104,12 +118,12 @@ class DataProfileBuilder:
         # the above can be merged to one calculation if we do not need
         # the total as separate column
         self.data_qlt_df["%_of_dtype_mem"] = (
-                self.data_qlt_df["col_memory"] / self.data_qlt_df["dtype_total"] * 100
+            self.data_qlt_df["col_memory"] / self.data_qlt_df["dtype_total"] * 100
         )
 
         # Calculate the percentage memory used by each group of data type of the total memory used by dataset
         self.data_qlt_df["dtype_%_total_mem"] = (
-                self.data_qlt_df["dtype_total"] / self.df_mem * 100
+            self.data_qlt_df["dtype_total"] / self.df_mem * 100
         )
 
         # Calculate the count of each data type
@@ -119,16 +133,19 @@ class DataProfileBuilder:
 
         # Calculate the total count of column values
         self.data_qlt_df["count"] = (
-                self.data_qlt_df["null_values"] + self.data_qlt_df["non_null_values"]
+            self.data_qlt_df["null_values"] + self.data_qlt_df["non_null_values"]
         )
 
-    def get_desc(self):
+    def get_desc(self) -> None:
         sql = MySQLClient("client_work_google.field_descriptions")
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
 
-    def map_desc(self):
+    def map_desc(self) -> None:
+        assert isinstance(self.data_qlt_df, DataFrame)
+        assert isinstance(self.desc, DataFrame)
+
         descriptions = []
 
         for c in self.columns:
@@ -136,11 +153,7 @@ class DataProfileBuilder:
                 descriptions.append("Consult document")
             elif "Unnamed" not in c:
                 cc = clean_c(c)
-                mask = (
-                    self.desc["mapping"]
-                        .str.split(", ")
-                        .apply(lambda x: cc in x)
-                )
+                mask = self.desc["mapping"].str.split(", ").apply(lambda x: cc in x)
                 response = self.desc[mask]["description_nl"]
                 if len(response) > 0:
                     descriptions.append(response[response.index[0]])
@@ -151,8 +164,9 @@ class DataProfileBuilder:
 
         self.data_qlt_df["description"] = descriptions
 
-    def reorder_df(self):
+    def reorder_df(self) -> None:
         """Reorder the Data Profile Dataframe columns"""
+        assert isinstance(self.data_qlt_df, DataFrame)
         self.data_desc_df = self.data_qlt_df[["column_name", "description"]]
         self.data_qlt_df = self.data_qlt_df[
             [
@@ -174,44 +188,58 @@ class DataProfileBuilder:
 
 
 class GraphBuilder:
-    def __init__(self, data):
+    def __init__(self, data: DataFrame):
         self.data = data
         self.bool_fields = self.data.apply(lambda x: x.nunique()) <= 2
-        self.bool_cols = self.bool_fields[self.bool_fields == True].index.to_list()
-        self.num_cols = self.data.select_dtypes(include="number").columns
-        self.obj_cols = self.data.select_dtypes(include="object").columns
+        self.bool_cols: Iterable[str] = self.bool_fields[
+            self.bool_fields is True
+        ].index.to_list()
+        self.num_cols: Iterable[str] = self.data.select_dtypes(include="number").columns
+        self.obj_cols: Iterable[str] = self.data.select_dtypes(include="object").columns
         self.colors = ["#037960", "#05AB89", "#01DEB1", "#7FAE92", "#9AD2B1", "#B4FFD2"]
         self.kleur = sns.color_palette(self.colors)
         self.folder_name = "plots_temp"
-        self.exclude = None
-        self.desc = None
+        self.exclude: list[str] | None = None
+        self.desc: DataFrame | None = None
         sns.set_style("whitegrid")
         sns.set_context("talk")
 
-    def make_folder(self):
+    def make_folder(self) -> None:
         os.makedirs(self.folder_name, exist_ok=True)
 
-    def del_folder(self):
+    def del_folder(self) -> None:
         for f in Path(self.folder_name).glob("*"):
             f.unlink()
         os.removedirs(self.folder_name)
 
-    def exclude_cols(self):
+    def exclude_cols(self) -> None:
         sql = MySQLClient("client_work_google.field_descriptions")
         q = """SELECT *
         FROM client_work_google.field_descriptions"""
         self.desc = pd.read_sql(q, sql.connect(conn=True))
 
         self.exclude = (
-                self.desc[self.desc["field"] == "huisnummer"]["mapping"].to_list()[0].split(", ")
-                + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"].to_list()[0].split(", ")
-                + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"].to_list()[0].split(", ")
-                + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"].to_list()[0].split(", ")
-                + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"].to_list()[0].split(", ")
-                + self.desc[self.desc["field"] == "mobielnummer"]["mapping"].to_list()[0].split(", ")
+            self.desc[self.desc["field"] == "huisnummer"]["mapping"]
+            .to_list()[0]
+            .split(", ")
+            + self.desc[self.desc["field"] == "huisnummer_toevoeging"]["mapping"]
+            .to_list()[0]
+            .split(", ")
+            + self.desc[self.desc["field"] == "huisnummer_bag_toevoeging"]["mapping"]
+            .to_list()[0]
+            .split(", ")
+            + self.desc[self.desc["field"] == "huisnummer_bag_letter"]["mapping"]
+            .to_list()[0]
+            .split(", ")
+            + self.desc[self.desc["field"] == "telefoonnummer"]["mapping"]
+            .to_list()[0]
+            .split(", ")
+            + self.desc[self.desc["field"] == "mobielnummer"]["mapping"]
+            .to_list()[0]
+            .split(", ")
         )
 
-    def bool_graph(self):
+    def bool_graph(self) -> None:
         for col_name in self.bool_cols:
             if len(self.data[col_name].value_counts()) > 0:
                 data_nonull = self.data[self.data[f"{col_name}"].notna()]
@@ -247,8 +275,9 @@ class GraphBuilder:
 
                 plt.close("all")
 
-    def num_graph(self):
-        for col_name in (set(self.num_cols) - set(self.bool_cols) - set(self.exclude)):
+    def num_graph(self) -> None:
+        assert isinstance(self.exclude, list)
+        for col_name in set(self.num_cols) - set(self.bool_cols) - set(self.exclude):
             if len(self.data[col_name].value_counts()) > 0:
                 data_nonull = self.data[self.data[f"{col_name}"].notna()]
 
@@ -260,7 +289,14 @@ class GraphBuilder:
                 ax[1].set_title("Boxplot zonder uitschieters", fontsize=20)
                 ax[2].set_title("Boxplot alle waardes", fontsize=20)
 
-                sns.histplot(data_nonull, x=f"{col_name}", ax=ax[0], color="#0E5C59", kde=True, linewidth=0)
+                sns.histplot(
+                    data_nonull,
+                    x=f"{col_name}",
+                    ax=ax[0],
+                    color="#0E5C59",
+                    kde=True,
+                    linewidth=0,
+                )
                 sns.boxplot(
                     y=data_nonull[f"{col_name}"],
                     ax=ax[1],
@@ -277,8 +313,9 @@ class GraphBuilder:
 
                 plt.close("all")
 
-    def obj_graph(self):
-        for col_name in (set(self.obj_cols) - set(self.bool_cols) - set(self.exclude)):
+    def obj_graph(self) -> None:
+        assert isinstance(self.exclude, list)
+        for col_name in set(self.obj_cols) - set(self.bool_cols) - set(self.exclude):
             if len(self.data[col_name].value_counts()) > 0:
                 fig, ax = plt.subplots(figsize=(20, 7))
                 fig.subplots_adjust(top=0.8)
@@ -294,7 +331,7 @@ class GraphBuilder:
                 g.set_title("Frequentie van meest voorkomende waardes")
 
                 for p in g.patches:
-                    percentage = "{:.1f}%".format(100 * p.get_width() / len(self.data))
+                    percentage = f"{100 * p.get_width() / len(self.data):.1f}%"
                     x = p.get_x() + p.get_width() + 0.02
                     y = p.get_y() + p.get_height() / 2
                     g.annotate(
@@ -315,11 +352,18 @@ class GraphBuilder:
 
 
 class CodebookBuilder:
-    def __init__(self, data_stat, data_desc, folder, to_zip=True):
+    def __init__(
+        self,
+        data_stat: DataFrame,
+        data_desc: DataFrame,
+        folder: ZipFile,
+        to_zip: bool = True,
+    ):
         self.data_stat = data_stat
         self.data_desc = data_desc
         self.writer = pd.ExcelWriter("CodeBoek.xlsx", engine="xlsxwriter")
         self.start = -19
+        assert isinstance(self.writer, XlsxWriter)
         self.workbook = self.writer.book
         self.cell_format = self.workbook.add_format()
 
@@ -329,13 +373,13 @@ class CodebookBuilder:
 
         self.folder = folder
         self.to_zip = to_zip
-        self.text_info = None
+        self.text_info: str | None = None
 
-    def get_text(self):
+    def get_text(self) -> None:
         with open(Path(__file__).parent / "codebook_info.txt") as file:
             self.text_info = file.read()
 
-    def info_page(self):
+    def info_page(self) -> None:
         worksheet = self.workbook.add_worksheet("Info")
         options = {
             "width": 2560,
@@ -344,13 +388,13 @@ class CodebookBuilder:
         }
         worksheet.insert_textbox("A1", self.text_info, options)
 
-    def meta_page(self):
+    def meta_page(self) -> None:
         self.data_stat.to_excel(self.writer, sheet_name="Data_overzicht", index=False)
         worksheet = self.writer.sheets["Data_overzicht"]
         worksheet.set_column("A:A", 20)
         worksheet.set_column("B:P", 13)
 
-    def distribution_page(self):
+    def distribution_page(self) -> None:
         cell_format1 = self.workbook.add_format(
             {"bold": True, "font_color": "037960", "font_size": 15, "shrink": True}
         )
@@ -374,11 +418,11 @@ class CodebookBuilder:
             worksheet.set_row(self.start - 2, 18, cell_format2)
             worksheet.insert_image(
                 f"F{self.start + 2}",
-                f"plots_temp/fig_" + row[0] + ".png",
+                "plots_temp/fig_" + row[0] + ".png",
                 {"x_scale": 0.5, "y_scale": 0.5},
             )
 
-    def desc_page(self):
+    def desc_page(self) -> None:
         self.data_desc.to_excel(
             self.writer, sheet_name="Data_omschrijving", index=False
         )
@@ -386,14 +430,18 @@ class CodebookBuilder:
         worksheet.set_column("A:A", 25)
         worksheet.set_column("B:B", 150)
 
-    def save_xlsx(self):
+    def save_xlsx(self) -> None:
         self.writer.save()
-        self.folder.write(f'CodeBoek.xlsx')
+        self.folder.write("CodeBoek.xlsx")
         if self.to_zip:
-            os.remove(f'CodeBoek.xlsx')
+            os.remove("CodeBoek.xlsx")
 
 
-def codebook_exe(data, folder, to_zip=True):
+def codebook_exe(
+    data: DataFrame,
+    folder: ZipFile,
+    to_zip: bool = True,
+) -> str:
     dp_b = DataProfileBuilder(data)
     dp_b.memory_calc()
     dp_b.construct_dq_df()
@@ -410,7 +458,12 @@ def codebook_exe(data, folder, to_zip=True):
     gr_b.num_graph()
     gr_b.obj_graph()
 
-    cb_b = CodebookBuilder(dp_b.data_qlt_df, dp_b.data_desc_df, folder, to_zip)
+    cb_b = CodebookBuilder(
+        data_stat=dp_b.data_qlt_df,
+        data_desc=dp_b.data_desc_df,
+        folder=folder,
+        to_zip=to_zip,
+    )
     cb_b.get_text()
     cb_b.info_page()
     cb_b.meta_page()
@@ -420,4 +473,4 @@ def codebook_exe(data, folder, to_zip=True):
 
     gr_b.del_folder()
 
-    return 'Codebook.xlsx'
+    return "Codebook.xlsx"

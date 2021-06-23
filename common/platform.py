@@ -22,15 +22,13 @@ __all__ = (
 )
 
 import binascii
+import io
 from collections.abc import Iterable
 from datetime import datetime
-try:
-    from functools import cached_property
-except ImportError:
-    from cached_property import cached_property
-import io
+from functools import cached_property
 from pathlib import Path
-from typing import BinaryIO, Optional, Union
+from types import TracebackType
+from typing import BinaryIO
 
 from bson import ObjectId
 from Crypto.Cipher import AES
@@ -39,10 +37,10 @@ from paramiko.channel import ChannelFile
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
-from .connectors.mx_mongo import MongoDB
+from .connectors.mx_mongo import MongoDB, MxCollection
+from .env import getenv
 from .exceptions import FileTransferError
 from .secrets import get_secret
-from .env import getenv
 
 
 class _FileTransfer:
@@ -62,13 +60,14 @@ class _FileTransfer:
             ft.list_files().pop()
         )
     """
+
     def __init__(
-            self,
-            username: str = None,
-            filename: Union[Path, str] = None,
-            user_id: str = None,
-            email: str = None,
-            host: str = None,
+        self,
+        username: str | None = None,
+        filename: Path | str | None = None,
+        user_id: str | None = None,
+        email: str | None = None,
+        host: str | None = None,
     ):
         """Create a FileTransfer object to upload/download files.
 
@@ -103,7 +102,9 @@ class _FileTransfer:
             q = {"email": email}
         else:
             raise FileTransferError("Provide either a name, ID or email for the user.")
-        doc = MongoDB("production_api.user", host="prod").find_one(q)
+        db = MongoDB("production_api.user", host="prod")
+        assert isinstance(db, MxCollection)
+        doc = db.find_one(q)
         if not doc:
             raise FileTransferError("User not found.")
         self.user_id = doc["_id"]
@@ -111,7 +112,7 @@ class _FileTransfer:
         self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
-    def _check_filename(self):
+    def _check_filename(self) -> None:
         """Check if a filename is provided."""
         if not self.filename:
             raise FileTransferError("Provide a filename.")
@@ -119,12 +120,13 @@ class _FileTransfer:
     @cached_property
     def insert_filename(self) -> str:
         """Provide the file name needed for uploads."""
+        assert isinstance(self.filename, str)
         return Path(self.filename).name
 
     def notify(
-            self,
-            to_address: Union[str, list[str], tuple[str, ...]] = None,
-            username: str = None
+        self,
+        to_address: str | list[str] | tuple[str, ...] | None = None,
+        username: str | None = None,
     ) -> _FileTransfer:
         """Notify the user of the new Platform upload."""
 
@@ -156,12 +158,12 @@ class _FileTransfer:
 
 class FileTransferDocker(_FileTransfer):
     def __init__(
-            self,
-            username: str = None,
-            filename: Union[Path, str] = None,
-            user_id: str = None,
-            email: str = None,
-            host: str = None,
+        self,
+        username: str | None = None,
+        filename: Path | str | None = None,
+        user_id: str | None = None,
+        email: str | None = None,
+        host: str | None = None,
     ):
         super().__init__(
             username,
@@ -177,9 +179,9 @@ class FileTransferDocker(_FileTransfer):
         self.client.set_missing_host_key_policy(AutoAddPolicy())
 
         self.fthost = "consucom"
-        self.ftpath = f"/var/lib/docker/volumes/filetransfer_live/_data"
+        self.ftpath = "/var/lib/docker/volumes/filetransfer_live/_data"
 
-    def _connect(self):
+    def _connect(self) -> None:
         self.client.connect(
             hostname="136.144.203.100",
             username="consucom",
@@ -188,7 +190,7 @@ class FileTransferDocker(_FileTransfer):
             timeout=10,
         )
 
-    def _disconnect(self):
+    def _disconnect(self) -> None:
         self.client.close()
 
     @cached_property
@@ -197,13 +199,17 @@ class FileTransferDocker(_FileTransfer):
         return f"{self.ftpath}/{self.user_id}"
 
     @staticmethod
-    def _check_process(stderr: ChannelFile):
+    def _check_process(stderr: ChannelFile) -> None:
         """Check if a process has completed successfully."""
-        stderr = stderr.read().decode()
-        if stderr[:30] != "[sudo] password for consucom: " or stderr[30:]:
-            raise FileTransferError(stderr)
+        stderr_ = stderr.read().decode()
+        if stderr_[:30] != "[sudo] password for consucom: " or stderr_[30:]:
+            raise FileTransferError(stderr_)
 
-    def _run_cmd(self, cmd: str, fileobj: BinaryIO = None) -> tuple[ChannelFile, ChannelFile]:
+    def _run_cmd(
+        self,
+        cmd: str,
+        fileobj: BinaryIO | None = None,
+    ) -> tuple[ChannelFile, ChannelFile]:
         """Create a process from a shell command."""
         stdin, stdout, stderr = self.client.exec_command(
             f"sudo -S {cmd}",
@@ -230,7 +236,7 @@ class FileTransferDocker(_FileTransfer):
         self._disconnect()
         return files
 
-    def download(self, file: str):
+    def download(self, file: str) -> None:
         """Download an existing Platform file to disk."""
         self._connect()
         stdout, stderr = self._run_cmd(f'cat "{self.filepath}/{file}"')
@@ -243,7 +249,7 @@ class FileTransferDocker(_FileTransfer):
         self._check_process(stderr)
         self._disconnect()
 
-    def download_all(self):
+    def download_all(self) -> None:
         """Download all existing Platform files to disk."""
         for file in self.list_files():
             self.download(file)
@@ -252,6 +258,7 @@ class FileTransferDocker(_FileTransfer):
         """Upload a file to the Platform host."""
         self._check_filename()
         self._connect()
+        assert isinstance(self.filename, str)
         local_filename = Path(self.filename)
         remote_filename = local_filename.name
         with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
@@ -268,12 +275,12 @@ class FileTransferDocker(_FileTransfer):
 
 class FileTransferFTP(_FileTransfer):
     def __init__(
-            self,
-            username: str = None,
-            filename: Union[Path, str] = None,
-            user_id: str = None,
-            email: str = None,
-            host: str = None,
+        self,
+        username: str | None = None,
+        filename: Path | str | None = None,
+        user_id: str | None = None,
+        email: str | None = None,
+        host: str | None = None,
     ):
         super().__init__(
             username,
@@ -283,18 +290,25 @@ class FileTransferFTP(_FileTransfer):
             host,
         )
 
-        self.key = getenv("MX_CRYPT_PASSWORD").encode()
+        self.key = getenv("MX_CRYPT_PASSWORD", "").encode()
         if not self.key:
             raise FileTransferError(
-                "Missing environment variable 'MX_CRYPT_PASSWORD' (FTP password decrypt key)")
+                "Missing environment variable 'MX_CRYPT_PASSWORD' (FTP password decrypt key)"
+            )
 
-        self.ftp: Optional[SFTPClient] = None
+        self.ftp: SFTPClient | None = None
 
     def __enter__(self) -> SFTPClient:
         self.connect()
+        assert isinstance(self.ftp, SFTPClient)
         return self.ftp
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,  # noqa
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         self.disconnect()
         if any((exc_type, exc_val, exc_tb)):
             return False
@@ -305,36 +319,52 @@ class FileTransferFTP(_FileTransfer):
         iv, ciphertext = map(binascii.a2b_hex, self.encrypted_ftp_password.split(":"))
         return AES.new(self.key, AES.MODE_CBC, iv).decrypt(ciphertext).strip().decode()
 
-    def connect(self):
+    def connect(self) -> None:
         transport = Transport((self.host[1], 2121))  # noqa
         transport.connect(None, self.email, self.ftp_password)
         self.ftp = SFTPClient.from_transport(transport)
 
-    def disconnect(self):
+    def disconnect(self) -> None:
+        assert isinstance(self.ftp, SFTPClient)
         self.ftp.close()
 
     def list_files(
-            self,
-            with_timestamp: bool = False,
-            _connect: bool = True,
-    ) -> Union[list[str], list[tuple[str, datetime]]]:
+        self,
+        with_timestamp: bool = False,
+        _connect: bool = True,
+    ) -> list[str | tuple[str, datetime]]:
         """List existing files in this user's Platform folder."""
         if _connect:
             self.connect()
-        data = [
-            (attr.filename, datetime.fromtimestamp(attr.st_mtime))
-            if with_timestamp else attr.filename
-            for attr in
-            sorted(self.ftp.listdir_iter(), key=lambda a: a.st_mtime, reverse=True)
-        ]
-        if _connect:
-            self.disconnect()
-        return data
+        assert isinstance(self.ftp, SFTPClient)
+        try:
+            if with_timestamp:
+                return [
+                    (attr.filename, datetime.fromtimestamp(attr.st_mtime or 0))
+                    for attr in sorted(
+                        self.ftp.listdir_iter(),
+                        key=lambda a: a.st_mtime or 0,
+                        reverse=True,
+                    )
+                ]
+            else:
+                return [
+                    attr.filename
+                    for attr in sorted(
+                        self.ftp.listdir_iter(),
+                        key=lambda a: a.st_mtime or 0,
+                        reverse=True,
+                    )
+                ]
+        finally:
+            if _connect:
+                self.disconnect()
 
     def download(self, file: str, _connect: bool = True) -> FileTransferFTP:
         """Download an existing Platform file to disk."""
         if _connect:
             self.connect()
+        assert isinstance(self.ftp, SFTPClient)
         self.ftp.get(file, file)
         if _connect:
             self.disconnect()
@@ -344,6 +374,7 @@ class FileTransferFTP(_FileTransfer):
         """Download all existing Platform files to disk."""
         self.connect()
         for file in self.list_files(_connect=False):
+            assert isinstance(file, str)
             self.download(file, _connect=False)
         self.disconnect()
         return self
@@ -352,12 +383,15 @@ class FileTransferFTP(_FileTransfer):
         """Upload a file to the Platform host."""
         self._check_filename()
         self.connect()
+        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.filename, (bytes, str))
         self.ftp.put(self.filename, self.insert_filename)
         self.disconnect()
         return self
 
-    def test_mongo(self):
+    def test_mongo(self) -> None:
         """Test if a connection can be made to the MongoDB host."""
+        assert isinstance(self.db, MxCollection)
         try:
             self.db.find_one()
         except PyMongoError as e:
@@ -365,13 +399,15 @@ class FileTransferFTP(_FileTransfer):
                 "Make sure you have access to MongoDB prod/live server."
             ) from e
 
-    def test_ftp(self):
+    def test_ftp(self) -> None:
         """Test if a connection can be made to the Platform host."""
         try:
             self.connect()
             self.disconnect()
         except SSHException as e:
-            raise FileTransferError(f"Make sure you have access to the FTP server.") from e
+            raise FileTransferError(
+                "Make sure you have access to the FTP server."
+            ) from e
 
     def transfer(self) -> FileTransferFTP:
         """Upload the specified file to the specified Platform folder."""

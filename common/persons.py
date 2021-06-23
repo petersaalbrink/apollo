@@ -46,25 +46,20 @@ __all__ = (
     "set_years_ago",
 )
 
+import re
 from collections import namedtuple
 from collections.abc import Iterator
 from copy import deepcopy
 from datetime import datetime, timedelta
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from math import ceil
-import re
-from typing import Any, Optional, Union
-
-try:  # python3.8
-    from functools import cached_property
-except ImportError:  # python3.7
-    from cached_property import cached_property
+from typing import Any, SupportsFloat, Union
 
 from dateutil.parser import parse as dateparse
 from text_unidecode import unidecode
 
-import common.api.email as email
-import common.api.phone as phone
+from common.api import email, phone
+
 from ._persons_probabilities import (
     estimated_people_with_lastname,
     extra_fields_calculation,
@@ -74,7 +69,7 @@ from ._persons_probabilities import (
 )
 from .connectors.mx_elastic import ESClient
 from .exceptions import MatchError, NoMatch, PersonsError
-from .parsers import levenshtein, DISTANCE
+from .parsers import DISTANCE, levenshtein
 
 set_alpha = set_alpha
 set_population_size = set_population_size
@@ -114,16 +109,40 @@ class Constant:
     PD_INDEX = "cdqc.person_data"
     DATE_FORMAT = "%Y-%m-%d"
     DEFAULT_DATE = "1900-01-01"
-    EMPTY = {(): 0.}
-    NAMES: Optional[Names] = None
+    EMPTY = {(): 0.0}
+    NAMES: Names | None = None
     NAME = ("lastname", "initials", "gender", "firstname", "middlename")
-    ADDRESS = ("postcode", "housenumber", "housenumber_ext", "street", "city", "country")
+    ADDRESS = (
+        "postcode",
+        "housenumber",
+        "housenumber_ext",
+        "street",
+        "city",
+        "country",
+    )
     OTHER = ("mobile", "number", "date_of_birth", "email_address")
     META = ("date", "source")
-    MATCH_KEYS = ("name", "address", "gender", "mobile", "number", "date_of_birth", "email_address", "family")
+    MATCH_KEYS = (
+        "name",
+        "address",
+        "gender",
+        "mobile",
+        "number",
+        "date_of_birth",
+        "email_address",
+        "family",
+    )
     PERSON_META = (*NAME, *OTHER, *META)
     COPY_FAMILY = ("address", "number", "lastname", "middlename")
-    COPY_PERSON = (*COPY_FAMILY, "initials", "gender", "firstname", "mobile", "date_of_birth", "email_address")
+    COPY_PERSON = (
+        *COPY_FAMILY,
+        "initials",
+        "gender",
+        "firstname",
+        "mobile",
+        "date_of_birth",
+        "email_address",
+    )
 
 
 class Person:
@@ -142,6 +161,7 @@ class Person:
         )
         person.update()
     """
+
     __slots__ = (
         *Constant.NAME,
         "address",
@@ -152,28 +172,28 @@ class Person:
     )
 
     def __init__(
-            self,
-            ln: str = None,
-            it: str = None,
-            ad: Address = None,
-            *,
-            lastname: str = None,
-            initials: str = None,
-            gender: str = None,
-            firstname: str = None,
-            middlename: str = None,
-            postcode: str = None,
-            housenumber: Union[str, int] = None,
-            housenumber_ext: str = None,
-            street: str = None,
-            city: str = None,
-            country: str = "NLD",
-            mobile: str = None,
-            number: str = None,
-            date_of_birth: Union[str, datetime] = None,
-            email_address: str = None,
-            date: Union[str, datetime] = None,
-            source: str = None,
+        self,
+        ln: str | None = None,
+        it: str | None = None,
+        ad: Address | None = None,
+        *,
+        lastname: str | None = None,
+        initials: str | None = None,
+        gender: str | None = None,
+        firstname: str | None = None,
+        middlename: str | None = None,
+        postcode: str | None = None,
+        housenumber: str | int | None = None,
+        housenumber_ext: str | None = None,
+        street: str | None = None,
+        city: str | None = None,
+        country: str = "NLD",
+        mobile: str | None = None,
+        number: str | None = None,
+        date_of_birth: str | datetime | None = None,
+        email_address: str | None = None,
+        date: str | datetime | None = None,
+        source: str | None = None,
     ):
         if ad is None:
             self.lastname = lastname
@@ -202,8 +222,8 @@ class Person:
             self.address = ad
 
         Cleaner(self)
-        self._match: Optional[Match] = None
-        self._statistics: Optional[Statistics] = None
+        self._match: Match | None = None
+        self._statistics: Statistics | None = None
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.lastname!r}, {self.initials!r}, {self.address!r})"
@@ -213,76 +233,14 @@ class Person:
             yield attr, getattr(self, attr)
         yield from self.address
 
-    def __eq__(self, other: Person) -> set:
+    def __eq__(self, other: object) -> bool:
         """Compare two `Person` objects.
 
         This method assumes left (`self`) as input and right (`other`) as output.
         """
-
-        if self.lastname and other.lastname:
-            distance = min(len(self.lastname), len(other.lastname))
-            distance = 2 if distance > 5 else (1 if distance > 2 else 0)
-        else:
-            distance = 0
-
-        def partial_initials_match():
-            return self.initials.startswith(other.initials) or other.initials.startswith(self.initials)
-
-        def partial_lastname_match():
-            self_lastname = self.lastname.replace("ij", "y")
-            other_lastname = other.lastname.replace("ij", "y")
-            return (
-                self_lastname in other_lastname or other_lastname in self_lastname
-                or levenshtein(self_lastname, other_lastname, DISTANCE) <= distance
-                or self_lastname == " ".join(reversed(other_lastname.split()))
-            )
-
-        if self.lastname and self.initials and other.lastname and other.initials:
-            name = (
-                (self.initials, self.lastname) == (other.initials, other.lastname)
-                or (partial_initials_match() and partial_lastname_match())
-            )
-        elif self.lastname and other.lastname:
-            name = self.lastname == other.lastname or partial_lastname_match()
-        elif self.initials and other.initials:
-            name = self.initials == other.initials or partial_initials_match()
-        else:
-            name = False
-
-        if self.address.postcode and self.address.housenumber and self.address.housenumber_ext:
-            address = (
-                (self.address.postcode, self.address.housenumber, self.address.housenumber_ext)
-                == (other.address.postcode, other.address.housenumber, other.address.housenumber_ext)
-            )
-        elif self.address.postcode and self.address.housenumber:
-            address = ((self.address.postcode, self.address.housenumber)
-                       == (other.address.postcode, other.address.housenumber))
-        elif self.address.postcode:
-            address = self.address.postcode == other.address.postcode
-        elif self.address.housenumber:
-            address = self.address.housenumber == other.address.housenumber
-        else:
-            address = False
-
-        family = self.lastname and other.lastname and self.address.postcode and (
-            (self.lastname == other.lastname and self.address.postcode == other.address.postcode)
-            or (partial_lastname_match() and address)
-        )
-        if name and family and (
-                not (self.initials and other.initials)
-                or (self.initials and other.initials
-                    and not (self.initials == other.initials or partial_initials_match()))
-        ):
-            name = False
-
-        gender = self.gender and self.gender == other.gender
-        date_of_birth = self.date_of_birth and self.date_of_birth == other.date_of_birth
-        mobile = self.mobile and self.mobile == other.mobile
-        number = self.number and self.number == other.number
-        email_address = self.email_address and self.email_address == other.email_address
-
-        local_vars = locals()
-        return {k for k in Constant.MATCH_KEYS if local_vars[k]}
+        if not isinstance(other, Person):
+            raise NotImplementedError
+        return bool(self.get_match_keys(other))
 
     def __or__(self, other: Person) -> Person:
         """Update `self` with date from `other`.
@@ -293,15 +251,28 @@ class Person:
         # Because of our probability calculation, we will only make two types of matches
         # The difference between the two is similarity of initials
         # This is enough to distinguish a person match from a family match
-        person_match = not self.initials or (self.initials == other.initials or (
-            other.initials and (
-                self.initials.startswith(other.initials) or other.initials.startswith(self.initials))
-        ))
+        person_match = not self.initials or (
+            self.initials == other.initials
+            or (
+                other.initials
+                and (
+                    self.initials.startswith(other.initials)
+                    or other.initials.startswith(self.initials)
+                )
+            )
+        )
         # Based on this, we only copy certain fields if there's a family match
         copy = Constant.COPY_PERSON if person_match else Constant.COPY_FAMILY
 
-        if ((self.date and self.date < (other.date or Constant.YEARS_AGO))
-                or (not self.date and Constant.YEARS_AGO < (other.date or Constant.YEARS_AGO))):
+        if (
+            isinstance(self.date, datetime)
+            and self.date
+            < (other.date if isinstance(other.date, datetime) else Constant.YEARS_AGO)
+        ) or (
+            not self.date
+            and isinstance(other.date, datetime)
+            and Constant.YEARS_AGO < other.date
+        ):
 
             # Overwrite all if other is more recent
             for attr in copy:
@@ -345,7 +316,7 @@ class Person:
         )
 
     @classmethod
-    def from_doc(cls, doc: dict) -> Person:
+    def from_doc(cls, doc: dict[str, Any]) -> Person:
         """Create a `Person` from an Elasticsearch response."""
         if "hits" in doc:
             doc = doc["hits"]["hits"][0]
@@ -368,6 +339,113 @@ class Person:
             date=doc["date"],
             source=doc["source"],
         )
+
+    def get_match_keys(self, other: Person) -> set[str]:
+        if self.lastname and other.lastname:
+            distance = min(len(self.lastname), len(other.lastname))
+            distance = 2 if distance > 5 else (1 if distance > 2 else 0)
+        else:
+            distance = 0
+
+        def partial_initials_match() -> bool:
+            if isinstance(self.initials, str) and isinstance(other.initials, str):
+                return self.initials.startswith(
+                    other.initials
+                ) or other.initials.startswith(self.initials)
+            else:
+                return False
+
+        def partial_lastname_match() -> bool:
+            if isinstance(self.lastname, str) and isinstance(other.lastname, str):
+                self_lastname = self.lastname.replace("ij", "y")
+                other_lastname = other.lastname.replace("ij", "y")
+                return (
+                    self_lastname in other_lastname
+                    or other_lastname in self_lastname
+                    or levenshtein(self_lastname, other_lastname, DISTANCE) <= distance
+                    or self_lastname == " ".join(reversed(other_lastname.split()))
+                )
+            else:
+                return False
+
+        if (
+            self.lastname
+            and isinstance(self.initials, str)
+            and other.lastname
+            and isinstance(other.initials, str)
+        ):
+            name = (
+                (self.initials, self.lastname) == (other.initials, other.lastname)
+            ) or (partial_initials_match() and partial_lastname_match())
+        elif self.lastname and other.lastname:
+            name = (self.lastname == other.lastname) or partial_lastname_match()
+        elif self.initials and other.initials:
+            name = (self.initials == other.initials) or partial_initials_match()
+        else:
+            name = False
+
+        if (
+            self.address.postcode
+            and self.address.housenumber
+            and self.address.housenumber_ext
+        ):
+            address = (
+                self.address.postcode,
+                self.address.housenumber,
+                self.address.housenumber_ext,
+            ) == (
+                other.address.postcode,
+                other.address.housenumber,
+                other.address.housenumber_ext,
+            )
+        elif self.address.postcode and self.address.housenumber:
+            address = (self.address.postcode, self.address.housenumber) == (
+                other.address.postcode,
+                other.address.housenumber,
+            )
+        elif self.address.postcode:
+            address = self.address.postcode == other.address.postcode
+        elif self.address.housenumber:
+            address = self.address.housenumber == other.address.housenumber
+        else:
+            address = False
+
+        family = (
+            self.lastname
+            and other.lastname
+            and self.address.postcode
+            and (
+                (
+                    self.lastname == other.lastname
+                    and self.address.postcode == other.address.postcode
+                )
+                or (partial_lastname_match() and address)
+            )
+        )
+        if (
+            name
+            and family
+            and (
+                not (self.initials and other.initials)
+                or (
+                    self.initials
+                    and other.initials
+                    and not (
+                        self.initials == other.initials or partial_initials_match()
+                    )
+                )
+            )
+        ):
+            name = False
+
+        gender = self.gender and self.gender == other.gender
+        date_of_birth = self.date_of_birth and self.date_of_birth == other.date_of_birth
+        mobile = self.mobile and self.mobile == other.mobile
+        number = self.number and self.number == other.number
+        email_address = self.email_address and self.email_address == other.email_address
+
+        local_vars = locals()
+        return {k for k in Constant.MATCH_KEYS if local_vars[k]}
 
     @property
     def match(self) -> Match:
@@ -396,16 +474,17 @@ class Person:
 
 class Address:
     """Data class for addresses."""
+
     __slots__ = Constant.ADDRESS
 
     def __init__(
-            self,
-            postcode: str = None,
-            housenumber: int = None,
-            housenumber_ext: str = None,
-            street: str = None,
-            city: str = None,
-            country: str = "NLD",
+        self,
+        postcode: str | None = None,
+        housenumber: str | int | None = None,
+        housenumber_ext: str | None = None,
+        street: str | None = None,
+        city: str | None = None,
+        country: str = "NLD",
     ):
         self.postcode = postcode
         self.housenumber = housenumber
@@ -495,7 +574,7 @@ class Names:
     """
 
     @property
-    def es(self):
+    def es(self) -> ESClient:
         return ESClient(Constant.ND_INDEX)
 
     def __repr__(self) -> str:
@@ -508,9 +587,10 @@ class Names:
         The output can be used to clean last name data.
         """
         with self.es as es:
+            assert isinstance(es, ESClient)
             return {
-                doc["_source"]["affix"] for doc in
-                es.findall({"query": {"term": {"data": "affixes"}}})
+                doc["_source"]["affix"]
+                for doc in es.findall({"query": {"term": {"data": "affixes"}}})
             }
 
     @cached_property
@@ -524,9 +604,12 @@ class Names:
         The output can be used to fill missing gender data.
         """
         with self.es as es:
+            assert isinstance(es, ESClient)
             return {
-                doc["_source"]["firstname"]: doc["_source"]["gender"] for doc in
-                es.findall({"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}})
+                doc["_source"]["firstname"]: doc["_source"]["gender"]
+                for doc in es.findall(
+                    {"query": {"bool": {"must": {"term": {"data": "firstnames"}}}}}
+                )
             }
 
     @cached_property
@@ -536,9 +619,10 @@ class Names:
         The output can be used to clean last name data.
         """
         with self.es as es:
+            assert isinstance(es, ESClient)
             return {
-                doc["_source"]["title"] for doc in
-                es.findall({"query": {"term": {"data": "titles"}}})
+                doc["_source"]["title"]
+                for doc in es.findall({"query": {"term": {"data": "titles"}}})
             }
 
     @cached_property
@@ -548,9 +632,12 @@ class Names:
         The output can be used for data and matching quality calculations.
         """
         with self.es as es:
+            assert isinstance(es, ESClient)
             return {
-                doc["_source"]["surname"]: doc["_source"]["number"] for doc in
-                es.findall({"query": {"bool": {"must": {"term": {"data": "surnames"}}}}})
+                doc["_source"]["surname"]: doc["_source"]["number"]
+                for doc in es.findall(
+                    {"query": {"bool": {"must": {"term": {"data": "surnames"}}}}}
+                )
             }
 
 
@@ -558,14 +645,16 @@ Constant.NAMES = Names()
 ParsedName = namedtuple("ParsedName", ("first", "last", "gender"))
 
 
-def preload_db():
+def preload_db() -> None:
     """Helper function to aid application startup."""
+    assert isinstance(Constant.NAMES, Names)
     _ = Constant.NAMES.affixes
     _ = Constant.NAMES.first_names
 
 
 def parse_name(name: str) -> ParsedName:
     """Parse parts from a name."""
+    assert isinstance(Constant.NAMES, Names)
 
     for char in "_.+-":
         name = name.replace(char, " ")
@@ -604,10 +693,10 @@ def parse_name(name: str) -> ParsedName:
 
     first_name = " ".join(first_names) or None
     gender = Constant.NAMES.first_names.get(first_names[0]) if first_names else None
-    initials = ".".join(initials) + "." if initials else None
+    initial = ".".join(initials) + "." if initials else None
     last_name = " ".join(last_names) or None
 
-    return ParsedName(initials or first_name, last_name, gender)
+    return ParsedName(initial or first_name, last_name, gender)
 
 
 class Re:
@@ -624,12 +713,15 @@ class Re:
 
 class Cleaner:
     """Cleaner for Data objects."""
-    affixes = [f"{aff.title()} " for aff in Constant.NAMES.affixes | Constant.NAMES.titles]
+
+    assert isinstance(Constant.NAMES, Names)
+    affixes = [
+        f"{aff.title()} " for aff in Constant.NAMES.affixes | Constant.NAMES.titles
+    ]
     countries = {"nederland", "netherlands", "nl", "nld"}
     genders = {"MAN": "M", "VROUW": "V"}
     date_fields = ("date", "date_of_birth")
     phone_fields = ("number", "mobile")
-    person: Optional[Person] = None
 
     def __init__(self, person: Person):
         self.person = person
@@ -638,7 +730,7 @@ class Cleaner:
     def __repr__(self) -> str:
         return f"{type(self).__name__}"
 
-    def clean(self):
+    def clean(self) -> None:
         self.check_country()
         self.clean_dates()
         if Constant.CLEAN_EMAIL:
@@ -651,12 +743,14 @@ class Cleaner:
         self.clean_postcode()
         self.clean_phones()
 
-    def check_country(self):
+    def check_country(self) -> None:
         """Check if input country is accepted."""
         if self.person.address.country.lower() not in self.countries:
-            raise PersonsError(f"Not implemented for country {self.person.address.country}.")
+            raise PersonsError(
+                f"Not implemented for country {self.person.address.country}."
+            )
 
-    def clean_dates(self):
+    def clean_dates(self) -> None:
         """Clean and parse dates."""
         for attr in self.date_fields:
             date = getattr(self.person, attr)
@@ -673,15 +767,16 @@ class Cleaner:
             if isinstance(date, datetime) and f"{date.date()}" == Constant.DEFAULT_DATE:
                 setattr(self.person, attr, None)
 
-    def clean_email(self):
+    def clean_email(self) -> None:
         if isinstance(self.person.email_address, str):
             response = email.check_email(self.person.email_address)
+            assert isinstance(response, dict)
             if response["safe_to_send"]:
                 self.person.email_address = response["email"]
             else:
                 self.person.email_address = None
 
-    def clean_gender(self):
+    def clean_gender(self) -> None:
         """Clean gender."""
         if not isinstance(self.person.gender, str):
             self.person.gender = None
@@ -691,30 +786,38 @@ class Cleaner:
             return
         self.person.gender = self.genders.get(self.person.gender)
 
-    def clean_hn(self):
+    def clean_hn(self) -> None:
         """Clean house number."""
         if isinstance(self.person.address.housenumber, str):
             for d in ("/", "-"):
                 if d in self.person.address.housenumber:
-                    self.person.address.housenumber = self.person.address.housenumber.split(d)[0]
-            self.person.address.housenumber = Re.hn.sub("", self.person.address.housenumber)
+                    self.person.address.housenumber = (
+                        self.person.address.housenumber.split(d)[0]
+                    )
+            self.person.address.housenumber = Re.hn.sub(
+                "", self.person.address.housenumber
+            )
         try:
-            self.person.address.housenumber = int(float(self.person.address.housenumber))
+            assert isinstance(self.person.address.housenumber, SupportsFloat)
+            self.person.address.housenumber = int(
+                float(self.person.address.housenumber)
+            )
         except (TypeError, ValueError):
             self.person.address.housenumber = None
 
-    def clean_hne(self):
+    def clean_hne(self) -> None:
         """Clean house number extension."""
         if isinstance(self.person.address.housenumber_ext, str):
             self.person.address.housenumber_ext = Re.hne2.sub(
-                "", Re.hne1.sub("", self.person.address.housenumber_ext.upper()))
+                "", Re.hne1.sub("", self.person.address.housenumber_ext.upper())
+            )
 
-    def clean_initials(self):
+    def clean_initials(self) -> None:
         """Clean initials."""
         if isinstance(self.person.initials, str):
             self.person.initials = Re.initials.sub("", self.person.initials.upper())
 
-    def clean_lastname(self):
+    def clean_lastname(self) -> None:
         """Clean last name.
 
         Keep only letters; hyphens become spaces.
@@ -727,28 +830,44 @@ class Cleaner:
                 lastname = lastname.replace(o, "")
                 if " " not in lastname:
                     break
-            self.person.lastname = unidecode(Re.single_char.sub(
-                "", Re.whitespace.sub(" ", Re.name.sub("", Re.hyphen.sub(" ", lastname)))
-            ).strip())
+            self.person.lastname = unidecode(
+                Re.single_char.sub(
+                    "",
+                    Re.whitespace.sub(
+                        " ", Re.name.sub("", Re.hyphen.sub(" ", lastname))
+                    ),
+                ).strip()
+            )
 
-    def clean_postcode(self):
+    def clean_postcode(self) -> None:
         """Clean postal code."""
         if isinstance(self.person.address.postcode, str):
-            self.person.address.postcode = self.person.address.postcode.replace(" ", "").upper()
-            if len(self.person.address.postcode) != 6 or self.person.address.postcode.startswith("0"):
+            self.person.address.postcode = self.person.address.postcode.replace(
+                " ", ""
+            ).upper()
+            if len(
+                self.person.address.postcode
+            ) != 6 or self.person.address.postcode.startswith("0"):
                 self.person.address.postcode = None
 
-    def clean_phones(self):
+    def clean_phones(self) -> None:
         """Clean and parse phone and mobile numbers."""
         for input_type in self.phone_fields:
             number = getattr(self.person, input_type)
             if number:
                 try:
-                    parsed = phone.check_phone(number, self.person.address.country, call=True)
+                    parsed = phone.check_phone(
+                        number,
+                        self.person.address.country,
+                        call=True,
+                    )
                     if parsed.valid_number:
-                        try:
-                            parsed.number_type = parsed.number_type.replace("landline", "number")
-                        except AttributeError:
+                        if isinstance(parsed.number_type, str):
+                            parsed.number_type = parsed.number_type.replace(
+                                "landline",
+                                "number",
+                            )
+                        else:
                             parsed.number_type = input_type
                         setattr(self.person, parsed.number_type, parsed.parsed_number)
                         if input_type != parsed.number_type:
@@ -792,9 +911,20 @@ class Query:
     sort = [{"date": "desc"}, {"_score": "desc"}]
 
     def __init__(self, matchable: Matchable):
-        self._address = self._address_query = self._date_of_birth = self._email_address \
-            = self._fuzzy_address = self._gender = self._initials = self._lastname = self._mobile \
-            = self._number = self._person_query = self._postcode = self._query = self._repr = None
+        self._address: dict[str, Any] | None = None
+        self._address_query: dict[str, Any] | None = None
+        self._date_of_birth: dict[str, Any] | None = None
+        self._email_address: dict[str, Any] | None = None
+        self._fuzzy_address: dict[str, Any] | None = None
+        self._gender: dict[str, Any] | None = None
+        self._initials: dict[str, Any] | None = None
+        self._lastname: dict[str, Any] | None = None
+        self._mobile: dict[str, Any] | None = None
+        self._number: dict[str, Any] | None = None
+        self._person_query: dict[str, Any] | None = None
+        self._postcode: dict[str, Any] | None = None
+        self._query: dict[str, Any] | None = None
+        self._repr: str | None = None
         if isinstance(matchable, Person):
             self.person = matchable
         elif isinstance(matchable, Address):
@@ -813,174 +943,292 @@ class Query:
         return {attr: getattr(self, attr) for attr in self.__slots__}
 
     @property
-    def lastname_clause(self) -> dict:
+    def lastname_clause(self) -> dict[str, Any]:
         if not self._lastname:
-            clause = [
+            assert isinstance(self.person.lastname, str)
+            clauses = [
                 {"query": self.person.lastname, "fuzziness": "AUTO"},
             ]
             if "ij" in self.person.lastname:
-                clause.append({"query": self.person.lastname.replace("ij", "y"), "fuzziness": "AUTO"})
+                clauses.append(
+                    {
+                        "query": self.person.lastname.replace("ij", "y"),
+                        "fuzziness": "AUTO",
+                    }
+                )
             elif "y" in self.person.lastname:
-                clause.append({"query": self.person.lastname.replace("y", "ij"), "fuzziness": "AUTO"})
-            clause = [{"match": {"details.lastname": q}} for q in clause]
-            clause.append({"match": {"details.lastname.keyword": {"query": self.person.lastname, "boost": 2}}})
-            self._lastname = {"bool": {"should": clause, "minimum_should_match": 1}}
+                clauses.append(
+                    {
+                        "query": self.person.lastname.replace("y", "ij"),
+                        "fuzziness": "AUTO",
+                    }
+                )
+            should = [{"match": {"details.lastname": q}} for q in clauses]
+            should.append(
+                {
+                    "match": {
+                        "details.lastname.keyword": {
+                            "query": self.person.lastname,
+                            "boost": "2",
+                        }
+                    }
+                }
+            )
+            self._lastname = {"bool": {"should": should, "minimum_should_match": 1}}
         return self._lastname
 
     @property
-    def initials_clause(self) -> dict:
+    def initials_clause(self) -> dict[str, Any]:
         if not self._initials:
-            self._initials = {"bool": {"should": [
-                {"term": {"details.initials.keyword": self.person.initials[:i]}}
-                for i in range(1, len(self.person.initials) + 1)
-            ], "minimum_should_match": 1, "boost": 2}}
+            assert isinstance(self.person.initials, str)
+            self._initials = {
+                "bool": {
+                    "should": [
+                        {"term": {"details.initials.keyword": self.person.initials[:i]}}
+                        for i in range(1, len(self.person.initials) + 1)
+                    ],
+                    "minimum_should_match": 1,
+                    "boost": 2,
+                }
+            }
         return self._initials
 
     @staticmethod
-    @lru_cache()
-    def _get_lastname_clause(lastname: str, fuzzy: str):
-        return {"bool": {"should": [
-            *[{"match": {"details.lastname.keyword": q}} for q in (
-                {"query": lastname, "fuzziness": fuzzy},
-                {"query": lastname.replace("ij", "y"), "fuzziness": fuzzy}
-                if "ij" in lastname else None,
-                {"query": lastname.replace("y", "ij"), "fuzziness": fuzzy}
-                if "y" in lastname else None,
-            ) if q],
-            {"match": {"details.lastname.keyword": {"query": lastname, "boost": 2}}},
-        ], "minimum_should_match": 1}}
+    @lru_cache
+    def _get_lastname_clause(lastname: str, fuzzy: str) -> dict[str, Any]:
+        qs = (
+            {"query": lastname, "fuzziness": fuzzy},
+            {"query": lastname.replace("ij", "y"), "fuzziness": fuzzy}
+            if "ij" in lastname
+            else None,
+            {"query": lastname.replace("y", "ij"), "fuzziness": fuzzy}
+            if "y" in lastname
+            else None,
+        )
+        should = ({"match": {"details.lastname.keyword": q}} for q in qs if q)
+        return {
+            "bool": {
+                "should": [
+                    *should,
+                    {
+                        "match": {
+                            "details.lastname.keyword": {"query": lastname, "boost": 2}
+                        }
+                    },
+                ],
+                "minimum_should_match": 1,
+            }
+        }
 
-    @lru_cache()
-    def get_lastname_clause(self, lastname: str, fuzzy: str) -> Optional[dict]:
-        fuzzy = "AUTO" if fuzzy == "fuzzy" else 0
+    @lru_cache
+    def get_lastname_clause(self, lastname: str, fuzzy: str) -> dict[str, Any] | None:
+        fuzzy = "AUTO" if fuzzy == "fuzzy" else "0"
         if isinstance(lastname, str):
             return self._get_lastname_clause(lastname, fuzzy)
         elif isinstance(lastname, tuple):
-            return {"bool": {"should": [
-                self._get_lastname_clause(name, fuzzy)
-                for name in lastname
-            ], "minimum_should_match": 1}}
+            return {
+                "bool": {
+                    "should": [
+                        self._get_lastname_clause(name, fuzzy) for name in lastname
+                    ],
+                    "minimum_should_match": 1,
+                }
+            }
 
-    @lru_cache()
-    def get_initials_clause(self, initials: str) -> Optional[dict]:
+    @lru_cache
+    def get_initials_clause(self, initials: str) -> dict[str, Any] | None:
         if initials:
+            assert isinstance(self.person.initials, str)
             if len(initials) == len(self.person.initials):
-                return {"bool": {"should": [
-                    {"bool": {"must": {"term": {"details.initials.keyword": initials}}, "boost": 2}},
-                    {"wildcard": {"details.initials": initials.lower() + "*"}},
-                ], "minimum_should_match": 1, "boost": 2}}
+                return {
+                    "bool": {
+                        "should": [
+                            {
+                                "bool": {
+                                    "must": {
+                                        "term": {"details.initials.keyword": initials}
+                                    },
+                                    "boost": 2,
+                                }
+                            },
+                            {"wildcard": {"details.initials": initials.lower() + "*"}},
+                        ],
+                        "minimum_should_match": 1,
+                        "boost": 2,
+                    }
+                }
             else:
-                return {"bool": {"should": [
-                    {"term": {"details.initials.keyword": self.person.initials[:i]}}
-                    for i in range(1, len(self.person.initials) + 1)
-                ], "minimum_should_match": 1, "boost": 2}}
+                return {
+                    "bool": {
+                        "should": [
+                            {
+                                "term": {
+                                    "details.initials.keyword": self.person.initials[:i]
+                                }
+                            }
+                            for i in range(1, len(self.person.initials) + 1)
+                        ],
+                        "minimum_should_match": 1,
+                        "boost": 2,
+                    }
+                }
+        return None
 
     @property
-    def gender_clause(self) -> dict:
+    def gender_clause(self) -> dict[str, Any]:
         if not self._gender:
             self._gender = {"term": {"details.gender.keyword": self.person.gender}}
         return self._gender
 
     @property
-    def date_of_birth_clause(self) -> dict:
+    def date_of_birth_clause(self) -> dict[str, Any]:
         if not self._date_of_birth:
             self._date_of_birth = {"term": {"birth.date": self.person.date_of_birth}}
         return self._date_of_birth
 
     @property
-    def address_clause(self) -> dict:
+    def address_clause(self) -> dict[str, Any]:
         if not self._address:
-            self._address = {"bool": {"should": [
-                {"match": {"address.address_id.keyword": {
-                    "query": self.person.address.address_id,
-                    "boost": 2,
-                }}},
-                {"bool": {"must": [
-                    {"term": {"address.postalCode.keyword": self.person.address.postcode}},
-                    {"term": {"address.houseNumber": self.person.address.housenumber}},
-                ]}},
-            ], "minimum_should_match": 1}}
+            must = [
+                {"term": {"address.postalCode.keyword": self.person.address.postcode}},
+                {"term": {"address.houseNumber": self.person.address.housenumber}},
+            ]
+            should = [
+                {
+                    "match": {
+                        "address.address_id.keyword": {
+                            "query": self.person.address.address_id,
+                            "boost": 2,
+                        }
+                    }
+                },
+                {"bool": {"must": must}},
+            ]
+            self._address = {
+                "bool": {
+                    "should": should,
+                    "minimum_should_match": 1,
+                }
+            }
         return self._address
 
     @property
-    def fuzzy_address_clause(self) -> dict:
+    def fuzzy_address_clause(self) -> dict[str, Any]:
         if not self._fuzzy_address:
-            self._fuzzy_address = {"match": {"address.address_id.keyword": {
-                    "query": self.person.address.address_id,
-                    "fuzziness": 1,
-                }}}
+            self._fuzzy_address = {
+                "match": {
+                    "address.address_id.keyword": {
+                        "query": self.person.address.address_id,
+                        "fuzziness": 1,
+                    }
+                }
+            }
         return self._fuzzy_address
 
     @property
-    def postcode_clause(self) -> dict:
+    def postcode_clause(self) -> dict[str, Any]:
         if not self._postcode:
-            self._postcode = {"term": {"address.postalCode.keyword": self.person.address.postcode}}
+            self._postcode = {
+                "term": {"address.postalCode.keyword": self.person.address.postcode}
+            }
         return self._postcode
 
     @property
-    def email_address_clause(self) -> dict:
+    def email_address_clause(self) -> dict[str, Any]:
         if not self._email_address:
             self._email_address = {"term": {"contact.email": self.person.email_address}}
         return self._email_address
 
     @property
-    def mobile_clause(self) -> dict:
+    def mobile_clause(self) -> dict[str, Any]:
         if not self._mobile:
-            self._mobile = {"term": {"phoneNumber.mobile": self.person.mobile.replace("+31", "")}}
+            assert isinstance(self.person.mobile, str)
+            self._mobile = {
+                "term": {"phoneNumber.mobile": self.person.mobile.replace("+31", "")}
+            }
         return self._mobile
 
     @property
-    def number_clause(self) -> dict:
+    def number_clause(self) -> dict[str, Any]:
         if not self._number:
-            self._number = {"term": {"phoneNumber.number": self.person.number.replace("+31", "")}}
+            assert isinstance(self.person.number, str)
+            self._number = {
+                "term": {"phoneNumber.number": self.person.number.replace("+31", "")}
+            }
         return self._number
 
     @property
-    def address_query(self) -> dict:
+    def address_query(self) -> dict[str, Any]:
         """This is a query that will match only on Address."""
         if not self._address_query:
-            self._address_query = {"query": {"match": {
-                "address.address_id.keyword": self.person.address.address_id,
-            }}, "sort": self.sort}
+            self._address_query = {
+                "query": {
+                    "match": {
+                        "address.address_id.keyword": self.person.address.address_id,
+                    }
+                },
+                "sort": self.sort,
+            }
         return self._address_query
 
     @property
-    def person_query(self) -> dict:
+    def person_query(self) -> dict[str, Any]:
         """This is a calculated query that will match only this Person."""
         if not self._person_query:
-            self._person_query = {"query": {"bool": {"should": [
-                {"bool": {"must": [
-                    clause for clause in (
-                        self.get_lastname_clause(lastname, situation),
-                        self.get_initials_clause(initials),
-                        *(getattr(self, clause + "_clause")
-                          for clause in extra_fields),
-                    ) if clause
-                ]}}
-                for lastname, initials, situation, *extra_fields in self.person.statistics.extra_fields
-            ]}}, "sort": self.sort}
+            should = []
+            for (
+                lastname,
+                initials,
+                situation,
+                *extra_fields,
+            ) in self.person.statistics.extra_fields:
+                must = [
+                    self.get_lastname_clause(lastname, situation),
+                    self.get_initials_clause(initials),
+                ]
+                for clause in extra_fields:
+                    assert isinstance(clause, str)
+                    must.append(getattr(self, clause + "_clause"))
+                should.append({"bool": {"must": [cl for cl in must if cl]}})
+            self._person_query = {
+                "query": {"bool": {"should": should}},
+                "sort": self.sort,
+            }
         return self._person_query
 
     @property
-    def query(self) -> dict:
+    def query(self) -> dict[str, Any]:
         """This is a complete query that matches everything, no probability calculations."""
         if not self._query:
-            self._query = {"query": {"bool": {"should": [
-                getattr(self, clause + "_clause")
-                for clause in self.clauses
-                if (getattr(self.person.address, clause)
-                    if clause == "postcode"
-                    else (self.person.address
-                          if clause == "fuzzy_address"
-                          else getattr(self.person, clause)))
-            ]}}, "sort": self.sort}
+            self._query = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            getattr(self, clause + "_clause")
+                            for clause in self.clauses
+                            if (
+                                getattr(self.person.address, clause)
+                                if clause == "postcode"
+                                else (
+                                    self.person.address
+                                    if clause == "fuzzy_address"
+                                    else getattr(self.person, clause)
+                                )
+                            )
+                        ]
+                    }
+                },
+                "sort": self.sort,
+            }
         return self._query
 
 
 def score(year: int) -> str:
     """Gives a score (1: best, 4: worst) based on the date."""
     c = Constant
-    return f"{min(c.LOW_SCORE, ceil((c.CURR_YEAR - year + c.HIGH_SCORE) / c.YEAR_STEP))}"
+    return (
+        f"{min(c.LOW_SCORE, ceil((c.CURR_YEAR - year + c.HIGH_SCORE) / c.YEAR_STEP))}"
+    )
 
 
 class Match:
@@ -997,12 +1245,12 @@ class Match:
     _es = ESClient(Constant.PD_INDEX)
 
     def __init__(self, matchable: Matchable, query_type: str = "person_query"):
-        self._composite: Optional[Person] = None
-        self._matches: Optional[list[Person]] = None
+        self._composite: Person | None = None
+        self._matches: list[Person] | None = None
         self._match_keys: set[str] = set()
-        self._match_score: Optional[str] = None
+        self._match_score: str | None = None
         self._query_type = query_type
-        self._search_response: Optional[list[dict]] = None
+        self._search_response: list[dict[str, Any]] | None = None
         matchable = deepcopy(matchable)
         if isinstance(matchable, Person):
             self.person = matchable
@@ -1018,7 +1266,7 @@ class Match:
         return {attr: getattr(self, attr) for attr in self.__slots__}
 
     @property
-    def search_response(self) -> list[dict]:
+    def search_response(self) -> list[dict[str, Any]]:
         """Elastic response for this Match."""
         if not self._search_response:
             self._search_response = self._es.search(
@@ -1033,16 +1281,13 @@ class Match:
     @property
     def matches(self) -> list[Person]:
         if not self._matches:
-            self._matches = [
-                Person.from_doc(doc)
-                for doc in self.search_response
-            ]
+            self._matches = [Person.from_doc(doc) for doc in self.search_response]
         return self._matches
 
     @property
     def match_keys(self) -> set[str]:
         if not self._match_keys:
-            self._match_keys |= self.person == self.composite
+            self._match_keys |= self.person.get_match_keys(self.composite)
             if not self._match_keys:
                 raise NoMatch
         return self._match_keys
@@ -1051,9 +1296,9 @@ class Match:
     def match_score(self) -> str:
         if not self._match_score:
             n_match_keys = len(self.match_keys)
-            try:
+            if isinstance(self.composite.date, datetime):
                 date_score = score(self.composite.date.year)
-            except AttributeError:
+            else:
                 date_score = "4"
             if n_match_keys >= 4:
                 self._match_score = "A" + date_score

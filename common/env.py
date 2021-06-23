@@ -7,6 +7,8 @@ used externally, if one needs to load secrets or hostnames into the
 system's environment variables outside of common.
 """
 
+from __future__ import annotations
+
 __all__ = (
     "commondir",
     "envfile",
@@ -15,13 +17,14 @@ __all__ = (
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 commondir = Path.home() / ".common"
 envfile = Path(commondir / ".env")
 
 
-def getenv():
+def _getenv() -> None:
     """Load the .env file that is used by common."""
 
     # Create .env, if it doesn't exist yet
@@ -35,7 +38,7 @@ def getenv():
     load_dotenv(dotenv_path=envfile, override=False)
 
 
-def _write_pem():
+def _write_pem() -> None:
     """Create certificates needed by common.MySQLClient.
 
     The certificates need to be present as environment variables and
@@ -57,5 +60,5 @@ def _write_pem():
             f.write(data)
 
 
-getenv()
+_getenv()
 getenv = os.getenv

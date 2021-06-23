@@ -27,10 +27,17 @@ This module contains the following objects:
    .. py:method:: check_matching_percentage()
       Return matching percentage (0-100) of two strings.
 
-.. py:function:: common.parsers.flatten(nested_dict: MutableMapping[str, Any], sep: str = "_") -> dict
+.. py:function:: common.parsers.flatten(
+        nested_dict: MutableMapping[str, Any],
+        sep: str = "_",
+    ) -> dict
    Flatten a nested dictionary.
 
-.. py:function:: common.parsers.levenshtein(seq1: str, seq2: str, measure: str = "percentage") -> Union[float, int]
+.. py:function:: common.parsers.levenshtein(
+        seq1: str,
+        seq2: str,
+        measure: str = "percentage",
+    ) -> Union[float, int]
    Calculate the Levenshtein distance and score for two strings.
 
    By default, returns the percentage score.
@@ -51,7 +58,10 @@ This module contains the following objects:
    Example::
         address = reverse_geocode(4.894410, 52.310158)
 
-.. py:function:: common.parsers.partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]
+.. py:function:: common.parsers.partition(
+        pred: Callable[[T], bool],
+        it: Iterable[T],
+    ) -> tuple[list[T], list[T]]
    Split an iterable `it` into two lists using some predicate `pred`.
    Example::
         evens, odds = partition(lambda num: (num % 2) == 0, range(100))
@@ -80,22 +90,22 @@ __all__ = (
 
 from datetime import datetime
 from functools import lru_cache
-from re import findall, compile
-from typing import Any, Callable, Iterable, Optional, TypeVar, Union
+from re import compile, findall
+from typing import Any, Callable, Iterable, TypeVar
 
 from dateutil.parser import parse
 from numpy import zeros
 from pandas import notna
+from requests import Response
 from text_unidecode import unidecode
 
 from .exceptions import ParseError
 from .requests import get
 
+T = TypeVar("T")
 
-T = TypeVar('T')
 
-
-def _flatten(input_dict: dict[str, Any], sep: str):
+def _flatten(input_dict: dict[str, Any], sep: str) -> dict[str, Any]:
     flattened_dict = {}
     for key, maybe_nested in input_dict.items():
         if isinstance(maybe_nested, dict):
@@ -106,7 +116,7 @@ def _flatten(input_dict: dict[str, Any], sep: str):
     return flattened_dict
 
 
-def flatten(nested_dict: dict[str, Any], sep: str = "_") -> dict:
+def flatten(nested_dict: dict[str, Any], sep: str = "_") -> dict[str, Any]:
     """Flatten a nested dictionary."""
     __flatten = _flatten
     return_dict = __flatten(nested_dict, sep)
@@ -127,12 +137,12 @@ class Checks:
     """Collection of several methods for data transformation."""
 
     @staticmethod
-    def percentage(part: Union[int, float, str], whole: Union[int, float, str]) -> float:
+    def percentage(part: int | float | str, whole: int | float | str) -> float:
         """Transform a part of a whole into a percentage (0-100)."""
         return round(100 * float(part) / float(whole), 2)
 
     @staticmethod
-    def int_or_null(var: Any) -> Optional[int]:
+    def int_or_null(var: Any) -> int | None:
         """Transform to an integer, if possible."""
         try:
             return int(var)
@@ -140,12 +150,12 @@ class Checks:
             return None
 
     @staticmethod
-    def bool_or_null(var: Any) -> Optional[bool]:
+    def bool_or_null(var: Any) -> bool | None:
         """Transform to a boolean, if possible."""
         return bool(Checks.float_or_null(var))
 
     @staticmethod
-    def str_or_null(var: Any) -> Optional[str]:
+    def str_or_null(var: Any) -> str | None:
         """Transform to a string, if possible."""
         return str(var) if notna(var) else None
 
@@ -155,7 +165,7 @@ class Checks:
         return str(var) if notna(var) else ""
 
     @staticmethod
-    def float_or_null(var: Any) -> Optional[float]:
+    def float_or_null(var: Any) -> float | None:
         """Transform to a floating point, if possible."""
         try:
             return float(var) if notna(var) else None
@@ -163,12 +173,12 @@ class Checks:
             return None
 
     @staticmethod
-    def date_or_null(var: str, f: str) -> Optional[datetime]:
+    def date_or_null(var: str, f: str) -> datetime | None:
         """Transform to a datetime, if possible."""
         return datetime.strptime(var, f) if notna(var) else None
 
     @staticmethod
-    def check_null(var: Any) -> Optional[Any]:
+    def check_null(var: Any) -> Any | None:
         """Check if data resolves to True, otherwise return None."""
         return var if notna(var) else None
 
@@ -187,7 +197,7 @@ class Checks:
             "E": 3,
             "F": 2,
             "G": 1,
-            None: 0
+            None: 0,
         }.get(var, 0)
 
     @staticmethod
@@ -200,10 +210,18 @@ class Checks:
     @staticmethod
     def check_matching_percentage(str1: str, str2: str) -> int:
         """Return matching percentage (0-100) of two strings."""
-        str1 = Checks.remove_invalid_chars(
-            unidecode(str1), "").replace(" ", "").lower().strip()
-        str2 = Checks.remove_invalid_chars(
-            unidecode(str2), "").replace(" ", "").lower().strip()
+        str1 = (
+            Checks.remove_invalid_chars(unidecode(str1), "")
+            .replace(" ", "")
+            .lower()
+            .strip()
+        )
+        str2 = (
+            Checks.remove_invalid_chars(unidecode(str2), "")
+            .replace(" ", "")
+            .lower()
+            .strip()
+        )
         lev = levenshtein(str1, str2, measure="percentage")
         return int(lev * 100)
 
@@ -212,8 +230,8 @@ DISTANCE = "distance"
 PERCENTAGE = "percentage"
 
 
-@lru_cache()
-def levenshtein(seq1: str, seq2: str, measure: str = PERCENTAGE) -> Union[float, int]:
+@lru_cache
+def levenshtein(seq1: str, seq2: str, measure: str = PERCENTAGE) -> float | int:
     """Calculate the Levenshtein distance and score for two strings.
 
     By default, returns the percentage score.
@@ -273,7 +291,7 @@ def dateformat(date: str) -> str:
     return fmt
 
 
-def expand(data: list[dict], sort: bool = True) -> list[dict]:
+def expand(data: list[dict[str, Any]], sort: bool = True) -> list[dict[str, Any]]:
     """Standardize irregular data, e.g. for writing to CSV or SQL.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -289,11 +307,11 @@ def expand(data: list[dict], sort: bool = True) -> list[dict]:
             if field not in doc:
                 doc[field] = None
     if sort:
-        data = [dict(sorted(d.items())) for d in data]
+        data = [dict(sorted(d.items())) for d in data]  # noqa
     return data
 
 
-def drop_empty_columns(data: list[dict]) -> list[dict]:
+def drop_empty_columns(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove keys that have no value for all entries.
 
     This function accepts a list of dictionaries, and transforms it so
@@ -319,17 +337,22 @@ def drop_empty_columns(data: list[dict]) -> list[dict]:
     return data
 
 
-def find_all_urls(text: str) -> list:
+def find_all_urls(text: str) -> list[str]:
     """Finds all urls in a string and returns a list"""
-    url_regex = compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+    url_regex = compile(
+        "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|:%[0-9a-fA-F][0-9a-fA-F])+"
+    )
     return findall(url_regex, text)
 
 
-def reverse_geocode(x: float, y: float) -> dict:
+def reverse_geocode(x: float, y: float) -> dict[str, Any]:
     """Returns address from x and y coordinates using ArcGIS; reverse geocoding."""
-    return get(
-        f"https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location={x},{y}&f=json"
-    ).json()
+    response = get(
+        "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer"
+        f"/reverseGeocode?location={x},{y}&f=json"
+    )
+    assert isinstance(response, Response)
+    return response.json()
 
 
 def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list[T]]:
@@ -363,4 +386,6 @@ def count_bytes(num: int) -> int:
         print(count_bytes(127), count_bytes(128))
     """
     num = int(num)
-    return len(num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True))
+    return len(
+        num.to_bytes((8 + (num + (num < 0)).bit_length()) // 8, "big", signed=True)
+    )
