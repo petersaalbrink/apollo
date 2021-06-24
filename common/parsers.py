@@ -291,20 +291,24 @@ def dateformat(date: str) -> str:
         else:
             raise ParseError(f"Couldn't find date divider in {date!r}")
 
-    day_first = date.find(f"{dt.day:02}") == 0
-    month_first = date.find(f"{dt.month:02}") == 0
     year_first = date.find(f"{dt.year}") == 0
-
-    one = sum((day_first, month_first, year_first))
-
-    if one == 0:
-        raise ParseError(f"Couldn't parse date format of {date!r}")
-    elif one > 1:
-        warn(
-            f"Couldn't parse order of day and month in {date!r}"
-            f"; assuming day first, then month."
-        )
+    if year_first:
         month_first = False
+
+    else:
+        day_first = date.find(f"{dt.day:02}") == 0
+        month_first = date.find(f"{dt.month:02}") == 0
+
+        one = sum((day_first, month_first, year_first))
+
+        if one == 0:
+            raise ParseError(f"Couldn't parse date format of {date!r}")
+        elif one > 1:
+            warn(
+                f"Couldn't parse order of day and month in {date!r}"
+                f"; assuming day first, then month."
+            )
+            month_first = False
 
     if year_first:
         return f"%Y{div}%m{div}%d"
