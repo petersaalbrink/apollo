@@ -797,12 +797,14 @@ class Cleaner:
             self.person.address.housenumber = Re.hn.sub(
                 "", self.person.address.housenumber
             )
-        try:
-            assert isinstance(self.person.address.housenumber, SupportsFloat)
-            self.person.address.housenumber = int(
-                float(self.person.address.housenumber)
-            )
-        except (TypeError, ValueError):
+        if isinstance(self.person.address.housenumber, (SupportsFloat, str)):
+            try:
+                self.person.address.housenumber = int(
+                    float(self.person.address.housenumber)
+                )
+            except ValueError:
+                self.person.address.housenumber = None
+        else:
             self.person.address.housenumber = None
 
     def clean_hne(self) -> None:
