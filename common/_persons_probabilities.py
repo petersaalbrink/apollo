@@ -113,51 +113,57 @@ def set_number_of_postcodes() -> bool:
 @lru_cache
 def get_es_lastname(lastname: str) -> dict[str, dict[str, float]]:
     result = es_lastnames({"query": {"term": {"lastname.keyword": lastname}}})
-    assert isinstance(result, dict)
-    return result
+    if result and isinstance(result, dict):
+        return result
+    else:
+        return default_count_lastname
 
 
 @lru_cache
-def get_es_firstname(firstname: str) -> dict[str, float]:
+def get_es_firstname(firstname: str) -> dict[str, int]:
     result = es_firstnames({"query": {"term": {"firstname.keyword": firstname}}})
-    assert isinstance(result, dict)
-    return result
+    if result and isinstance(result, dict):
+        return result
+    else:
+        return default_count_firstname
 
 
 @lru_cache
 def get_name_counts(name: str) -> NameCounts:
-    try:
-        first = get_es_firstname(name)["count"] or 0
-    except TypeError:
-        first = 0
-    try:
-        last = get_es_lastname(name)["regular"]["count"] or 0
-    except TypeError:
-        last = 0
-    return NameCounts(first, last)
+    return NameCounts(
+        get_es_firstname(name)["count"],
+        get_es_lastname(name)["regular"]["count"],
+    )
 
 
-@lru_cache
-def default_proportion_lastname() -> dict[str, float]:
-    return {
-        "regular": Constant.mean_proportion_lastname,
-        "fuzzy": Constant.mean_proportion_lastname,
-    }
+default_count_firstname = {
+    "count": 0,
+}
+default_count_lastname = {
+    "regular": {
+        "count": 0,
+        "proportion": Constant.mean_proportion_lastname,
+    },
+    "fuzzy": {
+        "count": 0,
+        "proportion": Constant.mean_proportion_lastname,
+    },
+}
+default_proportion_lastname = {
+    "regular": Constant.mean_proportion_lastname,
+    "fuzzy": Constant.mean_proportion_lastname,
+}
 
 
 @lru_cache
 def proportion_lastname(lastname: str) -> dict[str, float]:
     if not lastname:
-        return default_proportion_lastname()
+        return default_proportion_lastname
     count = get_es_lastname(lastname)
-    try:
-        return {
-            "regular": count["regular"]["proportion"]
-            or Constant.mean_proportion_lastname,
-            "fuzzy": count["fuzzy"]["proportion"] or Constant.mean_proportion_lastname,
-        }
-    except TypeError:
-        return default_proportion_lastname()
+    return {
+        "regular": count["regular"]["proportion"],
+        "fuzzy": count["fuzzy"]["proportion"],
+    }
 
 
 @lru_cache
@@ -171,11 +177,10 @@ def proportions_lastnames(lastnames: tuple[str, ...]) -> dict[str, float]:
 
 @lru_cache
 def proportion_initial(initial: str) -> float:
-    try:
-        result = es_initials({"query": {"term": {"initials.keyword": initial}}})
-        assert isinstance(result, dict)
+    result = es_initials({"query": {"term": {"initials.keyword": initial}}})
+    if result and isinstance(result, dict):
         return result["proportion"] or Constant.max_proportion_initials
-    except TypeError:
+    else:
         return Constant.max_proportion_initials
 
 
