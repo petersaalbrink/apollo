@@ -55,6 +55,11 @@ class EmailClient:
         self._server.starttls()
         self._server.login(self._login, self._password)
 
+    def _quit(self) -> None:
+        """Connect to the SMTP server."""
+        self._server.quit()
+        self.__server = None
+
     @property
     def _server(self) -> SMTP:
         if not self.__server:
@@ -64,7 +69,7 @@ class EmailClient:
     def connection(self) -> bool:
         """Test the connection to the SMTP server."""
         self._connect()
-        self._server.quit()
+        self._quit()
         return True
 
     def send_email(
@@ -138,4 +143,4 @@ class EmailClient:
 
         self._connect()
         self._server.sendmail(from_address, to_address, msg.as_string())
-        self._server.quit()
+        self._quit()
