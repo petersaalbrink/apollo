@@ -19,20 +19,25 @@ __all__ = (
     "FileTransfer",
     "FileTransferDocker",
     "FileTransferFTP",
+    "SSHClient",
 )
 
 import binascii
 import io
 from collections.abc import Iterable
+from contextlib import AbstractContextManager
 from datetime import datetime
 from functools import cached_property
+from logging import debug
 from pathlib import Path
 from types import TracebackType
-from typing import BinaryIO
+from typing import Any, BinaryIO, NoReturn
 
 from bson import ObjectId
 from Crypto.Cipher import AES
-from paramiko import AutoAddPolicy, SFTPClient, SSHClient, SSHException, Transport
+from paramiko import AutoAddPolicy, SFTPClient
+from paramiko import SSHClient as _SSHClient
+from paramiko import SSHException, Transport
 from paramiko.channel import ChannelFile
 from pymongo.errors import PyMongoError
 
@@ -112,7 +117,7 @@ class _FileTransfer:
         self.email = doc["email"]
         self.encrypted_ftp_password = doc["ftpPassword"]
 
-    def _check_filename(self) -> None:
+    def check_filename(self) -> None:
         """Check if a filename is provided."""
         if not self.filename:
             raise FileTransferError("Provide a filename.")
@@ -156,7 +161,137 @@ class _FileTransfer:
         return self
 
 
-class FileTransferDocker(_FileTransfer):
+class _SSHClientMixin(AbstractContextManager[Any]):
+    client: _SSHClient
+    filename: Path | str | None
+    hostname: str
+    port: int
+    password: str
+    username: str
+
+    def __init__(self) -> None:
+        self._connected = False
+        self._filepath = Path()
+
+    def __enter__(self) -> _SSHClientMixin:
+        self.connect()
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        self.disconnect()
+        if any(exc):
+            return False
+        return True
+
+    def connect(self) -> None:
+        if not self._connected:
+            self.client.connect(
+                hostname=self.hostname,
+                username=self.username,
+                password=self.password,
+                port=self.port,
+                timeout=10,
+            )
+            self._connected = True
+
+    def disconnect(self) -> None:
+        if self._connected:
+            self.client.close()
+            self._connected = False
+
+    @staticmethod
+    def check_process(stderr: ChannelFile) -> None:
+        """Check if a process has completed successfully."""
+        stderr_ = stderr.read().decode()
+        if stderr_:
+            raise FileTransferError(stderr_)
+
+    @property
+    def filepath(self) -> Path:
+        return self._filepath
+
+    @filepath.setter
+    def filepath(self, value: Path | str) -> None:
+        if isinstance(value, Path):
+            self._filepath = value
+        elif isinstance(value, str):
+            self._filepath = Path(value)
+        else:
+            raise TypeError(type(value))
+
+    def download(self, file: str) -> None:
+        """Download an existing Platform file to disk."""
+        self.connect()
+        remote_file = self.filepath / file
+        stdout, stderr = self.run_cmd(f'sudo cat "{remote_file}"')
+        with open(file, "wb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
+            while True:
+                data = stdout.read(io.DEFAULT_BUFFER_SIZE)
+                if not data:
+                    break
+                f.write(data)
+        self.check_process(stderr)
+        self.disconnect()
+
+    def download_all(self) -> None:
+        """Download all existing Platform files to disk."""
+        for file in self.list_files():
+            self.download(file)
+
+    def list_files(self) -> list[str]:
+        """list existing files in this user's Platform folder."""
+        self.connect()
+        stdout, _ = self.run_cmd(f"sudo ls -t {self.filepath}")
+        files = [f for f in stdout.read().decode().split("\n") if f]
+        self.disconnect()
+        return files
+
+    def run_cmd(
+        self,
+        cmd: str,
+        fileobj: BinaryIO | None = None,
+        sudo: bool = True,
+    ) -> tuple[ChannelFile, ChannelFile]:
+        """Create a process from a shell command."""
+        stdin, stdout, stderr = self.client.exec_command(
+            cmd,
+            bufsize=io.DEFAULT_BUFFER_SIZE,
+            get_pty=sudo,
+            timeout=10,
+        )
+        if sudo:
+            stdin.write(f"{self.password}\n")
+        stdin.flush()
+        if fileobj:
+            while True:
+                data = fileobj.read(io.DEFAULT_BUFFER_SIZE)
+                if not data:
+                    break
+                stdin.write(data)
+                stdin.flush()
+        stdin.close()
+        return stdout, stderr
+
+    def transfer(self) -> _SSHClientMixin:
+        """Upload a file to the Platform host."""
+        self.connect()
+        assert isinstance(self.filename, str)
+        local_filename = Path(self.filename)
+        remote_filename = local_filename.name
+        remote_file = self.filepath / remote_filename
+        with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
+            _, stderr = self.run_cmd(
+                f'sudo cp /dev/stdin "{remote_file}"',
+                fileobj=f,
+            )
+        self.check_process(stderr)
+        _, stderr = self.run_cmd(f'sudo chmod +r "{remote_file}"')
+        self.check_process(stderr)
+        self.disconnect()
+        return self
+
+
+class FileTransferDocker(_FileTransfer, _SSHClientMixin):
     def __init__(
         self,
         username: str | None = None,
@@ -174,102 +309,29 @@ class FileTransferDocker(_FileTransfer):
         )
 
         # Connect
-        self._usr, self._pwd = get_secret("MX_PLATFORM_HOST")
-        self.client = SSHClient()
+        _, self.password = get_secret("MX_PLATFORM_HOST")
+        self.client = _SSHClient()
         self.client.set_missing_host_key_policy(AutoAddPolicy())
 
         self.fthost = "consucom"
-        self.ftpath = "/var/lib/docker/volumes/filetransfer_live/_data"
+        self.ftpath = Path("/var/lib/docker/volumes/filetransfer_live/_data")
 
-    def _connect(self) -> None:
-        self.client.connect(
-            hostname="136.144.203.100",
-            username="consucom",
-            password=self._pwd,
-            port=2233,
-            timeout=10,
-        )
+        self.hostname = "136.144.203.100"
+        self.port = 2233
+        self.username = "consucom"
 
-    def _disconnect(self) -> None:
-        self.client.close()
-
-    @cached_property
-    def filepath(self) -> str:
+    @property
+    def filepath(self) -> Path:
         """Provide the full directory path needed for uploads."""
-        return f"{self.ftpath}/{self.user_id}"
+        return self.ftpath / self.user_id
 
-    @staticmethod
-    def _check_process(stderr: ChannelFile) -> None:
-        """Check if a process has completed successfully."""
-        stderr_ = stderr.read().decode()
-        if stderr_[:30] != "[sudo] password for consucom: " or stderr_[30:]:
-            raise FileTransferError(stderr_)
-
-    def _run_cmd(
-        self,
-        cmd: str,
-        fileobj: BinaryIO | None = None,
-    ) -> tuple[ChannelFile, ChannelFile]:
-        """Create a process from a shell command."""
-        stdin, stdout, stderr = self.client.exec_command(
-            f"sudo -S {cmd}",
-            bufsize=io.DEFAULT_BUFFER_SIZE,
-            timeout=10,
-        )
-        stdin.write(f"{self._pwd}\n")
-        stdin.flush()
-        if fileobj:
-            while True:
-                data = fileobj.read(io.DEFAULT_BUFFER_SIZE)
-                if not data:
-                    break
-                stdin.write(data)
-                stdin.flush()
-        stdin.close()
-        return stdout, stderr
-
-    def list_files(self) -> list[str]:
-        """list existing files in this user's Platform folder."""
-        self._connect()
-        stdout, _ = self._run_cmd(f"ls -t {self.filepath}")
-        files = [f for f in stdout.read().decode().split("\n") if f]
-        self._disconnect()
-        return files
-
-    def download(self, file: str) -> None:
-        """Download an existing Platform file to disk."""
-        self._connect()
-        stdout, stderr = self._run_cmd(f'cat "{self.filepath}/{file}"')
-        with open(file, "wb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
-            while True:
-                data = stdout.read(io.DEFAULT_BUFFER_SIZE)
-                if not data:
-                    break
-                f.write(data)
-        self._check_process(stderr)
-        self._disconnect()
-
-    def download_all(self) -> None:
-        """Download all existing Platform files to disk."""
-        for file in self.list_files():
-            self.download(file)
+    @filepath.setter
+    def filepath(self, value: Any) -> NoReturn:
+        raise NotImplementedError
 
     def transfer(self) -> FileTransferDocker:
-        """Upload a file to the Platform host."""
-        self._check_filename()
-        self._connect()
-        assert isinstance(self.filename, str)
-        local_filename = Path(self.filename)
-        remote_filename = local_filename.name
-        with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
-            _, stderr = self._run_cmd(
-                f'cp /dev/stdin "{self.filepath}/{remote_filename}"',
-                fileobj=f,
-            )
-        self._check_process(stderr)
-        _, stderr = self._run_cmd(f'chmod +r "{self.filepath}/{remote_filename}"')
-        self._check_process(stderr)
-        self._disconnect()
+        self.check_filename()
+        super().transfer()
         return self
 
 
@@ -381,7 +443,7 @@ class FileTransferFTP(_FileTransfer):
 
     def upload(self) -> FileTransferFTP:
         """Upload a file to the Platform host."""
-        self._check_filename()
+        self.check_filename()
         self.connect()
         assert isinstance(self.ftp, SFTPClient)
         assert isinstance(self.filename, (bytes, str))
@@ -416,3 +478,38 @@ class FileTransferFTP(_FileTransfer):
 
 
 FileTransfer = FileTransferFTP
+
+
+class SSHClient(_SSHClientMixin):
+    def __init__(
+        self,
+        hostname: str,
+        username: str,
+        password: str,
+        port: int = 2233,
+    ):
+        super().__init__()
+        self.hostname = hostname
+        self.username = username
+        self.password = password
+        self.port = port
+        self.client = _SSHClient()
+        self.client.set_missing_host_key_policy(AutoAddPolicy())
+
+    def __enter__(self) -> SSHClient:
+        super().__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        return super().__exit__(*exc)
+
+    def exec_command(self, command: str, sudo: bool = False) -> str:
+        debug("Executing command: %s", command)
+        stdin, stdout, stderr = self.client.exec_command(command, get_pty=sudo)
+        if sudo:
+            stdin.write(f"{self.password}\n")
+        stdin.flush()
+        err = stderr.read().decode().strip()
+        if err:
+            raise SSHException(err)
+        return stdout.read().decode().strip()

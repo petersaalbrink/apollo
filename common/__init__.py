@@ -45,6 +45,7 @@ __all__ = (
     "RequestError",
     "SQLClient",
     "SQLtoMongo",
+    "SSHClient",
     "Statistics",
     "ThreadSafeIterator",
     "TicToc",
@@ -227,6 +228,7 @@ _module_mapping = {
         "FileTransfer",
         "FileTransferDocker",
         "FileTransferFTP",
+        "SSHClient",
     ],
     "requests": [
         "ThreadSafeIterator",
