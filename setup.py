@@ -6,7 +6,7 @@ __version__ = None
 exec(open("common/etc/version.py").read())  # noqa
 
 pkgs = [p for p in (p.strip("\n") for p in open("requirements.txt").readlines()) if p]
-extras = {"all": [p for p in pkgs if not p.startswith("# ")]}
+extras = {"all": list({p for p in pkgs if not p.startswith("# ")})}
 extra = ""
 for pkg in pkgs:
     if pkg.startswith("# "):
@@ -30,11 +30,10 @@ setup(
     package_data={"": ["customer_communication/*", "etc/*", "etc/.env"]},
     include_package_data=True,
     classifiers=[
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7,<3.11",
+    python_requires=">=3.8,<3.11",
 )
