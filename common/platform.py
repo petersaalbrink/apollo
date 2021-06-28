@@ -31,7 +31,7 @@ from functools import cached_property
 from logging import debug
 from pathlib import Path
 from types import TracebackType
-from typing import Any, BinaryIO, NoReturn
+from typing import Any, BinaryIO, NoReturn, TextIO
 
 from bson import ObjectId
 from Crypto.Cipher import AES
@@ -202,7 +202,7 @@ class _SSHClientMixin(AbstractContextManager[Any]):
     @staticmethod
     def check_process(stderr: ChannelFile) -> None:
         """Check if a process has completed successfully."""
-        stderr_ = stderr.read().decode()
+        stderr_ = stderr.read().decode().strip()
         if stderr_:
             raise FileTransferError(stderr_)
 
@@ -223,13 +223,14 @@ class _SSHClientMixin(AbstractContextManager[Any]):
         """Download an existing Platform file to disk."""
         self.connect()
         remote_file = self.filepath / file
-        stdout, stderr = self.run_cmd(f'sudo cat "{remote_file}"')
+        stdout, stderr = self._run_cmd(f'sudo cat "{remote_file}"')
         with open(file, "wb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
             while True:
                 data = stdout.read(io.DEFAULT_BUFFER_SIZE)
                 if not data:
                     break
                 f.write(data)
+                f.flush()
         self.check_process(stderr)
         self.disconnect()
 
@@ -241,35 +242,82 @@ class _SSHClientMixin(AbstractContextManager[Any]):
     def list_files(self) -> list[str]:
         """list existing files in this user's Platform folder."""
         self.connect()
-        stdout, _ = self.run_cmd(f"sudo ls -t {self.filepath}")
+        stdout, _ = self._run_cmd(f"sudo ls -t {self.filepath}")
         files = [f for f in stdout.read().decode().split("\n") if f]
         self.disconnect()
         return files
 
-    def run_cmd(
+    def _cmd(
         self,
         cmd: str,
-        fileobj: BinaryIO | None = None,
+        fileobj: BinaryIO | TextIO | None = None,
         sudo: bool = True,
     ) -> tuple[ChannelFile, ChannelFile]:
-        """Create a process from a shell command."""
+
+        debug("Executing command: %s", cmd)
+
         stdin, stdout, stderr = self.client.exec_command(
             cmd,
             bufsize=io.DEFAULT_BUFFER_SIZE,
             get_pty=sudo,
-            timeout=10,
+            timeout=600,
         )
         if sudo:
             stdin.write(f"{self.password}\n")
         stdin.flush()
+
         if fileobj:
-            while True:
-                data = fileobj.read(io.DEFAULT_BUFFER_SIZE)
-                if not data:
-                    break
-                stdin.write(data)
-                stdin.flush()
+            if fileobj.writable():
+                while True:
+                    data = stdout.read(io.DEFAULT_BUFFER_SIZE)
+                    if not data:
+                        break
+                    fileobj.write(data)
+                    fileobj.flush()
+            else:
+                while True:
+                    data = fileobj.read(io.DEFAULT_BUFFER_SIZE)
+                    if not data:
+                        break
+                    stdin.write(data)
+                    stdin.flush()
+
         stdin.close()
+
+        return stdout, stderr
+
+    def exec_command(
+        self,
+        command: str,
+        fileobj: BinaryIO | TextIO | None = None,
+        sudo: bool = False,
+    ) -> str:
+        self.connect()
+
+        stdout, stderr = self._cmd(
+            cmd=command,
+            fileobj=fileobj,
+            sudo=sudo,
+        )
+
+        self.check_process(stderr)
+        out = stdout.read().decode().strip()
+
+        self.disconnect()
+        return out
+
+    def _run_cmd(
+        self,
+        cmd: str,
+        fileobj: BinaryIO | TextIO | None = None,
+        sudo: bool = True,
+    ) -> tuple[ChannelFile, ChannelFile]:
+        """Create a process from a shell command."""
+        stdout, stderr = self._cmd(
+            cmd=cmd,
+            fileobj=fileobj,
+            sudo=sudo,
+        )
         return stdout, stderr
 
     def transfer(self) -> _SSHClientMixin:
@@ -280,12 +328,13 @@ class _SSHClientMixin(AbstractContextManager[Any]):
         remote_filename = local_filename.name
         remote_file = self.filepath / remote_filename
         with open(local_filename, "rb", buffering=io.DEFAULT_BUFFER_SIZE) as f:
-            _, stderr = self.run_cmd(
+            _, stderr = self._run_cmd(
                 f'sudo cp /dev/stdin "{remote_file}"',
                 fileobj=f,
+                sudo=True,
             )
         self.check_process(stderr)
-        _, stderr = self.run_cmd(f'sudo chmod +r "{remote_file}"')
+        _, stderr = self._run_cmd(f'sudo chmod +r "{remote_file}"')
         self.check_process(stderr)
         self.disconnect()
         return self
@@ -502,14 +551,3 @@ class SSHClient(_SSHClientMixin):
 
     def __exit__(self, *exc: Any) -> bool:
         return super().__exit__(*exc)
-
-    def exec_command(self, command: str, sudo: bool = False) -> str:
-        debug("Executing command: %s", command)
-        stdin, stdout, stderr = self.client.exec_command(command, get_pty=sudo)
-        if sudo:
-            stdin.write(f"{self.password}\n")
-        stdin.flush()
-        err = stderr.read().decode().strip()
-        if err:
-            raise SSHException(err)
-        return stdout.read().decode().strip()
