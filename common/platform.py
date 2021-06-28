@@ -259,7 +259,6 @@ class _SSHClientMixin:
             cmd,
             bufsize=io.DEFAULT_BUFFER_SIZE,
             get_pty=sudo,
-            timeout=600,
         )
         if sudo:
             stdin.write(f"{self.password}\n")
