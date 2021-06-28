@@ -25,7 +25,6 @@ __all__ = (
 import binascii
 import io
 from collections.abc import Iterable
-from contextlib import AbstractContextManager
 from datetime import datetime
 from functools import cached_property
 from logging import debug
@@ -161,7 +160,7 @@ class _FileTransfer:
         return self
 
 
-class _SSHClientMixin(AbstractContextManager[Any]):
+class _SSHClientMixin:
     client: _SSHClient
     filename: Path | str | None
     hostname: str
