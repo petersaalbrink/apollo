@@ -81,6 +81,8 @@ class _FileTransfer:
         To be able to upload a file, you need to provide a filename.
         """
 
+        super().__init__()
+
         # Check
         if not user_id and not username and not email:
             raise FileTransferError("Provide either a name, ID, or email for the user.")
@@ -124,7 +126,7 @@ class _FileTransfer:
     @cached_property
     def insert_filename(self) -> str:
         """Provide the file name needed for uploads."""
-        assert isinstance(self.filename, str)
+        assert isinstance(self.filename, (Path, str))
         return Path(self.filename).name
 
     def notify(
@@ -321,7 +323,7 @@ class _SSHClientMixin:
     def transfer(self) -> _SSHClientMixin:
         """Upload a file to the Platform host."""
         self.connect()
-        assert isinstance(self.filename, str)
+        assert isinstance(self.filename, (Path, str))
         local_filename = Path(self.filename)
         remote_filename = local_filename.name
         remote_file = self.filepath / remote_filename
@@ -493,8 +495,15 @@ class FileTransferFTP(_FileTransfer):
         self.check_filename()
         self.connect()
         assert isinstance(self.ftp, SFTPClient)
-        assert isinstance(self.filename, (bytes, str))
-        self.ftp.put(self.filename, self.insert_filename)
+        if isinstance(self.filename, Path):
+            filename = f"{self.filename}"
+        elif isinstance(self.filename, bytes):
+            filename = self.filename.decode()
+        elif isinstance(self.filename, str):
+            filename = self.filename
+        else:
+            raise TypeError(type(self.filename))
+        self.ftp.put(filename, self.insert_filename)
         self.disconnect()
         return self
 
