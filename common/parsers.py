@@ -88,7 +88,7 @@ __all__ = (
     "reverse_geocode",
 )
 
-from datetime import datetime
+import datetime
 from functools import lru_cache
 from re import compile, findall
 from typing import Any, Callable, Iterable, TypeVar
@@ -96,7 +96,7 @@ from warnings import warn
 
 from dateutil.parser import parse
 from numpy import zeros
-from pandas import notna
+from pandas import isna, notna
 from requests import Response
 from text_unidecode import unidecode
 
@@ -174,9 +174,18 @@ class Checks:
             return None
 
     @staticmethod
-    def date_or_null(var: str, f: str) -> datetime | None:
+    def date_or_null(var: Any, f: str) -> datetime.datetime | None:
         """Transform to a datetime, if possible."""
-        return datetime.strptime(var, f) if notna(var) else None
+        if isna(var) or not var:
+            return None
+        elif isinstance(var, str):
+            return datetime.datetime.strptime(var, f)
+        elif isinstance(var, datetime.datetime):
+            return var
+        elif isinstance(var, datetime.date):
+            return datetime.datetime(var.year, var.month, var.day)
+        else:
+            raise NotImplementedError
 
     @staticmethod
     def check_null(var: Any) -> Any | None:
