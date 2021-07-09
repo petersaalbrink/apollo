@@ -194,27 +194,15 @@ class SQLtoMongo:
     ) -> None:
         """Set the query for the MySQL SELECT operation.
 
-        If :param query_name: is None, this will default to all rows and all columns.
         You can set a query directly via :param query:.
-        You can also create a document in the `queries` collection in your database.
-        The format for this should be::
-            {
-                "name": name,
-                "query": query
-            }
+        If it is None, the query will default to all rows and all columns.
         """
+        if query_name:
+            raise ConnectorError("Using `query_name` is deprecated.")
         if query:
             self.query = query
-        elif not query_name:
-            self.query = f"SELECT * FROM {self.sql.database}.{self.sql.table_name}"
         else:
-            assert isinstance(self.coll, MxCollection)
-            coll = MongoDB(f"{self.coll.database.name}.queries")
-            assert isinstance(coll, MxCollection)
-            try:
-                self.query = coll.find_one({"name": query_name})["query"]
-            except KeyError as e:
-                raise ConnectorError(f"Could not find query '{query_name}'") from e
+            self.query = f"SELECT * FROM {self.sql.database}.{self.sql.table_name}"
 
     def update(
         self,
