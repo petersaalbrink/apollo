@@ -934,7 +934,6 @@ class MySQLClient:
                 try:
                     self.connect()
                     self.executemany(query, chunk)
-                    self.disconnect()
                     break
                 except (DatabaseError, InterfaceError) as e:
                     errors += 1
@@ -1000,6 +999,8 @@ class MySQLClient:
                         ]
                     else:
                         raise MySQLClientError(query) from e
+                finally:
+                    self.disconnect()
         return len(data)
 
     def add_index(
