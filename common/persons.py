@@ -53,6 +53,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from functools import cached_property, lru_cache
 from math import ceil
+from threading import Thread, current_thread
 from typing import Any, SupportsFloat, Union
 
 from dateutil.parser import parse as dateparse
@@ -586,6 +587,8 @@ class Names:
 
         The output can be used to clean last name data.
         """
+        if _thread.is_alive() and _thread is not current_thread():
+            raise RuntimeError("Called this method twice")
         with self.es as es:
             assert isinstance(es, ESClient)
             return {
@@ -603,6 +606,8 @@ class Names:
 
         The output can be used to fill missing gender data.
         """
+        if _thread.is_alive() and _thread is not current_thread():
+            raise RuntimeError("Called this method twice")
         with self.es as es:
             assert isinstance(es, ESClient)
             return {
@@ -645,11 +650,19 @@ Constant.NAMES = Names()
 ParsedName = namedtuple("ParsedName", ("first", "last", "gender"))
 
 
-def preload_db() -> None:
+def _preload_db() -> None:
     """Helper function to aid application startup."""
     assert isinstance(Constant.NAMES, Names)
     _ = Constant.NAMES.affixes
     _ = Constant.NAMES.first_names
+
+
+_thread = Thread(target=_preload_db, daemon=True)
+
+
+def preload_db() -> None:
+    """Helper function to aid application startup."""
+    _thread.start()
 
 
 def parse_name(name: str) -> ParsedName:
