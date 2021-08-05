@@ -7,6 +7,15 @@ from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 from pendulum.tz import timezone
 
 
+def send_message(message: str) -> None:
+    return SlackWebhookOperator(
+        task_id="message",
+        http_conn_id="slack",
+        message=message,
+        channel="#airflow",
+    ).execute(context=None)
+
+
 def _slack_alert(context: Context, task_id: str) -> None:
     if task_id == "pass":
         first_line = ":large_green_circle: Task Passed."
@@ -21,10 +30,12 @@ def _slack_alert(context: Context, task_id: str) -> None:
         *Execution Time*: {context.get('execution_date')}
         *Log Url*: <{context.get('task_instance').log_url}|log url>
     """
-    alert = SlackWebhookOperator(
-        task_id=task_id, http_conn_id="slack", message=msg, channel="#airflow"
-    )
-    return alert.execute(context=context)
+    return SlackWebhookOperator(
+        task_id=task_id,
+        http_conn_id="slack",
+        message=msg,
+        channel="#airflow",
+    ).execute(context=context)
 
 
 def task_fail_slack_alert(context: Context) -> None:
