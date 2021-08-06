@@ -700,15 +700,15 @@ class MySQLClient:
         floats_dict = {
             field: _type for field, _type in type_dict2.items() if _type in float_types
         }
-        floats_list1 = (
-            (
-                (len(x) for x in f"{value or ''}".split("."))
+        floats_list1 = [
+            [
+                [len(x) for x in f"{value or ''}".split(".")]
                 for key, value in row.items()
                 if key in floats_dict.keys()
-            )
+            ]
             for row in data
             if isinstance(row, dict)
-        )
+        ]
         floats_list2 = zip(
             floats_dict.values(),
             (max(field) for field in zip(*floats_list1)),
