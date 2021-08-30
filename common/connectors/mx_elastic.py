@@ -686,15 +686,18 @@ class ESClient(Elasticsearch):
         """Returns a named two-tuple with the document count of the corresponding MongoDB
         collection and this index.
         """
-        from .mx_mongo import Count, MongoDB, MxCollection, MxDatabase
+        from pymongo.collection import Collection
+        from pymongo.database import Database
+
+        from .mx_mongo import Count, MongoDB
 
         assert isinstance(self.es_index, str)
         db, coll = self.es_index.split(".")
         db_client = MongoDB(db)
-        assert isinstance(db_client, MxDatabase)
+        assert isinstance(db_client, Database)
         mapping = {name.lower(): name for name in db_client.list_collection_names()}
         coll_client = db_client[mapping[coll]]
-        assert isinstance(coll_client, MxCollection)
+        assert isinstance(coll_client, Collection)
         return Count(coll_client.estimated_document_count(), self.count())
 
     def update_alias(
