@@ -41,6 +41,8 @@ Timing handlers:
    Time code using a class, context manager, or decorator.
 .. py:class: common.handlers.FunctionTimer
    Code timing context manager with logging (level: info).
+.. py:function: common.handlers.progress_bar_timer
+   Keep track of how long a script is running.
 
 Runtime handlers:
 
@@ -70,6 +72,7 @@ __all__ = (
     "keep_trying",
     "pip_upgrade",
     "profile",
+    "progress_bar_timer",
     "read_json",
     "read_json_line",
     "read_txt",
@@ -854,3 +857,17 @@ def profile(function: Callable[..., T]) -> Callable[..., T]:
         return return_value
 
     return profiled
+
+
+def progress_bar_timer() -> None:
+    """Keep track of how long a script is running."""
+    from threading import Thread
+    from time import sleep
+
+    def progress() -> None:
+        bar = tqdm(bar_format="{elapsed}")
+        while True:
+            sleep(1)
+            bar.update(0)
+
+    Thread(target=progress, daemon=True).start()
