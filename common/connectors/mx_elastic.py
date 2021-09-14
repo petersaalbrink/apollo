@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = ("ESClient",)
 
+from collections import defaultdict
 from collections.abc import Sequence
 from logging import debug
 from typing import Any, Iterator
@@ -745,3 +746,10 @@ class ESClient(Elasticsearch):
         if not actions:
             raise ESClientError("Always provide both index and alias names.")
         return self.indices.update_aliases(body={"actions": actions})
+
+    def get_aliases(self) -> dict[str, list[str]]:
+        result = defaultdict(list)
+        for index, aliases in self.indices.get_alias().items():
+            for alias in aliases["aliases"]:
+                result[index].append(alias)
+        return dict(result)
