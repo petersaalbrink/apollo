@@ -184,6 +184,11 @@ class PgSql:
                 set_fields = ", ".join(
                     f"{field} = EXCLUDED.{field}" for field in fields_to_update
                 )
+            elif isinstance(args, Sequence) and isinstance(args[0], dict):
+                fields_to_update = list(args[0])
+                set_fields = ", ".join(
+                    f"{field} = EXCLUDED.{field}" for field in fields_to_update
+                )
             else:
                 raise PgSqlError(
                     "Could not read the fields to be updated from args; provide fields_to_update."
