@@ -5,5 +5,5 @@ common_classes_mx.egg-info
 tests/.hypothesis
 .pytest_cache
 
-venv
+venv*
 *.idea

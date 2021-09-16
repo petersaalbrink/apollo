@@ -164,6 +164,8 @@ class PgSql:
         args: Sequence[Sized] | Iterable[Iterable[Any]],
         n_values: int | None = None,
         ignore: bool = False,
+        update_on: list[str] | str | None = None,
+        fields_to_update: list[str] | str | None = None,
     ) -> None:
         assert isinstance(self.connection, psycopg2.extras.DictConnection)
         assert isinstance(self.cursor, psycopg2.extras.DictCursor)
@@ -175,9 +177,32 @@ class PgSql:
             raise PgSqlError(
                 "Could not read number of values from args; provide n_values."
             )
+        if isinstance(update_on, (str, list)):
+            if (
+                fields_to_update is None
+                and isinstance(args, Sequence)
+                and isinstance(args[0], dict)
+            ):
+                fields_to_update = list(args[0])
+            if isinstance(fields_to_update, str):
+                set_fields = f"{update_on} = EXCLUDED.{update_on}"
+            elif isinstance(fields_to_update, list):
+                set_fields = ", ".join(
+                    f"{field} = EXCLUDED.{field}" for field in fields_to_update
+                )
+            else:
+                raise PgSqlError(
+                    "Could not read the fields to be updated from args; provide fields_to_update."
+                )
+            if isinstance(update_on, list):
+                update_on = ", ".join(update_on)
+            on_conflict = f" ON CONFLICT ({update_on}) DO UPDATE SET {set_fields}"
+        elif ignore:
+            on_conflict = " ON CONFLICT DO NOTHING"
+        else:
+            on_conflict = ""
         composed = self.compose(
-            "INSERT INTO {} VALUES ({})"
-            f"{' ON CONFLICT DO NOTHING' if ignore else ''}",
+            "INSERT INTO {} VALUES ({})" f"{on_conflict}",
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Placeholder() * n_values),
         )
