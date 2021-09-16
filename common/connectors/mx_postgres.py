@@ -178,14 +178,15 @@ class PgSql:
                 "Could not read number of values from args; provide n_values."
             )
         if isinstance(update_on, (str, list)):
+            if (
+                fields_to_update is None
+                and isinstance(args, Sequence)
+                and isinstance(args[0], dict)
+            ):
+                fields_to_update = list(args[0])
             if isinstance(fields_to_update, str):
                 set_fields = f"{update_on} = EXCLUDED.{update_on}"
             elif isinstance(fields_to_update, list):
-                set_fields = ", ".join(
-                    f"{field} = EXCLUDED.{field}" for field in fields_to_update
-                )
-            elif isinstance(args, Sequence) and isinstance(args[0], dict):
-                fields_to_update = list(args[0])
                 set_fields = ", ".join(
                     f"{field} = EXCLUDED.{field}" for field in fields_to_update
                 )
