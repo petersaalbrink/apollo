@@ -51,8 +51,8 @@ class Constant:
     max_age = 90
     min_age = 18
     dob_fp = 1 / (365.25 * (max_age - min_age))
-    number_of_residential_addresses = 7_088_757
-    number_of_postcodes = 437_383
+    number_of_residential_addresses = 8_153_489
+    number_of_postcodes = 440_953
     yearly_movements = 1_700_000
     average_lifespan = 82
     inhabitants_nl = 17_461_543
@@ -104,7 +104,7 @@ def set_number_of_postcodes() -> bool:
     Constant.number_of_postcodes = ESClient(
         "real_estate_alias", host="prod"
     ).distinct_count(
-        field="address.identification.postalCode",
+        field="address.postalCode",
         find={"match": {"houseDetails.usePurpose": "woonfunctie"}},
     )
     return True
