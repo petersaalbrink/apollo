@@ -136,17 +136,29 @@ class PgSql:
                 raise
         self.query = self.cursor.query
         assert isinstance(self.query, bytes)
-        if self.query.split()[0].upper() != b"SELECT":
+        keyword = self.query.split()[0].upper()
+        if keyword != b"SELECT" and keyword != b"DECLARE":
             self.connection.commit()
 
     def fetch(
         self,
         query: _Composed,
         args: Iterable[str] | None = None,
+        *,
+        ignore: bool = False,
     ) -> Iterator[psycopg2.extras.DictRow]:
         self.execute(query, args)
         assert isinstance(self.cursor, psycopg2.extras.DictCursor)
-        yield from self.cursor
+        if ignore:
+            while True:
+                try:
+                    yield next(self.cursor)
+                except PgSql.Error:
+                    pass
+                except StopIteration:
+                    break
+        else:
+            yield from self.cursor
 
     def index(self, table: str, field: str, unique: bool = False) -> None:
         self.execute(
@@ -217,11 +229,13 @@ class PgSql:
         self,
         query: str,
         *args: Any,
+        ignore: bool = False,
         **kwargs: Any,
     ) -> Iterator[psycopg2.extras.DictRow]:
         yield from self.fetch(
             self.compose(query, *map(sql.Identifier, args + tuple(kwargs.keys()))),
             tuple(kwargs.values()),
+            ignore=ignore,
         )
 
     def select_all(self, table: str) -> Iterator[psycopg2.extras.DictRow]:
