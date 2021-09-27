@@ -70,7 +70,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .exceptions import RequestError
-from .secrets import get_secret
 
 Executor = ThreadPoolExecutor
 T = TypeVar("T")
@@ -105,8 +104,7 @@ def threadsafe(f: Callable[..., Any]) -> Callable[..., ThreadSafeIterator]:
 @lru_cache
 def get_proxies() -> dict[str, dict[str, str]]:
     """Returns headers with proxies and agent for requests."""
-    _, pwd = get_secret("MX_LUMINATI")
-    proxy_url = f"http://lum-customer-consumatrix-zone-zone1:{pwd}@zproxy.lum-superproxy.io:22225"
+    proxy_url = "http://nl.smartproxy.com:10000"
     return {
         "headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

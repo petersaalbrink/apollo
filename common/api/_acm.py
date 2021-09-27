@@ -13,15 +13,13 @@ from requests.exceptions import ProxyError
 
 from ..connectors.mx_mongo import MongoDB
 from ..exceptions import PhoneApiError
-from ..requests import get_proxies, get_session
+from ..requests import get_session
 
 if TYPE_CHECKING:
     from .phone import PhoneApiResponse
 
 
 class ACM:
-    LUMINATI = "01"
-    PROXIWARE = "10"
     MAX_REACHED = "U heeft het maximaal aantal verzoeken per dag bereikt."
     NOT_PORTED = (
         "Dit nummer is niet geporteerd. Voor meer informatie zie de nummerreeks."
@@ -33,13 +31,13 @@ class ACM:
     headers = {"Range": "bytes=0-6144"}
     lock = Lock()
     TZ = timezone("Europe/Amsterdam")
+    proxies: dict[str, str] = {
+        "http": "http://nl.smartproxy.com:10000",
+        "https": "http://nl.smartproxy.com:10000",
+    }
 
     def __init__(self) -> None:
-        self.n_errors = {
-            self.LUMINATI: 0,
-            self.PROXIWARE: 0,
-        }
-        self.provider = self.LUMINATI
+        self.n_errors = 0
         coll = MongoDB("cdqc.phonenumbers")
         assert isinstance(coll, Collection)
         self.db = coll.with_options(
@@ -48,21 +46,7 @@ class ACM:
                 tzinfo=self.TZ,
             )
         )
-        self._proxies: dict[str, str] | None = None
         self._session: Session | None = None
-
-    @property
-    def proxies(self) -> dict[str, str]:
-        if self._proxies is None:
-            if self.provider == self.PROXIWARE:
-                self._proxies = {
-                    "http": "nl.proxiware.com:12000",
-                    "https": "nl.proxiware.com:12000",
-                }
-            elif self.provider == self.LUMINATI:
-                self._proxies = get_proxies()["proxies"]
-        assert isinstance(self._proxies, dict)
-        return self._proxies
 
     @property
     def session(self) -> Session:
@@ -72,7 +56,6 @@ class ACM:
         return self._session
 
     def reset_attrs(self) -> None:
-        self._proxies = None
         self._session = None
 
     def acm_get(self, params: dict[str, str]) -> Response:
@@ -92,22 +75,21 @@ class ACM:
 
     def _get_response(self, params: dict[str, str]) -> Response:
 
-        while not all(n > 1 for n in self.n_errors.values()):
+        while not self.n_errors:
 
             try:
                 response = self.acm_get(params=params)
 
                 if self.MAX_REACHED in response.text:
-                    self.n_errors[self.provider] += 1
-                    self.reset_attrs()
+                    self.n_errors += 1
+                    self._session = None
                 else:
-                    self.n_errors[self.provider] = 0
+                    self.n_errors = 0
                     break
 
             except ProxyError:
-                self.n_errors[self.provider] += 1
-                self.provider = self.provider[::-1]
-                self.reset_attrs()
+                self.n_errors += 1
+                self._session = None
 
         else:
             response = self.acm_get_no_proxies(params=params)

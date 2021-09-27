@@ -61,7 +61,6 @@ def change_secret(name: str) -> Credentials:
         "MX_FTP_DA": "DigitalAudience FTP server",
         "MX_FTP_NG": "NutsGroep FTP server",
         "MX_FTP_VPS": "VPS11 FTP server",
-        "MX_LUMINATI": "Luminati proxy password",
         "MX_MAIL": "EmailClient account",
         "MX_MONGO_ADDR": "MongoDB addressvalidation server",
         "MX_MONGO_CDQC": "MongoDB CDQC server",
