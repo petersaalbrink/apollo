@@ -38,4 +38,6 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
+          - types-python-dateutil
           - types-requests
+          - types-setuptools
