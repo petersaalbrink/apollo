@@ -158,6 +158,8 @@ class MySQLClient:
         "INSERT ",
         "UPDATE ",
         "DELETE ",
+        "LOAD DATA ",
+        "LOAD DATA\n"
         "INSERT\n",
         "UPDATE\n",
         "DELETE\n",
