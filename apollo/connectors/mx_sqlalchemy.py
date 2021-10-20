@@ -7,8 +7,8 @@ from typing import Any
 from sqlalchemy import MetaData, Table, create_engine
 from sqlalchemy.sql.base import ImmutableColumnCollection
 
-from common.env import commondir, getenv
-from common.secrets import get_secret
+from ..env import commondir, getenv
+from ..secrets import get_secret
 
 
 class SQLClient:

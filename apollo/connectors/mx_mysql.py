@@ -515,7 +515,7 @@ class MySQLClient:
         """Returns a generator for downloading a table in chunks.
 
         Example::
-            from common.connectors import MySQLClient
+            from apollo.connectors import MySQLClient
             sql = MySQLClient("real_estate.real_estate")
             for rows in sql.chunk():
                 for row in rows:
@@ -596,7 +596,7 @@ class MySQLClient:
         """Returns a generator for retrieving query data row by row.
 
         Example::
-            from common.connectors import MySQLClient
+            from apollo.connectors import MySQLClient
             sql = MySQLClient()
             query = sql.build(
                 table="real_estate.real_estate",
@@ -647,7 +647,7 @@ class MySQLClient:
         """Use this method to provide data for the fields argument in create_table.
 
         Example:
-            from common.connectors import MySQLClient
+            from apollo.connectors import MySQLClient
             sql = MySQLClient()
             data = [[1, "Peter"], [2, "Paul"]]
             fieldnames = ["id", "name"]

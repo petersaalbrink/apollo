@@ -20,7 +20,7 @@ from time import sleep
 
 from pendulum import now
 from phonenumbers import PhoneNumber, PhoneNumberMatcher, is_valid_number, parse
-from phonenumbers.carrier import name_for_number, number_type  # noqa
+from phonenumbers.carrier import name_for_number, number_type  # type: ignore
 from phonenumbers.geocoder import country_name_for_number
 from phonenumbers.phonenumberutil import NumberParseException
 from pycountry import countries

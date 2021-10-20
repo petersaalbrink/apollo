@@ -1,11 +1,11 @@
 """Access Matrixian Person Data.
 
 Usage::
-    from common.persons import Person
+    from apollo.persons import Person
     person = Person(lastname="Saalbrink", initials="PP", postcode="1061BD")
     person.update()
 
-    from common.persons import Address
+    from apollo.persons import Address
     address = Address(postcode="1061BD", housenumber=145)
     person = address.upgrade()
 
@@ -59,8 +59,6 @@ from typing import Any, SupportsFloat, Union
 from dateutil.parser import parse as dateparse
 from text_unidecode import unidecode
 
-from common.api import email, phone
-
 from ._persons_probabilities import (
     estimated_people_with_lastname,
     extra_fields_calculation,
@@ -68,6 +66,7 @@ from ._persons_probabilities import (
     set_alpha,
     set_population_size,
 )
+from .api import email, phone
 from .connectors.mx_elastic import ESClient
 from .exceptions import MatchError, NoMatch, PersonsError
 from .parsers import DISTANCE, levenshtein
@@ -150,7 +149,7 @@ class Person:
     """Data class for persons.
 
     Example::
-        from common.persons import Person
+        from apollo.persons import Person
 
         person = Person(
             lastname="Saalbrink",

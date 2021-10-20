@@ -2,7 +2,7 @@
 
 This module contains the following objects:
 
-.. py:class:: common.parsers.Checks
+.. py:class:: apollo.parsers.Checks
    Collection of several methods for data transformation.
    .. py:method:: percentage()
       Transform a part of a whole into a percentage (0-100).
@@ -27,13 +27,13 @@ This module contains the following objects:
    .. py:method:: check_matching_percentage()
       Return matching percentage (0-100) of two strings.
 
-.. py:function:: common.parsers.flatten(
+.. py:function:: apollo.parsers.flatten(
         nested_dict: MutableMapping[str, Any],
         sep: str = "_",
     ) -> dict
    Flatten a nested dictionary.
 
-.. py:function:: common.parsers.levenshtein(
+.. py:function:: apollo.parsers.levenshtein(
         seq1: str,
         seq2: str,
         measure: str = "percentage",
@@ -43,22 +43,22 @@ This module contains the following objects:
    By default, returns the percentage score.
    Set :param measure: to "distance" to return the Levenshtein distance.
 
-.. py:function:: common.parsers.date(date: str) -> str
+.. py:function:: apollo.parsers.date(date: str) -> str
    Parse a date from a datestring and return the format.
    Example::
         dateformat("28/08/2014") == "%d/%m/%Y"
 
-.. py:function:: common.parsers.find_all_urls(text: str) -> list
+.. py:function:: apollo.parsers.find_all_urls(text: str) -> list
    Finds all urls in a string and returns a list
    Example::
         urls = find_all_urls(text)
 
-.. py:function:: common.parsers.reverse_geocode(x: float, y: float) -> dict
+.. py:function:: apollo.parsers.reverse_geocode(x: float, y: float) -> dict
    Returns address from x and y coordinates using ArcGIS; reverse geocoding.
    Example::
         address = reverse_geocode(4.894410, 52.310158)
 
-.. py:function:: common.parsers.partition(
+.. py:function:: apollo.parsers.partition(
         pred: Callable[[T], bool],
         it: Iterable[T],
     ) -> tuple[list[T], list[T]]
@@ -66,7 +66,7 @@ This module contains the following objects:
    Example::
         evens, odds = partition(lambda num: (num % 2) == 0, range(100))
 
-.. py:function:: common.parsers.count_bytes(num: int) -> int
+.. py:function:: apollo.parsers.count_bytes(num: int) -> int
    Calculate the number of bytes needed to store `num` as a signed integer.
    Example::
         print(count_bytes(127), count_bytes(128))
@@ -334,7 +334,7 @@ def expand(data: list[dict[str, Any]], sort: bool = True) -> list[dict[str, Any]
     that all dictionaries have the same keys and in the same order.
 
     Example::
-        from common.parsers import expand
+        from apollo.parsers import expand
         data = expand(data)
     """
     fieldnames = {field for doc in data for field in doc}
@@ -355,7 +355,7 @@ def drop_empty_columns(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     will be removed from the list.
 
     Example::
-        from common.parsers import drop_empty_columns
+        from apollo.parsers import drop_empty_columns
         data = drop_empty_columns(data)
     """
     fieldnames = {field for doc in data for field in doc}
@@ -397,7 +397,7 @@ def partition(pred: Callable[[T], bool], it: Iterable[T]) -> tuple[list[T], list
     This function is faster than using alternatives from stdlib, functools, or itertools!
 
     Example:
-        from common.parsers import partition
+        from apollo.parsers import partition
 
         def is_even(num):
             return (num % 2) == 0
@@ -418,7 +418,7 @@ def count_bytes(num: int) -> int:
     """Calculate the number of bytes needed to store `num` as a signed integer.
 
     Example:
-        from common.parsers import count_bytes
+        from apollo.parsers import count_bytes
         print(count_bytes(127), count_bytes(128))
     """
     num = int(num)

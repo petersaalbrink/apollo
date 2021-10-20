@@ -7,7 +7,7 @@ from typing import Any
 import hypothesis.strategies as st
 from hypothesis import given
 
-from common.parsers import dateformat, flatten, levenshtein
+from apollo.parsers import dateformat, flatten, levenshtein
 
 strs = st.text(ascii_letters, min_size=2)
 json = st.recursive(

@@ -170,7 +170,7 @@ def proportion_lastname(lastname: str) -> dict[str, float]:
 def proportions_lastnames(lastnames: tuple[str, ...]) -> dict[str, float]:
     return {
         count: sum(get_es_lastname(name)[count]["count"] for name in lastnames)
-        / Constant.db_count
+        / Constant.db_count  # type: ignore
         for count in ("regular", "fuzzy")
     }
 

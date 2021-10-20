@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from common.connectors.mx_elastic import ESClient
-from common.connectors.mx_email import EmailClient
-from common.connectors.mx_mongo import MongoDB, MxClient
-from common.connectors.mx_mysql import MySQLClient
+from apollo.connectors.mx_elastic import ESClient
+from apollo.connectors.mx_email import EmailClient
+from apollo.connectors.mx_mongo import MongoDB, MxClient
+from apollo.connectors.mx_mysql import MySQLClient
 
 
 def test_email() -> None:

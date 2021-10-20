@@ -56,7 +56,7 @@ class MxCollection(Collection):
         """Return the last document in a collection.
 
         Usage::
-            from common.connectors.mx_mongo import MongoDB
+            from apollo.connectors.mx_mongo import MongoDB
             db = MongoDB("cdqc.person_data")
             doc = MongoDB.find_last(db)
             print(doc)
@@ -67,7 +67,7 @@ class MxCollection(Collection):
         """Return duplicated documents in a collection.
 
         Usage::
-            from common.connectors.mx_mongo import MongoDB
+            from apollo.connectors.mx_mongo import MongoDB
             db = MongoDB("dev_peter.person_data_20190716")
             docs = MongoDB.find_duplicates(db)
             print(docs)
@@ -108,7 +108,7 @@ class MxCollection(Collection):
         Returns the number of deleted documents.
 
         Usage::
-            from common.connectors.mx_mongo import MongoDB
+            from apollo.connectors.mx_mongo import MongoDB
             coll = MongoDB("dev_realestate.real_estate_v10")
             coll.remove_duplicates("address.identification.addressId")
         """

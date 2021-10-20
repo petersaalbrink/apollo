@@ -1,9 +1,8 @@
 __pycache__
-common.egg-info
-common_classes_mx.egg-info
+*.egg-info
 .hypothesis
 tests/.hypothesis
-.pytest_cache
+.*_cache
 
 venv*
 *.idea

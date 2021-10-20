@@ -7,52 +7,52 @@ for long-running scripts).
 
 File handlers:
 
-.. py:function: common.handlers.csv_read
+.. py:function: apollo.handlers.csv_read
    Generate data read from a csv file.
-.. py:function: common.handlers.csv_read_from_zip
+.. py:function: apollo.handlers.csv_read_from_zip
    Generate data read from a zipped csv file.
-.. py:function: common.handlers.csv_write
+.. py:function: apollo.handlers.csv_write
    Write data to a csv file.
-.. py:function: common.handlers.csv_write_to_zip
+.. py:function: apollo.handlers.csv_write_to_zip
    Write data to a csv file and archive it.
-.. py:function: common.handlers.zip_file
+.. py:function: apollo.handlers.zip_file
    Write a file to a zip archive.
-.. py:class: common.handlers.ZipData
+.. py:class: apollo.handlers.ZipData
    Class for processing zip archives containing csv data files.
 
 Logging handlers:
 
-.. py:function: common.handlers.get_logger
+.. py:function: apollo.handlers.get_logger
    Return an advanced Logger, with output to both file and stream.
-.. py:class: common.handlers.Log
+.. py:class: apollo.handlers.Log
    Logger class that by default logs with level debug to stderr.
 
 Timing handlers:
 
-.. py:function: common.handlers.tqdm
+.. py:function: apollo.handlers.tqdm
    Customized tqdm function.
-.. py:function: common.handlers.trange
+.. py:function: apollo.handlers.trange
    Customized trange function.
-.. py:function: common.handlers.timer
+.. py:function: apollo.handlers.timer
    Decorator for timing a function and logging it (level: info).
-.. py:class: common.handlers.Timer
+.. py:class: apollo.handlers.Timer
    Timer class for simple timing tasks.
-.. py:class: common.handlers.TicToc
+.. py:class: apollo.handlers.TicToc
    Time code using a class, context manager, or decorator.
-.. py:class: common.handlers.FunctionTimer
+.. py:class: apollo.handlers.FunctionTimer
    Code timing context manager with logging (level: info).
-.. py:function: common.handlers.progress_bar_timer
+.. py:function: apollo.handlers.progress_bar_timer
    Keep track of how long a script is running.
 
 Runtime handlers:
 
-.. py:function: common.handlers.compose
+.. py:function: apollo.handlers.compose
    Compose a new function out of multiple composable functions.
-.. py:function: common.handlers.keep_trying
+.. py:function: apollo.handlers.keep_trying
    Keep trying a callable, until optional timeout.
-.. py:function: common.handlers.send_email
+.. py:function: apollo.handlers.send_email
    Decorator for sending email notification on success/fail.
-.. py:function: common.handlers.pip_upgrade
+.. py:function: apollo.handlers.pip_upgrade
    Upgrade all installed Python packages using pip.
 """
 
@@ -386,7 +386,7 @@ class Log:
     """Logger class that by default logs with level debug to stderr.
 
     Example::
-        from common.handlers import Log
+        from apollo.handlers import Log
         Log(
             level="info",
             filename="my.log",
@@ -441,7 +441,7 @@ def get_logger(
         stream_level: default: warning
 
     Example::
-        from common.handlers import get_logger
+        from apollo.handlers import get_logger
         logger = get_logger(
             level="debug",
             filename="my.log",
@@ -455,7 +455,7 @@ def get_logger(
     stream_level = _logging_levels.get(kwargs.get("stream_level", ""), logging.WARNING)
     level = _logging_levels.get(f"{level}".lower(), logging.DEBUG)
     assert isinstance(level, (int, str))
-    if not name and __name__ not in {"__main__", "common.handlers"}:
+    if not name and __name__ not in {"__main__", "apollo.handlers"}:
         name = __name__
     if not filename:
         filename = f"{name or Path(sys.argv[0]).stem}.log"
@@ -578,7 +578,7 @@ class Timer:
     """Timer class for simple timing tasks.
 
     Example::
-        from common.handlers import Timer
+        from apollo.handlers import Timer
         t = Timer()
         [i**i for i in range(10000)]
         print(t.end())
@@ -606,7 +606,7 @@ class TicToc(ContextDecorator):
     """Time code using a class, context manager, or decorator.
 
     Example::
-        from common.handlers import TicToc
+        from apollo.handlers import TicToc
 
         # As class
         t = TicToc()
@@ -674,7 +674,7 @@ class FunctionTimer:
     """Code timing context manager with logging (level: info).
 
     Example::
-        from common.handlers import FunctionTimer
+        from apollo.handlers import FunctionTimer
         with FunctionTimer():
             [i**i for i in range(10000)]
     """
@@ -719,7 +719,7 @@ def timer(f: Callable[..., T]) -> Callable[..., T]:
     """Decorator for timing a function and logging it (level: info).
 
     Example::
-        from common.handlers import timer
+        from apollo.handlers import timer
         @timer
         def my_func()
             return [i**i for i in range(10000)]
@@ -753,7 +753,7 @@ def keep_trying(
     :param timeout: the number of seconds to keep retrying
 
     Example::
-        from common.handlers import keep_trying
+        from apollo.handlers import keep_trying
 
         def function_with_bug(i: int):
             my_list = []

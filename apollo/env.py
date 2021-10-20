@@ -1,10 +1,10 @@
-"""Module that manages the environment variables needed by common.
+"""Module that manages the environment variables needed by apollo.
 
 This module provides a function, `getenv`, which when imported first
 loads the necessary environment variables, and then can be used to
-return those. This module is used by common internally, but it can be
+return those. This module is used by apollo internally, but it can be
 used externally, if one needs to load secrets or hostnames into the
-system's environment variables outside of common.
+system's environment variables outside of apollo.
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-commondir = Path.home() / ".common"
+commondir = Path.home() / ".apollo"
 envfile = Path(commondir / ".env")
 
 
 def _getenv() -> None:
-    """Load the .env file that is used by common."""
+    """Load the .env file that is used by apollo."""
 
     # Create .env, if it doesn't exist yet
     if not envfile.exists():
@@ -39,7 +39,7 @@ def _getenv() -> None:
 
 
 def _write_pem() -> None:
-    """Create certificates needed by common.MySQLClient.
+    """Create certificates needed by apollo.MySQLClient.
 
     The certificates need to be present as environment variables and
     will be written to the current working directory.

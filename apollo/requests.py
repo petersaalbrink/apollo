@@ -7,27 +7,27 @@ scripts.
 
 Making requests:
 
-.. py:function: common.requests.request
+.. py:function: apollo.requests.request
    Sends a request. Returns :class:`requests.Response` object.
-.. py:function: common.requests.get
+.. py:function: apollo.requests.get
    Sends a GET request. Returns :class:`requests.Response` object.
-.. py:function: common.requests.post
+.. py:function: apollo.requests.post
    Sends a POST request. Returns :class:`requests.Response` object.
-.. py:function: common.requests.get_session
+.. py:function: apollo.requests.get_session
    Get session with predefined options for requests.
-.. py:function: common.requests.get_proxies
+.. py:function: apollo.requests.get_proxies
    Returns headers with proxies and agent for requests.
 
 Multithreading:
 
-.. py:function: common.requests.thread
+.. py:function: apollo.requests.thread
    Thread :param data: with :param function: and optionally do :param process:.
-.. py:function: common.requests.thread_queue
+.. py:function: apollo.requests.thread_queue
    Take any iterable :param seq: and execute :param func: on its items in threads.
-.. py:class: common.requests.ThreadSafeIterator
+.. py:class: apollo.requests.ThreadSafeIterator
    Takes an iterator/generator and makes it thread-safe
    by serializing call to the `next` method of given iterator/generator.
-.. py:function: common.requests.threadsafe
+.. py:function: apollo.requests.threadsafe
    Decorator that takes a generator function and makes it thread-safe.
 """
 
@@ -227,7 +227,7 @@ def thread(
     (e.g., do `bar.update()` inside the :param function: Callable).
 
     Example:
-        from common import get, thread
+        from apollo import get, thread
         thread(
             function=lambda _: get("http://example.org"),
             data=range(2000),
@@ -381,8 +381,8 @@ def thread_queue(
     """Take any iterable :param seq: and execute :param func: on its items in threads.
 
     Example:
-        from common.connectors.mx_mongo import MongoDB
-        from common.requests import listener, thread_queue
+        from apollo.connectors.mx_mongo import MongoDB
+        from apollo.requests import listener, thread_queue
 
         db = MongoDB("dev_peter.test_data")
 

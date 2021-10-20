@@ -12,7 +12,7 @@ from pandas import DataFrame, read_sql
 from sqlalchemy.dialects.mysql import CHAR, DATE, DECIMAL, INTEGER
 from tqdm import tqdm
 
-from common.connectors.mx_sqlalchemy import SQLClient
+from .mx_sqlalchemy import SQLClient
 
 
 class PandasSQL(SQLClient):

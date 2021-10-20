@@ -1,19 +1,19 @@
-"""Module that contains exceptions used by other common modules."""
+"""Module that contains exceptions used by other apollo modules."""
 
 
 from __future__ import annotations
 
 
 class CommonError(Exception):
-    """Base exception for all common modules."""
+    """Base exception for all apollo modules."""
 
 
 class ApiError(Exception):
-    """Base exception for all common.api modules."""
+    """Base exception for all apollo.api modules."""
 
 
 class ConnectorError(Exception):
-    """Base exception for all common.connectors modules."""
+    """Base exception for all apollo.connectors modules."""
 
 
 class ESClientError(ConnectorError):
@@ -57,7 +57,7 @@ class ParseError(CommonError):
 
 
 class PersonsError(CommonError):
-    """Exception for common.persondata"""
+    """Exception for apollo.persondata"""
 
 
 class RequestError(CommonError):

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from common.connectors.mx_elastic import ESClient
-from common.exceptions import NoMatch, PersonsError
-from common.handlers import keep_trying
-from common.persons import Constant, Person
+from apollo.connectors.mx_elastic import ESClient
+from apollo.exceptions import NoMatch, PersonsError
+from apollo.handlers import keep_trying
+from apollo.persons import Constant, Person
 
 
 def test_persons() -> None:

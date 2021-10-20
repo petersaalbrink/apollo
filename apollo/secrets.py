@@ -1,7 +1,7 @@
 """Module that provides access to retrieving and storing secrets.
 
 The main method for accessing secrets is the `get_secret` function.
-Secrets are retrieved from the .env file in the ~/.common directory and
+Secrets are retrieved from the .env file in the ~/.apollo directory and
 decoded. If a secret is not present or is missing, the user will be
 asked to provide it (using stdin). The provided secret will then be
 encoded and stored for later use. A secret, consisting of a username
@@ -44,7 +44,7 @@ Credentials = namedtuple("Credentials", ("usr", "pwd"))
 
 
 def change_secret(name: str) -> Credentials:
-    """Change an existing secret in the ~/.common/.env file.
+    """Change an existing secret in the ~/.apollo/.env file.
 
     You will be asked to provide the secret using stdin. The secret
     will be encoding before storing it for later use, and the secret
@@ -79,7 +79,7 @@ def change_secret(name: str) -> Credentials:
     pwd = b64encode(bytes(pwd.encode())).decode()
     if pwd:
         re = compile(r"=.*\n")
-        file = Path(Path.home() / ".common/.env")
+        file = Path(Path.home() / ".apollo/.env")
         with open(file) as f:
             curr_data = list(f)
         new_data = [
@@ -106,7 +106,7 @@ def get_secret(name: str) -> Credentials:
     """Get an existing secret from the system's environment variables.
 
     Environment variables will be first be loaded using the
-    ~/.common/.env file.
+    ~/.apollo/.env file.
 
     If a secret does not yet exist, you will be asked to provide the
     secret (using stdin). The secret will be encoding before storing it

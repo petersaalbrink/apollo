@@ -3,7 +3,7 @@
 This module contains one object that can be used for both uploads to
 and downloads from the Platform.
 
-.. py:class:: common.platform.FileTranfer(
+.. py:class:: apollo.platform.FileTranfer(
        user_id: str = None,
        username: str = None,
        email: str = None,
@@ -30,7 +30,7 @@ from functools import cached_property
 from logging import debug
 from pathlib import Path
 from types import TracebackType
-from typing import Any, BinaryIO, NoReturn, TextIO
+from typing import Any, BinaryIO, NoReturn
 
 from bson import ObjectId
 from Crypto.Cipher import AES
@@ -251,7 +251,7 @@ class _SSHClientMixin:
     def _cmd(
         self,
         cmd: str,
-        fileobj: BinaryIO | TextIO | None = None,
+        fileobj: BinaryIO | None = None,
         sudo: bool = True,
     ) -> tuple[ChannelFile, ChannelFile]:
 
@@ -289,7 +289,7 @@ class _SSHClientMixin:
     def exec_command(
         self,
         command: str,
-        fileobj: BinaryIO | TextIO | None = None,
+        fileobj: BinaryIO | None = None,
         sudo: bool = False,
     ) -> str:
         self.connect()
@@ -309,7 +309,7 @@ class _SSHClientMixin:
     def _run_cmd(
         self,
         cmd: str,
-        fileobj: BinaryIO | TextIO | None = None,
+        fileobj: BinaryIO | None = None,
         sudo: bool = True,
     ) -> tuple[ChannelFile, ChannelFile]:
         """Create a process from a shell command."""

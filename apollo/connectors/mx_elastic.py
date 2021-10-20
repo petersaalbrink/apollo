@@ -193,11 +193,11 @@ class ESClient(Elasticsearch):
             if hits_only:
                 result = result["hits"]["hits"]
             if with_id:
-                result = [{**doc, **doc.pop("_source")} for doc in result]
+                result = [{**doc, **doc.pop("_source")} for doc in result]  # type: ignore
             if source_only:
-                result = [doc["_source"] for doc in result]
+                result = [doc["_source"] for doc in result]  # type: ignore
             if (first_only or size == 1) and result:
-                result = result[0]
+                result = result[0]  # type: ignore
         return result
 
     def geo_distance(
@@ -426,10 +426,11 @@ class ESClient(Elasticsearch):
         else:
             data["hits"]["hits"] = results
         if with_id:
-            data = [{**doc, **doc.pop("_source")} for doc in data]
+            data = [{**doc, **doc.pop("_source")} for doc in data]  # type: ignore
         if source_only:
-            data = [doc["_source"] for doc in data]
+            data = [doc["_source"] for doc in data]  # type: ignore
 
+        assert isinstance(data, list)
         return data
 
     def scrollall(
@@ -520,7 +521,7 @@ class ESClient(Elasticsearch):
         Substitute period . for nested fields with underscore _
 
         Examples:
-            from common.connectors import ESClient
+            from apollo.connectors import ESClient
             es = ESClient()
             results = es.query(field="lastname", query="Saalbrink")
 
@@ -571,7 +572,7 @@ class ESClient(Elasticsearch):
         """The total number of documents within the index."""
         return self.indices.stats(index=self.es_index)["_all"]["total"]["docs"]["count"]
 
-    def count(
+    def count(  # type: ignore
         self,
         body: dict[str, Any] | None = None,
         index: str | None = None,
@@ -715,7 +716,7 @@ class ESClient(Elasticsearch):
         It's also possible to supply all four arguments. Operation is atomic.
 
         Example:
-            from common.connectors.mx_elastic import ESClient
+            from apollo.connectors.mx_elastic import ESClient
             es = ESClient(host="prod")
             es.update_alias(
                 remove_index="production_realestate.real_estate_v8",

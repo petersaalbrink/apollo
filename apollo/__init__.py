@@ -1,8 +1,4 @@
-"""Common classes and functions for the Matrixian Group Data Team.
-
-Read the documentation on Confluence:
-https://matrixiangroup.atlassian.net/wiki/spaces/DBR/pages/1584693297/common+classes+mx
-"""
+"""Common classes and functions for the Matrixian Group Data Team."""
 
 from __future__ import annotations
 
@@ -129,6 +125,7 @@ __all__ = (
 from importlib import import_module
 from types import ModuleType
 
+from .env import getenv
 from .etc.version import __version__
 
 _module_mapping = {
@@ -150,9 +147,6 @@ _module_mapping = {
     ],
     "customer_communication": [
         "data_delivery_tool",
-    ],
-    "env": [
-        "getenv",
     ],
     "exceptions": [
         "ApiError",

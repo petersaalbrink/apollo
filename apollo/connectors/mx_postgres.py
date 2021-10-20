@@ -18,12 +18,12 @@ class PgSql:
     """Connector for PostgreSQL database.
 
     Example:
-        from common.connectors.mx_postgres import PgSql
+        from apollo.connectors.mx_postgres import PgSql
         with PgSql("vgm") as pg:
             data = list(pg.select_all("vgm_account"))
 
     Example:
-        from common.connectors.mx_postgres import PgSql
+        from apollo.connectors.mx_postgres import PgSql
         query = "SELECT * FROM {} WHERE {} LIKE %s"
         table, column, value = "vgm_building", "vgo_building", "WTC%"
         with PgSql("vgm") as pg:

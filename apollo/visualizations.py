@@ -46,7 +46,7 @@ import numpy as np
 import seaborn as sns
 from matplotlib import patches, path, rc
 from matplotlib.colors import ListedColormap, LogNorm
-from numpy import ndarray
+from numpy.typing import NDArray
 
 mx_colors = {
     "dark_green": "#0E5C59",
@@ -396,7 +396,7 @@ class RadarPlot:
         # Set axes limits
         plt.ylim(0, 5)
 
-    def set_ticks(self, lim: int | None = None) -> tuple[np.ndarray, int]:
+    def set_ticks(self, lim: int | None = None) -> tuple[NDArray[Any], int]:
         # Set y ticks from lima to limb
         plt.yticks(np.linspace(1, lim or self.limit, lim or self.limit), [])
         t = np.arange(0, 2 * np.pi, 2 * np.pi / len(self.fieldnames))
@@ -415,7 +415,7 @@ class RadarPlot:
         linewidth_points: int | None = None,
         color_points: str | None = None,
         edgecolor_points: str | None = None,
-    ) -> ndarray:
+    ) -> NDArray[Any]:
         axes_values = np.array(
             [
                 self.row[i] / self.maximum[i] * self.set_ticks()[1]
@@ -506,7 +506,7 @@ class RadarPlot:
 
 
 def plot_stacked_bar(
-    data: np.ndarray | list[list[Any]],
+    data: NDArray[Any] | list[list[Any]],
     series_labels: list[str],
     *,
     category_labels: list[str] | None = None,
