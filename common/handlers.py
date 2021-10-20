@@ -46,6 +46,8 @@ Timing handlers:
 
 Runtime handlers:
 
+.. py:function: common.handlers.compose
+   Compose a new function out of multiple composable functions.
 .. py:function: common.handlers.keep_trying
    Keep trying a callable, until optional timeout.
 .. py:function: common.handlers.send_email
@@ -64,6 +66,7 @@ __all__ = (
     "ZipData",
     "assert_never",
     "chunker",
+    "compose",
     "csv_read",
     "csv_read_from_zip",
     "csv_write",
@@ -92,7 +95,7 @@ from cProfile import Profile
 from csv import DictReader, DictWriter, Error, Sniffer
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from functools import partial, wraps
+from functools import partial, reduce, wraps
 from inspect import ismethod
 from io import TextIOWrapper
 from json import load, loads
@@ -871,3 +874,8 @@ def progress_bar_timer() -> None:
             bar.update(0)
 
     Thread(target=progress, daemon=True).start()
+
+
+def compose(*functions: Callable[[T], T]) -> Callable[[T], T]:
+    """Compose a new function out of multiple composable functions."""
+    return reduce(lambda f, g: lambda x: g(f(x)), functions)
