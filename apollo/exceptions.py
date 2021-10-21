@@ -4,16 +4,20 @@
 from __future__ import annotations
 
 
-class CommonError(Exception):
+class ApolloError(Exception):
     """Base exception for all apollo modules."""
 
 
-class ApiError(Exception):
+class ApiError(ApolloError):
     """Base exception for all apollo.api modules."""
 
 
-class ConnectorError(Exception):
+class ConnectorError(ApolloError):
     """Base exception for all apollo.connectors modules."""
+
+
+class EmailClientError(ApolloError):
+    """Exception for EmailClient."""
 
 
 class ESClientError(ConnectorError):
@@ -21,7 +25,7 @@ class ESClientError(ConnectorError):
 
 
 class PgSqlError(ConnectorError):
-    """Exception for ESClient."""
+    """Exception for PgSql."""
 
 
 class PhoneApiError(ApiError):
@@ -36,41 +40,41 @@ class MySQLClientError(ConnectorError):
     """Exception for MySQLClient."""
 
 
-class DataError(CommonError):
+class DataError(ApolloError):
     """Exception for data handlers."""
 
 
-class FileTransferError(CommonError):
+class FileTransferError(ApolloError):
     """Exception for FileTransfer."""
 
 
-class MatchError(CommonError):
+class MatchError(ApolloError):
     """Exception for Person Matching."""
 
 
-class NoMatch(CommonError):
+class NoMatch(ApolloError):
     """Exception for Person Matching."""
 
 
-class ParseError(CommonError):
+class ParseError(ApolloError):
     """Exception for data parsers."""
 
 
-class PersonsError(CommonError):
+class PersonsError(ApolloError):
     """Exception for apollo.persondata"""
 
 
-class RequestError(CommonError):
+class RequestError(ApolloError):
     """Exception for requests."""
 
 
-class Timeout(CommonError):
+class Timeout(ApolloError):
     """Timout."""
 
 
-class TimerError(CommonError):
+class TimerError(ApolloError):
     """Exception for Timer."""
 
 
-class ZipDataError(CommonError):
+class ZipDataError(ApolloError):
     """Exception for ZipData."""
