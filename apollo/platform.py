@@ -401,9 +401,6 @@ class FileTransferDocker(FileTransferBase, SSHClientMixin):
         self.port = 2233
         self.username = "consucom"
 
-    def upload(self) -> NoReturn:
-        raise NotImplementedError
-
     @property
     def filepath(self) -> Path:
         """Provide the full directory path needed for uploads."""
@@ -582,12 +579,6 @@ class SSHClient(SSHClientMixin):
         self.password = password
         self.port = port
         self.client = get_ssh_client()
-
-    def notify(self) -> NoReturn:
-        raise NotImplementedError
-
-    def upload(self) -> NoReturn:
-        raise NotImplementedError
 
     def __enter__(self) -> SSHClient:
         super().__enter__()
