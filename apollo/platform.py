@@ -71,12 +71,12 @@ class _FileTransfer:
         filename: Path | str | None = None,
         user_id: str | None = None,
         email: str | None = None,
-        host: str | None = None,
+        host: str = "prod",
     ):
         """Create a FileTransfer object to upload/download files.
 
         To be able to connect to an account, you need to provide a
-        username, a user_id or a email.
+        username, a user_id or an email.
 
         To be able to upload a file, you need to provide a filename.
         """
@@ -89,17 +89,20 @@ class _FileTransfer:
 
         # Prepare parameters
         self.filename = filename
-
-        host = host or "prod"
         if host == "prod":
-            self.host = "production_api.user", "ftp.platform.matrixiangroup.com"
+            self.user_collection = "production_api.user"
+            self.ftp_host = "ftp.platform.matrixiangroup.com"
         elif host == "dev":
-            self.host = "dev_api.user", "ftp.develop.platform.matrixiangroup.com"
+            self.user_collection = "dev_api.user"
+            self.ftp_host = "ftp.develop.platform.matrixiangroup.com"
         else:
             raise FileTransferError("Host should be 'prod' or 'dev'.")
 
+        # Connect to MongoDB
+        self.db = MongoDB(self.user_collection)
+        assert isinstance(self.db, MxCollection)
+
         # Find user details
-        self.db = MongoDB(self.host[0])
         if user_id:
             q = {"_id": ObjectId(user_id)}
         elif username:
@@ -108,15 +111,26 @@ class _FileTransfer:
             q = {"email": email}
         else:
             raise FileTransferError("Provide either a name, ID or email for the user.")
-        db = MongoDB("production_api.user", host="prod")
-        assert isinstance(db, MxCollection)
-        doc = db.find_one(q)
+
+        # Lookup
+        doc = self.db.find_one(q)
         if not doc:
-            raise FileTransferError("User not found.")
-        self.user_id = doc["_id"]
-        self.username = doc["firstName"]
-        self.email = doc["email"]
-        self.encrypted_ftp_password = doc["ftpPassword"]
+            if username and username.count(" ") == 1:
+                first, last = username.split()
+                q = {"firstName": first, "lastName": last}
+                doc = self.db.find_one(q)
+            if not doc:
+                raise FileTransferError("User not found.")
+
+        # Set user detials
+        self.user_id: ObjectId = doc["_id"]
+        self.firstname: str = doc["firstName"]
+        self.lastname: str = doc.get("lastName", "")
+        self.email: str = doc["email"]
+        self.encrypted_ftp_password: str = doc["ftpPassword"]
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(email={self.email!r})"
 
     def check_filename(self) -> None:
         """Check if a filename is provided."""
@@ -140,7 +154,7 @@ class _FileTransfer:
         template = Path(__file__).parent / "etc/email.html"
         with open(template) as f:
             message = f.read()
-        message = message.replace("USERNAME", username or self.username)
+        message = message.replace("USERNAME", username or self.firstname)
         message = message.replace("FILENAME", self.insert_filename)
 
         # Prepare receivers
@@ -347,14 +361,14 @@ class FileTransferDocker(_FileTransfer, _SSHClientMixin):
         filename: Path | str | None = None,
         user_id: str | None = None,
         email: str | None = None,
-        host: str | None = None,
+        host: str = "prod",
     ):
         super().__init__(
-            username,
-            filename,
-            user_id,
-            email,
-            host,
+            username=username,
+            filename=filename,
+            user_id=user_id,
+            email=email,
+            host=host,
         )
 
         # Connect
@@ -372,7 +386,7 @@ class FileTransferDocker(_FileTransfer, _SSHClientMixin):
     @property
     def filepath(self) -> Path:
         """Provide the full directory path needed for uploads."""
-        return self.ftpath / self.user_id
+        return self.ftpath / f"{self.user_id}"
 
     @filepath.setter
     def filepath(self, value: Any) -> NoReturn:
@@ -391,14 +405,14 @@ class FileTransferFTP(_FileTransfer):
         filename: Path | str | None = None,
         user_id: str | None = None,
         email: str | None = None,
-        host: str | None = None,
+        host: str = "prod",
     ):
         super().__init__(
-            username,
-            filename,
-            user_id,
-            email,
-            host,
+            username=username,
+            filename=filename,
+            user_id=user_id,
+            email=email,
+            host=host,
         )
 
         self.key = getenv("MX_CRYPT_PASSWORD", "").encode()
@@ -431,7 +445,7 @@ class FileTransferFTP(_FileTransfer):
         return AES.new(self.key, AES.MODE_CBC, iv).decrypt(ciphertext).strip().decode()
 
     def connect(self) -> None:
-        transport = Transport((self.host[1], 2121))  # noqa
+        transport = Transport((self.ftp_host, 2121))  # noqa
         transport.connect(None, self.email, self.ftp_password)
         self.ftp = SFTPClient.from_transport(transport)
 
