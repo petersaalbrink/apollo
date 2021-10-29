@@ -30,14 +30,11 @@ from functools import cached_property
 from logging import debug
 from pathlib import Path
 from types import TracebackType
-from typing import Any, BinaryIO, NoReturn
+from typing import Any, BinaryIO, NoReturn, Protocol
 
+import paramiko
 from bson import ObjectId
 from Crypto.Cipher import AES
-from paramiko import AutoAddPolicy, SFTPClient
-from paramiko import SSHClient as _SSHClient
-from paramiko import SSHException, Transport
-from paramiko.channel import ChannelFile
 from pymongo.errors import PyMongoError
 
 from .connectors.mx_email import EmailClient
@@ -47,7 +44,27 @@ from .exceptions import FileTransferError
 from .secrets import get_secret
 
 
-class _FileTransfer:
+class FileTransferSSHProtocol(Protocol):
+    def __enter__(self) -> FileTransferSSHProtocol:
+        ...
+
+    def download(self) -> FileTransferSSHProtocol:
+        ...
+
+    def download_all(self) -> FileTransferSSHProtocol:
+        ...
+
+    def notify(self) -> FileTransferSSHProtocol:
+        ...
+
+    def transfer(self) -> FileTransferSSHProtocol:
+        ...
+
+    def upload(self) -> FileTransferSSHProtocol:
+        ...
+
+
+class FileTransferBase:
     """Upload and download files to/from the Matrixian Platform.
 
     Example usage::
@@ -84,8 +101,14 @@ class _FileTransfer:
         super().__init__()
 
         # Check
-        if not user_id and not username and not email:
-            raise FileTransferError("Provide either a name, ID, or email for the user.")
+        if user_id:
+            q = {"_id": ObjectId(user_id)}
+        elif username:
+            q = {"firstName": username}
+        elif email:
+            q = {"email": email}
+        else:
+            raise FileTransferError("Provide either a name, ID or email for the user.")
 
         # Prepare parameters
         self.filename = filename
@@ -101,16 +124,6 @@ class _FileTransfer:
         # Connect to MongoDB
         self.db = MongoDB(self.user_collection)
         assert isinstance(self.db, MxCollection)
-
-        # Find user details
-        if user_id:
-            q = {"_id": ObjectId(user_id)}
-        elif username:
-            q = {"firstName": username}
-        elif email:
-            q = {"email": email}
-        else:
-            raise FileTransferError("Provide either a name, ID or email for the user.")
 
         # Lookup
         doc = self.db.find_one(q)
@@ -147,7 +160,7 @@ class _FileTransfer:
         self,
         to_address: str | list[str] | tuple[str, ...] | None = None,
         username: str | None = None,
-    ) -> _FileTransfer:
+    ) -> FileTransferBase:
         """Notify the user of the new Platform upload."""
 
         # Prepare message
@@ -176,8 +189,8 @@ class _FileTransfer:
         return self
 
 
-class _SSHClientMixin:
-    client: _SSHClient
+class SSHClientMixin:
+    client: paramiko.SSHClient
     filename: Path | str | None
     hostname: str
     port: int
@@ -188,7 +201,7 @@ class _SSHClientMixin:
         self._connected = False
         self._filepath = Path()
 
-    def __enter__(self) -> _SSHClientMixin:
+    def __enter__(self) -> SSHClientMixin:
         self.connect()
         return self
 
@@ -215,7 +228,7 @@ class _SSHClientMixin:
             self._connected = False
 
     @staticmethod
-    def check_process(stderr: ChannelFile) -> None:
+    def check_process(stderr: paramiko.channel.ChannelFile) -> None:
         """Check if a process has completed successfully."""
         stderr_ = stderr.read().decode().strip()
         if stderr_:
@@ -267,7 +280,7 @@ class _SSHClientMixin:
         cmd: str,
         fileobj: BinaryIO | None = None,
         sudo: bool = True,
-    ) -> tuple[ChannelFile, ChannelFile]:
+    ) -> tuple[paramiko.channel.ChannelFile, paramiko.channel.ChannelFile]:
 
         debug("Executing command: %s", cmd)
 
@@ -325,7 +338,7 @@ class _SSHClientMixin:
         cmd: str,
         fileobj: BinaryIO | None = None,
         sudo: bool = True,
-    ) -> tuple[ChannelFile, ChannelFile]:
+    ) -> tuple[paramiko.channel.ChannelFile, paramiko.channel.ChannelFile]:
         """Create a process from a shell command."""
         stdout, stderr = self._cmd(
             cmd=cmd,
@@ -334,7 +347,7 @@ class _SSHClientMixin:
         )
         return stdout, stderr
 
-    def transfer(self) -> _SSHClientMixin:
+    def transfer(self) -> SSHClientMixin:
         """Upload a file to the Platform host."""
         self.connect()
         assert isinstance(self.filename, (Path, str))
@@ -354,7 +367,13 @@ class _SSHClientMixin:
         return self
 
 
-class FileTransferDocker(_FileTransfer, _SSHClientMixin):
+def get_ssh_client() -> paramiko.SSHClient:
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    return client
+
+
+class FileTransferDocker(FileTransferBase, SSHClientMixin):
     def __init__(
         self,
         username: str | None = None,
@@ -373,8 +392,7 @@ class FileTransferDocker(_FileTransfer, _SSHClientMixin):
 
         # Connect
         _, self.password = get_secret("MX_PLATFORM_HOST")
-        self.client = _SSHClient()
-        self.client.set_missing_host_key_policy(AutoAddPolicy())
+        self.client = get_ssh_client()
 
         self.fthost = "consucom"
         self.ftpath = Path("/var/lib/docker/volumes/filetransfer_live/_data")
@@ -382,6 +400,9 @@ class FileTransferDocker(_FileTransfer, _SSHClientMixin):
         self.hostname = "136.144.203.100"
         self.port = 2233
         self.username = "consucom"
+
+    def upload(self) -> NoReturn:
+        raise NotImplementedError
 
     @property
     def filepath(self) -> Path:
@@ -398,7 +419,7 @@ class FileTransferDocker(_FileTransfer, _SSHClientMixin):
         return self
 
 
-class FileTransferFTP(_FileTransfer):
+class FileTransferFTP(FileTransferBase):
     def __init__(
         self,
         username: str | None = None,
@@ -421,11 +442,11 @@ class FileTransferFTP(_FileTransfer):
                 "Missing environment variable 'MX_CRYPT_PASSWORD' (FTP password decrypt key)"
             )
 
-        self.ftp: SFTPClient | None = None
+        self.ftp: paramiko.SFTPClient | None = None
 
-    def __enter__(self) -> SFTPClient:
+    def __enter__(self) -> paramiko.SFTPClient:
         self.connect()
-        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.ftp, paramiko.SFTPClient)
         return self.ftp
 
     def __exit__(
@@ -445,12 +466,12 @@ class FileTransferFTP(_FileTransfer):
         return AES.new(self.key, AES.MODE_CBC, iv).decrypt(ciphertext).strip().decode()
 
     def connect(self) -> None:
-        transport = Transport((self.ftp_host, 2121))  # noqa
+        transport = paramiko.Transport((self.ftp_host, 2121))
         transport.connect(None, self.email, self.ftp_password)
-        self.ftp = SFTPClient.from_transport(transport)
+        self.ftp = paramiko.SFTPClient.from_transport(transport)
 
     def disconnect(self) -> None:
-        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.ftp, paramiko.SFTPClient)
         self.ftp.close()
 
     def list_files(
@@ -461,7 +482,7 @@ class FileTransferFTP(_FileTransfer):
         """List existing files in this user's Platform folder."""
         if _connect:
             self.connect()
-        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.ftp, paramiko.SFTPClient)
         try:
             if with_timestamp:
                 return [
@@ -489,7 +510,7 @@ class FileTransferFTP(_FileTransfer):
         """Download an existing Platform file to disk."""
         if _connect:
             self.connect()
-        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.ftp, paramiko.SFTPClient)
         self.ftp.get(file, file)
         if _connect:
             self.disconnect()
@@ -508,7 +529,7 @@ class FileTransferFTP(_FileTransfer):
         """Upload a file to the Platform host."""
         self.check_filename()
         self.connect()
-        assert isinstance(self.ftp, SFTPClient)
+        assert isinstance(self.ftp, paramiko.SFTPClient)
         if isinstance(self.filename, Path):
             filename = f"{self.filename}"
         elif isinstance(self.filename, bytes):
@@ -536,7 +557,7 @@ class FileTransferFTP(_FileTransfer):
         try:
             self.connect()
             self.disconnect()
-        except SSHException as e:
+        except paramiko.SSHException as e:
             raise FileTransferError(
                 "Make sure you have access to the FTP server."
             ) from e
@@ -547,10 +568,7 @@ class FileTransferFTP(_FileTransfer):
         return self
 
 
-FileTransfer = FileTransferFTP
-
-
-class SSHClient(_SSHClientMixin):
+class SSHClient(SSHClientMixin):
     def __init__(
         self,
         hostname: str,
@@ -563,8 +581,13 @@ class SSHClient(_SSHClientMixin):
         self.username = username
         self.password = password
         self.port = port
-        self.client = _SSHClient()
-        self.client.set_missing_host_key_policy(AutoAddPolicy())
+        self.client = get_ssh_client()
+
+    def notify(self) -> NoReturn:
+        raise NotImplementedError
+
+    def upload(self) -> NoReturn:
+        raise NotImplementedError
 
     def __enter__(self) -> SSHClient:
         super().__enter__()
@@ -572,3 +595,6 @@ class SSHClient(_SSHClientMixin):
 
     def __exit__(self, *exc: Any) -> bool:
         return super().__exit__(*exc)
+
+
+FileTransfer = FileTransferFTP
