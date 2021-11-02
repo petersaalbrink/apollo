@@ -48,7 +48,7 @@ class FileTransferSSHProtocol(Protocol):
     def __enter__(self) -> FileTransferSSHProtocol:
         ...
 
-    def download(self) -> FileTransferSSHProtocol:
+    def download(self, file: str, _connect: bool = ...) -> FileTransferSSHProtocol:
         ...
 
     def download_all(self) -> FileTransferSSHProtocol:
@@ -142,6 +142,9 @@ class FileTransferBase:
         self.email: str = doc["email"]
         self.encrypted_ftp_password: str = doc["ftpPassword"]
 
+    def __enter__(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(email={self.email!r})"
 
@@ -149,6 +152,12 @@ class FileTransferBase:
         """Check if a filename is provided."""
         if not self.filename:
             raise FileTransferError("Provide a filename.")
+
+    def download(self, file: str, _connect: bool = True) -> FileTransferSSHProtocol:
+        raise NotImplementedError
+
+    def download_all(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
 
     @cached_property
     def insert_filename(self) -> str:
@@ -160,7 +169,7 @@ class FileTransferBase:
         self,
         to_address: str | list[str] | tuple[str, ...] | None = None,
         username: str | None = None,
-    ) -> FileTransferBase:
+    ) -> FileTransferSSHProtocol:
         """Notify the user of the new Platform upload."""
 
         # Prepare message
@@ -188,6 +197,12 @@ class FileTransferBase:
 
         return self
 
+    def transfer(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
+
+    def upload(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
+
 
 class SSHClientMixin:
     client: paramiko.SSHClient
@@ -201,7 +216,7 @@ class SSHClientMixin:
         self._connected = False
         self._filepath = Path()
 
-    def __enter__(self) -> SSHClientMixin:
+    def __enter__(self) -> FileTransferSSHProtocol:
         self.connect()
         return self
 
@@ -247,7 +262,7 @@ class SSHClientMixin:
         else:
             raise TypeError(type(value))
 
-    def download(self, file: str) -> None:
+    def download(self, file: str, _connect: bool = True) -> FileTransferSSHProtocol:
         """Download an existing Platform file to disk."""
         self.connect()
         remote_file = self.filepath / file
@@ -261,11 +276,13 @@ class SSHClientMixin:
                 f.flush()
         self.check_process(stderr)
         self.disconnect()
+        return self
 
-    def download_all(self) -> None:
+    def download_all(self) -> FileTransferSSHProtocol:
         """Download all existing Platform files to disk."""
         for file in self.list_files():
             self.download(file)
+        return self
 
     def list_files(self) -> list[str]:
         """list existing files in this user's Platform folder."""
@@ -347,7 +364,10 @@ class SSHClientMixin:
         )
         return stdout, stderr
 
-    def transfer(self) -> SSHClientMixin:
+    def notify(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
+
+    def transfer(self) -> FileTransferSSHProtocol:
         """Upload a file to the Platform host."""
         self.connect()
         assert isinstance(self.filename, (Path, str))
@@ -365,6 +385,9 @@ class SSHClientMixin:
         self.check_process(stderr)
         self.disconnect()
         return self
+
+    def upload(self) -> FileTransferSSHProtocol:
+        raise NotImplementedError
 
 
 def get_ssh_client() -> paramiko.SSHClient:
@@ -410,7 +433,7 @@ class FileTransferDocker(FileTransferBase, SSHClientMixin):
     def filepath(self, value: Any) -> NoReturn:
         raise NotImplementedError
 
-    def transfer(self) -> FileTransferDocker:
+    def transfer(self) -> FileTransferSSHProtocol:
         self.check_filename()
         super().transfer()
         return self
@@ -441,10 +464,10 @@ class FileTransferFTP(FileTransferBase):
 
         self.ftp: paramiko.SFTPClient | None = None
 
-    def __enter__(self) -> paramiko.SFTPClient:
+    def __enter__(self) -> FileTransferSSHProtocol:
         self.connect()
         assert isinstance(self.ftp, paramiko.SFTPClient)
-        return self.ftp
+        return self
 
     def __exit__(
         self,
@@ -503,7 +526,7 @@ class FileTransferFTP(FileTransferBase):
             if _connect:
                 self.disconnect()
 
-    def download(self, file: str, _connect: bool = True) -> FileTransferFTP:
+    def download(self, file: str, _connect: bool = True) -> FileTransferSSHProtocol:
         """Download an existing Platform file to disk."""
         if _connect:
             self.connect()
@@ -513,7 +536,7 @@ class FileTransferFTP(FileTransferBase):
             self.disconnect()
         return self
 
-    def download_all(self) -> FileTransferFTP:
+    def download_all(self) -> FileTransferSSHProtocol:
         """Download all existing Platform files to disk."""
         self.connect()
         for file in self.list_files(_connect=False):
@@ -522,7 +545,7 @@ class FileTransferFTP(FileTransferBase):
         self.disconnect()
         return self
 
-    def upload(self) -> FileTransferFTP:
+    def upload(self) -> FileTransferSSHProtocol:
         """Upload a file to the Platform host."""
         self.check_filename()
         self.connect()
@@ -559,7 +582,7 @@ class FileTransferFTP(FileTransferBase):
                 "Make sure you have access to the FTP server."
             ) from e
 
-    def transfer(self) -> FileTransferFTP:
+    def transfer(self) -> FileTransferSSHProtocol:
         """Upload the specified file to the specified Platform folder."""
         self.upload()
         return self
@@ -580,7 +603,7 @@ class SSHClient(SSHClientMixin):
         self.port = port
         self.client = get_ssh_client()
 
-    def __enter__(self) -> SSHClient:
+    def __enter__(self) -> FileTransferSSHProtocol:
         super().__enter__()
         return self
 
